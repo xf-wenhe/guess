@@ -1,0 +1,500 @@
+{
+  "version": "v1",
+  "scope": "all_answers",
+  "description": "提示词最终规范：保存通用约束、动漫rule2模板，以及名侦探柯南特例锚点，供后续任意答案词生成与重填使用。已同步 2026-04-28 硬规则（7-16）。",
+  "documentation": {
+    "policy_doc": "data/final_hint_policy_v1.md",
+    "note": "策略源 JSON 负责提供脚本可读约束；配套文档负责说明人工复核项与执行口径。"
+  },
+  "policy_resolution": {
+    "match_key_format": "{category}::{answer}",
+    "override_order": [
+      "special_cases.exact_answer",
+      "category_profiles.generator_mode",
+      "universal_constraints"
+    ],
+    "inheritance_rules": {
+      "special_case_inherits_category_profile": true,
+      "category_profile_inherits_universal_constraints": true,
+      "special_case_can_override_target_curve": true,
+      "special_case_can_override_name_policy": true,
+      "special_case_can_lock_final_hints": true
+    }
+  },
+  "hard_rules_2026_04_28": {
+    "source": "user_confirmed",
+    "effective": true,
+    "rules": {
+      "7_front6_plus_category_no_strong_anchor": true,
+      "8_no_meta_or_template_terms": true,
+      "9_dimension_must_be_7of7_unique": true,
+      "10_modify_then_full_recheck_until_zero": true,
+      "11_no_claim_without_real_check": true,
+      "12_no_speculative_hint_filling": true,
+      "13_no_forced_four_char_uniformity": true,
+      "14_no_hint_reuse_across_answers": true,
+      "15_no_hint_reuse_within_same_category": true,
+      "16_no_generic_placeholder_terms": true
+    },
+    "execution_note": "No run, no pass. Any violation requires rewrite and full rerun.",
+    "validator_contract": {
+      "machine_check_required": true,
+      "manual_review_required": true,
+      "manual_only_rules": [
+        "11_no_claim_without_real_check",
+        "12_no_speculative_hint_filling"
+      ]
+    }
+  },
+  "universal_constraints": {
+    "hint_count": 7,
+    "prefer_weak_to_strong_progression": true,
+    "default_target_curve": [30, 40, 50, 60, 70, 80, 90],
+    "strength_bands": {
+      "very_weak": [15, 30],
+      "weak": [30, 45],
+      "weak_mid": [45, 60],
+      "mid_anchor": [60, 72],
+      "strong_anchor": [72, 85],
+      "final_anchor": [85, 95]
+    },
+    "forbid_any_char_overlap_between_answer_and_hints": true,
+    "forbidden_meta_terms": [
+      "标志性冲突",
+      "代表性设定",
+      "核心母题",
+      "高光桥段",
+      "知名剧情节点",
+      "粉丝高共识",
+      "答案锁定线索",
+      "唯一锚点",
+      "终局指向",
+      "强辨识设定",
+      "剧情铺垫",
+      "事件推进",
+      "关键线索",
+      "阶段线索",
+      "状态线索",
+      "情境线索",
+      "过程细节",
+      "步骤推进",
+      "方向判断",
+      "细节变化",
+      "常见场景",
+      "整体节奏",
+      "结果走向",
+      "临场处理",
+      "作品主线",
+      "经典场景",
+      "粉丝熟知"
+    ],
+    "forbid_duplicate_hints": true,
+    "forbid_global_hint_reuse_across_answers": true,
+    "forbid_same_hint_reuse_within_category": true,
+    "max_chars_per_hint": 5,
+    "max_name_like_tokens_per_item": 1,
+    "forbid_name_like_tokens_before_slot": 6,
+    "prefer_name_like_tokens_in_slots": [5, 6, 7],
+    "guessability_guard": {
+      "enabled": true,
+      "description": "逐条可猜度硬指标：使用语义校准分检查提示强度。",
+      "min_percent": 30,
+      "max_percent": 90,
+      "target_curve": [30, 40, 50, 60, 70, 80, 90],
+      "target_tolerance": 15,
+      "enforce_target_curve": true,
+      "enforce_monotonic": true,
+      "monotonic_drop_tolerance": 1,
+      "model_path": "models/bge-m3-finetuned-v27-semreal-anchor",
+      "calib_path": "data/semantic_calibration_v27_semreal_anchor.json"
+    },
+    "per_hint_mandatory_check": {
+      "enabled": true,
+      "description": "生成新文案时，7条提示都要逐条过检，任一失败即视为该文案不合格。",
+      "checks": [
+        "non_empty",
+        "max_char_length",
+        "no_duplicate",
+        "no_answer_char_overlap",
+        "no_forbidden_meta_term",
+        "no_generic_placeholder_term",
+        "no_cross_answer_hint_reuse",
+        "no_same_category_hint_reuse",
+        "dimension_unique_7of7",
+        "respect_early_reveal_guard",
+        "natural_language_guard"
+      ],
+      "fail_if_any_violation": true
+    },
+    "validator_machine_checks": {
+      "enabled": true,
+      "description": "可自动执行的硬规则检查。",
+      "checks": [
+        "meta_terms",
+        "generic_terms",
+        "answer_char_overlap",
+        "duplicate_hints_per_item",
+        "global_hint_reuse_across_answers",
+        "same_category_hint_reuse",
+        "front6_early_reveal",
+        "forced_four_char_uniformity"
+      ],
+      "hard_fail_on_any_violation": true
+    },
+    "natural_language_guard": {
+      "enabled": true,
+      "description": "提示词必须是自然语义单元，不使用生硬模板词、元描述词与泛词。",
+      "forbid_forced_uniform_length": true,
+      "forbid_forced_four_char_style": true,
+      "forbid_subjective_fabrication": true,
+      "require_common_usage_grounding": true,
+      "forbidden_fragments": [
+        "旅中",
+        "前备",
+        "后备",
+        "物件",
+        "用品",
+        "物品",
+        "所需"
+      ],
+      "forbidden_generic_terms": [
+        "关键线索",
+        "阶段线索",
+        "状态线索",
+        "情境线索",
+        "过程细节",
+        "步骤推进",
+        "方向判断",
+        "细节变化",
+        "常见场景",
+        "整体节奏",
+        "结果走向",
+        "临场处理",
+        "作品主线",
+        "经典场景",
+        "粉丝熟知"
+      ]
+    },
+    "answer_conditioned_diversity_guard": {
+      "enabled": true,
+      "description": "根据答案做维度分散，强制7条提示使用7个不同维度。",
+      "default_min_unique_dimensions": 7,
+      "require_all_slots_unique_dimensions": true,
+      "dimension_lexicon": {
+        "time": ["前", "后", "夜", "早", "晚", "启程", "出发"],
+        "scene": ["机场", "柜台", "车站", "酒店", "异地", "旅途", "途中", "路上"],
+        "action": ["打包", "收纳", "托运", "携带", "办理", "准备"],
+        "carry_mode": ["手提", "肩背", "背着", "拎着", "背包", "拉箱"],
+        "content": ["衣物", "洗漱", "证件", "换洗"],
+        "container": ["箱", "包", "行囊", "登机箱"]
+      },
+      "answer_overrides": {
+        "旅游::行李": {
+          "min_unique_dimensions": 7
+        }
+      }
+    },
+    "category_known_guard": {
+      "enabled": true,
+      "description": "当玩家已知题目类型时，限制前段提示泄露强度。",
+      "default_rules": {
+        "slot_max_percent": {
+          "4": 55
+        },
+        "early_slot_forbidden_fragments": {
+          "slots": [1, 2, 3, 4],
+          "terms": ["主角", "片名", "书名", "歌名", "人名", "地名", "专属"]
+        }
+      },
+      "category_overrides": {
+        "旅游": {
+          "slot_max_percent": {
+            "4": 55
+          },
+          "early_slot_forbidden_fragments": {
+            "slots": [1, 2, 3, 4],
+            "terms": ["拎", "背", "箱", "包", "托运", "值机"]
+          }
+        }
+      }
+    },
+    "early_reveal_guard": {
+      "enabled": true,
+      "slots": [1, 2, 3, 4, 5, 6],
+      "description": "硬规则：防止前6条提示在分类已知时导致直接猜出。",
+      "hard_fail_on_hit": true,
+      "front6_plus_category_no_strong_anchor": true,
+      "category_block_terms": {
+        "旅游": ["随身带", "托运", "值机", "登机箱", "拉杆箱", "安检"]
+      },
+      "answer_block_terms": {
+        "旅游::行李": ["随身带", "托运", "值机", "登机箱", "拉杆箱", "安检"],
+        "生活::外卖": ["点餐", "下单", "取餐", "送餐", "配送", "骑手", "外送"]
+      }
+    }
+  },
+  "generic_slot_templates": {
+    "anime_rule2": {
+      "description": "动漫通用rule2：前段给宽语义背景，中段给剧情/关系框架，后段给专属锚点。",
+      "template_type": "category_progressive_template",
+      "target_curve": [30, 40, 50, 60, 70, 80, 90],
+      "low_generic_jp": ["日本"],
+      "low_generic_cn": ["国漫"],
+      "mid_generic": ["剧情推进", "角色关系", "世界设定", "群像叙事", "冒险主线", "成长变化"],
+      "fallback": ["动画作品", "剧情推进", "角色关系", "世界设定", "成长变化", "冒险主线", "群像叙事"],
+      "tone_reference_answers": ["名侦探柯南", "哆啦A梦"],
+      "tone_seed_pool": ["同学伙伴", "学业烦恼", "家庭日常", "校园日常", "邻里生活", "日常困境", "上学路", "家庭趣事"],
+      "tone_literal_blocklist": ["博士", "变声器", "麻醉针", "米花町", "抽屉", "借物解困", "藤子不二雄"],
+      "early_slot_keep": ["日本", "国漫"],
+      "generic_blocklist": ["动画作品", "剧情推进", "角色关系", "世界设定", "群像叙事", "冒险主线", "成长变化", "番剧作品", "虚构故事", "长篇连载", "日常线索", "调查线索", "生活插曲"],
+      "slot_strength_targets": {
+        "1": 30,
+        "2": 40,
+        "3": 50,
+        "4": 60,
+        "5": 70,
+        "6": 80,
+        "7": 90
+      },
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_context",
+        "3": "weak_mid_structure",
+        "4": "weak_mid_structure",
+        "5": "mid_anchor",
+        "6": "strong_anchor",
+        "7": "strongest_anchor"
+      }
+    }
+  },
+  "category_profiles": {
+    "动漫": {
+      "generator_mode": "anime_rule2",
+      "special_case_allowed": true,
+      "resolution_mode": "special_case_first",
+      "special_case_key_format": "动漫::{answer}",
+      "notes": [
+        "动漫默认使用rule2模板。",
+        "若答案存在特例锚点，则优先采用special_cases中的固定方案。"
+      ]
+    }
+  },
+  "special_case_schema": {
+    "required_fields": [
+      "mode",
+      "locked",
+      "priority",
+      "goal",
+      "target_curve",
+      "hints"
+    ],
+    "optional_fields": [
+      "slot_roles",
+      "forbidden_hints",
+      "name_like_policy",
+      "notes",
+      "override_template",
+      "allowed_anchor_strength_range",
+      "human_guess_priority",
+      "model_guess_priority"
+    ],
+    "hint_count_source": "universal_constraints.hint_count"
+  },
+  "special_case_templates": {
+    "custom_anchor_final": {
+      "description": "适用于需要人类猜词优先、且允许局部偏离通用模板的最终特例。",
+      "locked_default": true,
+      "human_guess_priority_default": 0.8,
+      "model_guess_priority_default": 0.2,
+      "recommended_slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "character_state_or_structure",
+        "5": "story_space_or_mid_anchor",
+        "6": "exclusive_tool_or_mid_strong_anchor",
+        "7": "final_anchor"
+      }
+    }
+  },
+  "authoring_examples": {
+    "special_case_stub": {
+      "mode": "custom_anchor_final",
+      "locked": true,
+      "priority": "high",
+      "goal": "human_guess_first_with_controlled_90",
+      "target_curve": [20, 30, 40, 55, 65, 80, 90],
+      "hints": ["槽1", "槽2", "槽3", "槽4", "槽5", "槽6", "槽7"],
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "character_state",
+        "5": "story_space",
+        "6": "exclusive_tool",
+        "7": "strong_anchor"
+      },
+      "forbidden_hints": [],
+      "notes": ["新增答案特例时，优先复制这个stub再填充。"]
+    }
+  },
+  "special_cases": {
+    "动漫::蜡笔小新": {
+      "mode": "custom_anchor_final",
+      "locked": true,
+      "priority": "high",
+      "goal": "human_guess_first_with_controlled_90",
+      "override_template": "anime_rule2",
+      "human_guess_priority": 0.8,
+      "model_guess_priority": 0.2,
+      "target_curve": [20, 30, 40, 55, 65, 80, 90],
+      "hints": ["春日部", "家庭日常", "野原一家", "日本", "双叶幼稚园", "幼稚园", "动感超人"],
+      "allowed_anchor_strength_range": {
+        "slot6": [72, 85],
+        "slot7": [85, 95]
+      },
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "story_space",
+        "5": "mid_anchor",
+        "6": "strong_anchor",
+        "7": "final_anchor"
+      },
+      "forbidden_hints": [
+        "小新",
+        "蜡笔",
+        "野原新之助"
+      ],
+      "name_like_policy": {
+        "max_name_like_tokens": 1,
+        "reason": "允许末位保留1个角色名增强最终锁定。"
+      },
+      "notes": [
+        "沿用柯南式特例规则：前段场景化，后段锚点化。",
+        "避免前4槽直给角色专名。"
+      ]
+    },
+    "动漫::哆啦A梦": {
+      "mode": "custom_anchor_final",
+      "locked": true,
+      "priority": "high",
+      "goal": "human_guess_first_with_controlled_90",
+      "override_template": "anime_rule2",
+      "human_guess_priority": 0.8,
+      "model_guess_priority": 0.2,
+      "target_curve": [20, 30, 40, 55, 65, 80, 90],
+      "hints": ["学业烦恼", "抽屉", "铜锣烧", "日本", "竹蜻蜓", "同学伙伴", "未来道具"],
+      "allowed_anchor_strength_range": {
+        "slot6": [72, 85],
+        "slot7": [85, 95]
+      },
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "relationship_structure",
+        "5": "mid_anchor",
+        "6": "strong_anchor",
+        "7": "final_anchor"
+      },
+      "forbidden_hints": [
+        "哆啦",
+        "大雄",
+        "藤子",
+        "机器猫",
+        "任意门"
+      ],
+      "name_like_policy": {
+        "max_name_like_tokens": 0,
+        "reason": "该特例不依赖角色名锁定，优先道具锚点。"
+      },
+      "notes": [
+        "沿用柯南式特例规则：前段弱语义，后段道具锁定。",
+        "避免前4槽放高专属道具。"
+      ]
+    },
+    "动漫::犬夜叉": {
+      "mode": "custom_anchor_final",
+      "locked": true,
+      "priority": "high",
+      "goal": "human_guess_first_with_controlled_90",
+      "override_template": "anime_rule2",
+      "human_guess_priority": 0.8,
+      "model_guess_priority": 0.2,
+      "target_curve": [20, 30, 40, 55, 65, 80, 90],
+      "hints": ["铁碎牙", "日本", "巫女", "杀生丸", "四魂玉", "战国", "半妖"],
+      "allowed_anchor_strength_range": {
+        "slot6": [72, 85],
+        "slot7": [85, 95]
+      },
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "character_structure",
+        "5": "story_anchor",
+        "6": "exclusive_tool",
+        "7": "strong_anchor"
+      },
+      "forbidden_hints": [
+        "戈薇",
+        "奈落",
+        "高桥留美子"
+      ],
+      "name_like_policy": {
+        "max_name_like_tokens": 1,
+        "reason": "允许末位保留1个高辨识角色名作为最终锚点。"
+      },
+      "notes": [
+        "遵循柯南特例同类规则：前段给背景与结构，中后段逐步收敛。",
+        "避免前4槽直接给强专属角色名。",
+        "第6到第7槽承担最终锁定功能。"
+      ]
+    },
+    "动漫::名侦探柯南": {
+      "mode": "custom_anchor_final",
+      "locked": true,
+      "priority": "high",
+      "goal": "human_guess_first_with_controlled_90",
+      "override_template": "anime_rule2",
+      "human_guess_priority": 0.8,
+      "model_guess_priority": 0.2,
+      "target_curve": [20, 30, 40, 55, 65, 80, 90],
+      "hints": ["麻醉针", "米花町", "日本", "博士", "变声器", "犯罪", "小学生"],
+      "allowed_anchor_strength_range": {
+        "slot6": [72, 85],
+        "slot7": [85, 95]
+      },
+      "slot_roles": {
+        "1": "broad_context",
+        "2": "secondary_background",
+        "3": "theme_domain",
+        "4": "character_state",
+        "5": "story_space",
+        "6": "exclusive_tool",
+        "7": "strong_anchor"
+      },
+      "forbidden_hints": [
+        "工藤新一",
+        "江户川柯南",
+        "黑衣组织",
+        "APTX4869",
+        "缩小身体",
+        "青山刚昌",
+        "福尔摩斯"
+      ],
+      "name_like_policy": {
+        "max_name_like_tokens": 0,
+        "reason": "柯南最终方案不靠名字锁定。"
+      },
+      "notes": [
+        "这是动漫分类中的特例锚点，不完全服从默认30-90模板。",
+        "前5槽保持可推理但不直给。",
+        "第6到第7槽允许使用中强专属线索，但避免过早唯一锁定。",
+        "该配置应覆盖通用动漫重填逻辑。"
+      ]
+    }
+  }
+}

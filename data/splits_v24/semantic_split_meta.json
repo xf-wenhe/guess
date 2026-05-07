@@ -1,0 +1,55 @@
+{
+  "seed": 20260227,
+  "ratios": {
+    "train": 0.7,
+    "calib": 0.15,
+    "holdout": 0.15
+  },
+  "input_rows": 1032,
+  "splits": {
+    "train": {
+      "rows": 721,
+      "min_score": 2.0,
+      "max_score": 100.0,
+      "bins": {
+        "0-19": 244,
+        "100": 97,
+        "20-39": 102,
+        "40-59": 104,
+        "60-79": 97,
+        "80-99": 77
+      }
+    },
+    "calib": {
+      "rows": 156,
+      "min_score": 2.0,
+      "max_score": 100.0,
+      "bins": {
+        "0-19": 53,
+        "100": 21,
+        "20-39": 22,
+        "40-59": 23,
+        "60-79": 20,
+        "80-99": 17
+      }
+    },
+    "holdout": {
+      "rows": 155,
+      "min_score": 2.0,
+      "max_score": 100.0,
+      "bins": {
+        "0-19": 51,
+        "100": 20,
+        "20-39": 23,
+        "40-59": 22,
+        "60-79": 23,
+        "80-99": 16
+      }
+    }
+  },
+  "files": {
+    "train_csv": "data/splits_v24/semantic_train.csv",
+    "calib_csv": "data/splits_v24/semantic_calib.csv",
+    "holdout_csv": "data/splits_v24/semantic_holdout.csv"
+  }
+}

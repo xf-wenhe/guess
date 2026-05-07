@@ -1,0 +1,34 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "flutter": true,
+        "/usr/bin/python3": true,
+        "/Users/fengye/work/flutter/guess/.venv/bin/python": true,
+        "/^cd \\. && python3 embedding_server\\.py$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 << 'EOF'\nimport requests\nimport json\nfrom numpy import dot\nfrom numpy\\.linalg import norm\n\n# 获取两个文本的嵌入向量\ntext1 = \"鸭子\"\ntext2 = \"闻鸡起舞\"\n\napi_url = \"http://127\\.0\\.0\\.1:8000/embed\"\n\n# 获取第一个文本的嵌入\nresponse1 = requests\\.post\\(api_url, json=\\{\"text\": text1\\}\\)\nembedding1 = response1\\.json\\(\\)\\[\"embedding\"\\]\n\n# 获取第二个文本的嵌入\nresponse2 = requests\\.post\\(api_url, json=\\{\"text\": text2\\}\\)\nembedding2 = response2\\.json\\(\\)\\[\"embedding\"\\]\n\n# 计算余弦相似度\ncosine_similarity = dot\\(embedding1, embedding2\\) / \\(norm\\(embedding1\\) \\* norm\\(embedding2\\)\\)\n\nprint\\(f\"文本1: \\{text1\\}\"\\)\nprint\\(f\"文本2: \\{text2\\}\"\\)\nprint\\(f\"\\\\n嵌入向量维度: \\{len\\(embedding1\\)\\}\"\\)\nprint\\(f\"\\\\n语义相似度 \\(余弦相似度\\): \\{cosine_similarity:\\.6f\\}\"\\)\nprint\\(f\"相似度百分比: \\{cosine_similarity \\* 100:\\.2f\\}%\"\\)\n\n# 语义相似度解释\nif cosine_similarity > 0\\.7:\n    print\\(\"⭐ 高度相关\"\\)\nelif cosine_similarity > 0\\.5:\n    print\\(\"⭐⭐ 中等相关\"\\)\nelif cosine_similarity > 0\\.3:\n    print\\(\"⭐⭐⭐ 低相关\"\\)\nelse:\n    print\\(\"⭐⭐⭐⭐ 关联度低\"\\)\nEOF\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 << 'ENDSCRIPT'\nimport requests\nimport json\nfrom math import sqrt\n\ntext1 = \"鸭子\"\ntext2 = \"闻鸡起舞\"\n\n# 获取嵌入\nr1 = requests\\.post\\(\"http://127\\.0\\.0\\.1:8000/embed\", json=\\{\"text\": text1\\}\\)\nr2 = requests\\.post\\(\"http://127\\.0\\.0\\.1:8000/embed\", json=\\{\"text\": text2\\}\\)\n\ne1 = r1\\.json\\(\\)\\[\"embedding\"\\]\ne2 = r2\\.json\\(\\)\\[\"embedding\"\\]\n\n# 计算余弦相似度\ndot_product = sum\\(a\\*b for a, b in zip\\(e1, e2\\)\\)\nnorm1 = sqrt\\(sum\\(a\\*a for a in e1\\)\\)\nnorm2 = sqrt\\(sum\\(b\\*b for b in e2\\)\\)\nsimilarity = dot_product / \\(norm1 \\* norm2\\)\n\nprint\\(f\"『\\{text1\\}』vs『\\{text2\\}』\"\\)\nprint\\(f\"语义相似度: \\{similarity:\\.4f\\}\"\\)\nprint\\(f\"相似度百分比: \\{similarity\\*100:\\.2f\\}%\"\\)\nENDSCRIPT\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^python3 << 'SCRIPT'\nimport subprocess\nimport json\nfrom math import sqrt\n\ndef get_embedding\\(text\\):\n    cmd = \\['curl', '-s', '-X', 'POST', 'http://127\\.0\\.0\\.1:8000/embed',\n           '-H', 'Content-Type: application/json',\n           '-d', json\\.dumps\\(\\{\"text\": text\\}\\)\\]\n    result = subprocess\\.run\\(cmd, capture_output=True, text=True\\)\n    return json\\.loads\\(result\\.stdout\\)\\[\"embedding\"\\]\n\ne1 = get_embedding\\(\"鸭子\"\\)\ne2 = get_embedding\\(\"闻鸡起舞\"\\)\n\n# 计算余弦相似度\ndot_product = sum\\(a\\*b for a, b in zip\\(e1, e2\\)\\)\nnorm1 = sqrt\\(sum\\(a\\*a for a in e1\\)\\)\nnorm2 = sqrt\\(sum\\(b\\*b for b in e2\\)\\)\nsimilarity = dot_product / \\(norm1 \\* norm2\\)\n\nprint\\(f\"『鸭子』 vs 『闻鸡起舞』\"\\)\nprint\\(f\"\\\\n语义相似度: \\{similarity:\\.6f\\}\"\\)\nprint\\(f\"相似度百分比: \\{similarity\\*100:\\.2f\\}%\"\\)\n\nif similarity > 0\\.6:\n    print\\(\"\\\\n评价: 语义关联度较高 ⭐⭐\"\\)\nelif similarity > 0\\.4:\n    print\\(\"\\\\n评价: 语义有一定关联 ⭐\"\\)\nelse:\n    print\\(\"\\\\n评价: 语义关联度低 \"\\)\nSCRIPT\n$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "timeout": true,
+        "/Users/fengye/work/flutter/guess/.venv/bin/python3": true,
+        "/^cd /Users/fengye/work/flutter/guess && python3 - <<'PY'\nfrom collections import Counter\nimport re\ntext=open\\('assets/puzzles\\.json','r',encoding='utf-8'\\)\\.read\\(\\)\ncounts=Counter\\(re\\.findall\\(r'\"hint\\\\d\\+\"', text\\)\\)\nprint\\(counts\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        },
+        "/^cd /Users/fengye/work/flutter/guess && python3 - <<'PY'\nimport json\nfrom pathlib import Path\npath = Path\\('assets/puzzles\\.json'\\)\ntext = path\\.read_text\\(encoding='utf-8'\\)\ntry:\n    json\\.loads\\(text\\)\n    print\\('json_ok'\\)\nexcept json\\.JSONDecodeError as e:\n    print\\(f\"line=\\{e\\.lineno\\} col=\\{e\\.colno\\} msg=\\{e\\.msg\\}\"\\)\n    lines = text\\.splitlines\\(\\)\n    for i in range\\(max\\(0, e\\.lineno-3\\), min\\(len\\(lines\\), e\\.lineno\\+2\\)\\):\n        print\\(f\"\\{i\\+1\\}: \\{lines\\[i\\]\\}\"\\)\nPY$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    },
+    "cmake.ignoreCMakeListsMissing": true
+}

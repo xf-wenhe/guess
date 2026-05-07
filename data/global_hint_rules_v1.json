@@ -1,0 +1,129 @@
+{
+  "version": "v1",
+  "scope": "assets/puzzles.json",
+  "rules": [
+    {
+      "id": "G1",
+      "name": "game_template_lock",
+      "enabled": false,
+      "type": "category_template",
+      "condition": {
+        "category": "游戏",
+        "hint_count": 7,
+        "template": [
+          "异象",
+          "技能",
+          "重新开始",
+          "死亡后",
+          "牧师",
+          "墓地",
+          "状态重置"
+        ]
+      }
+    },
+    {
+      "id": "G2",
+      "name": "no_meta_descriptors_global",
+      "enabled": true,
+      "type": "lexical_forbidden",
+      "condition": {
+        "forbidden_terms": [
+          "标志性冲突",
+          "代表性设定",
+          "核心母题",
+          "高光桥段",
+          "知名剧情节点",
+          "粉丝高共识",
+          "答案锁定线索",
+          "唯一锚点",
+          "终局指向",
+          "强辨识设定"
+        ]
+      }
+    },
+    {
+      "id": "G3",
+      "name": "no_char_overlap_global",
+      "enabled": true,
+      "type": "lexical_forbidden",
+      "condition": {
+        "forbid_any_char_overlap_between_answer_and_hints": true,
+        "exceptions": []
+      }
+    },
+    {
+      "id": "G4",
+      "name": "game_semantic_ladder_30_to_90",
+      "enabled": true,
+      "type": "semantic_ladder",
+      "condition": {
+        "category": "游戏",
+        "targets": [30, 40, 50, 60, 70, 80, 90],
+        "monotonic_non_decreasing": true,
+        "description": "hints和answer的关联程度依次30%,40%,50%,60%,70%,80%,90%"
+      }
+    },
+    {
+      "id": "G5",
+      "name": "food_style_lock",
+      "enabled": true,
+      "type": "category_template",
+      "condition": {
+        "category": "美食",
+        "hint_count": 7,
+        "mapping_file": "data/food_hint_style_map_v2.json",
+        "description": "美食类采用烧烤式七段提示结构，但每个答案使用对应食物的专属词，不再全量复制同一组词。"
+      }
+    },
+    {
+      "id": "G6",
+      "name": "anime_conan_style_lock",
+      "enabled": false,
+      "type": "category_template",
+      "condition": {
+        "category": "动漫",
+        "hint_count": 7,
+        "rule_file": "data/anime_conan_style_rules_v1.json",
+        "description": "动漫类采用名侦探柯南示例同款七槽规则：地域、题材、角色、道具、设定、来源、锚点。"
+      }
+    },
+    {
+      "id": "G7",
+      "name": "anime_semantic_ladder_v40",
+      "enabled": true,
+      "type": "semantic_ladder",
+      "condition": {
+        "category": "动漫",
+        "targets": [30, 40, 50, 60, 70, 80, 90],
+        "monotonic_non_decreasing": true,
+        "max_name_tokens_per_item": 1,
+        "forbid_name_tokens_before_slot": 6,
+        "prefer_name_tokens_in_slots": [5, 6, 7],
+        "rule_file": "data/anime_ladder_rules_v40.json",
+        "description": "动漫提示词按30-90语义阶梯递进，抑制元描述与主角名早暴露；单条最多1个人名，且人名优先后置到第5-7槽。"
+      }
+    },
+    {
+      "id": "G8",
+      "name": "universal_structured_hint_policy_v1",
+      "enabled": true,
+      "type": "global_policy",
+      "condition": {
+        "scope": "all_categories",
+        "rule_file": "data/universal_hint_rules_v1.json",
+        "description": "所有分类统一遵守7条hint、30-90弱到强递进、禁元描述、禁答案撞字、强专名尽量后置的通用规则。"
+      }
+    },
+    {
+      "id": "G9",
+      "name": "final_hint_policy_json_spec_v1",
+      "enabled": true,
+      "type": "policy_spec",
+      "condition": {
+        "scope": "all_answers",
+        "rule_file": "data/final_hint_policy_v1.json",
+        "description": "以JSON形式固化最终提示词规范，包含通用约束、分类模板与特例锚点，供后续任意答案词生成与重填使用。"
+      }
+    }
+  ]
+}

@@ -1,0 +1,1074 @@
+id,answer,user_input,answer_category,input_category_guess,relation_tag,expected_range,score_0_100,reason,reviewer
+6284,文天祥,爱国忠魂,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+754,手柄,大禹,游戏,,nonsense_low,0-20,2,毫无关联,
+4968,按部就班,整理,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5183,负薪读书,打发时间,典故,典故,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2530,阎罗,鲲鹏,神话,神话,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3236,平静,情绪稳定,情感,情感,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4572,竹海,冰川,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5943,历史,文物,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2202,大暑,王勃,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+608,新手,丘比特,游戏,,cross_category_low,0-30,7,二者不搭界,
+4791,按兵不动,外强中弱,成语,成语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6447,委屈,难为情,感情,感情,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4953,鹤立鸡群,一枝独秀,成语,成语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6708,丘比特,心猿意马,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2014,端午,河伯,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+342,兔子尾巴,铁公鸡,歇后语,,same_category_mid,60-70,20,二者关联度底,
+2828,打野,花田,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+372,拍照,行李,旅游,,same_category_mid,60-70,20,语义不同,
+73,麻辣烫,麻辣烫,美食,,same_answer_exact,95-100,100,完全一样,
+4357,登机,逛馆,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6516,忐忑,苦闷,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3911,归纳,反复朗读,学习,学习,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6886,薛之谦,歌词,歌手,歌手,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1176,妖精尾巴,仙桃宴,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3505,点头,行走,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3897,做作业,留作记,学习,学习,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5945,历史,农学,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3736,总结,合并信,学习,学习,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+482,抬头,点头,动作,,same_category_mid,60-70,20,语义不同,
+2553,星球,太阳家园,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1950,收拾,清理,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6956,王力宏,邓紫棋,歌手,歌手,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6936,蔡依林,梁静茹,歌手,歌手,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2234,秋分,风更凉,节日,节日,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5778,秧歌,红绸飞舞,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+485,语文,地质,学科,,same_category_mid,60-70,40,都是学科，但关联度不高,
+2255,立冬,气温降,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1218,进击的巨人,犬神,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4085,落地,落座,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2642,真空,薄气层,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+384,夏目友人帐,秦时明月,动漫,,same_category_mid,60-70,50,均为动漫，语义不同,
+5832,生物,计算,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6826,祭司,圣职,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+829,学校,校园,锚点词,,related_mid,60-82,80,同域相关,
+3581,侧步,点头,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2827,打野,神农,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4523,沙漠,麻辣烫,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5597,编钟,秋分,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1788,装修,晾干上彩,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+865,天空之城,天空之城,动漫,,exact_match,98-100,100,完全一致,
+4742,湖畔,微风,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+446,河伯,神农,神话,,same_category_mid,60-70,60,都是神话，但关联度不高,
+5233,围魏救赵,挟天子,典故,典故,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+885,老子,老子,人物,,exact_match,98-100,100,完全一致,
+1369,大鱼海棠,森林,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4092,里程碑,新手,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5300,黄鼠狼拜年,无气体,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2999,过图,黑屏转,游戏,游戏,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4229,观光,浏览景点,旅游,旅游,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2330,伏羲,古纹,神话,神话,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1967,午休,加班,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+103,花鼓,踏步节奏,文化,,hint_like_high,70-90,60,关联度中等,
+2647,光年,膨胀因,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2072,重阳,小雪,节日,节日,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1469,画江湖,彩色雾,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+451,一人之下,咒术回战,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1940,晒衣,蒸汽,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+542,拉怪,以卵击石,游戏,,cross_category_low,0-30,5,二者不搭界,
+5859,计算,抽象体系,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4631,礁石,内陆水域,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4106,汇总,上线,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+110,诸葛亮,出师表,人物,,hint_like_high,70-90,95,出师表直接能联想到诸葛亮,
+2617,彗星,秦时明月,宇宙,宇宙,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5608,青铜,陶瓷,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5576,昆曲,谭维维,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+336,技能,策略,游戏,,same_category_mid,60-70,20,关联度低,
+1976,冲茶,杯子水,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+882,篆书,篆书,文化,,exact_match,98-100,100,完全一致,
+4323,漫步,馆内,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3354,冷淡,反应淡,情感,情感,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5204,一字千金,扎实背,典故,典故,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6267,王安石,磁暴奇景,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4518,海湾,群山环抱,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3995,复盘,报结果,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3726,提问,解答,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6239,班固,拉开筋骨,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4479,纪念品,礼物,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5938,逻辑,论证结构,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6287,陆游,奇谈,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6462,兴奋,情绪高,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3043,升级,踢踏,游戏,游戏,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7010,稻香,心中盼,歌曲,歌曲,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6945,毛不易,老惦记,歌手,歌手,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3429,抬头,引力,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1860,洗碗,擦桌,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3003,卡关,多次登门,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4470,免税,无馅,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1434,灵笼,邪语,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5483,麻雀虽小,细节具备,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+982,盗贼,鲲鹏,狼人杀,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+2026,中秋,中秋味,节日,节日,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1562,豆浆,甜饮,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2589,超新星,爆发,宇宙,宇宙,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+283,炸鸡,烤鸭,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2232,秋分,白昼长,节日,节日,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4866,锦上添花,想象缓解,成语,成语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6409,激动,鲛人,感情,感情,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1053,寿司,披萨,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1872,取件,等餐,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3747,背诵,背下来,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4255,出境,踏上航班,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1017,刮目相看,一鸣惊人,,,related_mid,40-80,46,人工锚点覆盖：语义相关（反向）,manual_override
+3590,后退,前掌起,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1569,咖喱,寿司,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2351,杨戬,嫦娥,神话,神话,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5885,音乐,旱灾,学科,学科,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6336,郑板桥,轮守表,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+374,弹跳,弓步,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1845,护肤,面霜,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2717,土星,反引力,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1490,汉堡,发酵,美食,美食,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5748,楹联,笔墨纸砚,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1583,馄饨,碗里热,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+421,草原,林间,风景,,same_category_mid,60-70,30,都是风景，但关联度不高,
+5241,借刀杀人,挟天子,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+7094,红豆,蔡依林,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+7113,体面,心生向往,歌曲,歌曲,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1799,洗衣,复习,生活,生活,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+984,拉怪,地质,游戏,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+2311,精卫,不息,神话,神话,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1163,幽游白书,一人之下,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+7045,小幸运,得意,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3162,真挚,惊恐,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4541,日出,雾潮奔涌,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3191,嫉妒,疏离感,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4460,看夜景,大暑,旅游,旅游,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+919,狼狈为奸,一起干坏,成语,成语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+807,孙悟空,齐天大圣,人物,,alias_synonym_high,90-98,99,同一角色称谓,
+6053,教育,上课,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6009,考古,沙盒,学科,学科,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+346,温柔,感动,情感,,same_category_mid,60-70,30,关联度底,
+1753,通勤,赶车,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1266,命运之夜,十五夜,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2780,暗物质,小行星,宇宙,宇宙,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6748,吹笛者,夜里指引,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1522,酸奶,食物链,美食,美食,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5910,心理,人格特征,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1715,泡芙,皂香,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4082,评审,确认合规,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5419,瞎子摸象,明显所在,歇后语,歇后语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4016,协同,跟进,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5140,悬梁刺股,俯冲,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4431,露台,屋外处,旅游,旅游,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6048,护理,照料,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5740,篆书,字形训练,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2657,星云,星云观测,宇宙,宇宙,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+244,逛馆,展厅,旅游,,hint_like_high,70-90,60,联想度不够,
+5038,卧薪尝胆,狗咬吕洞宾,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1536,糖葫芦,兔子尾巴,美食,美食,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3449,旋转,赶车,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5677,越剧,关羽名场面,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6249,韩愈,道统,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1132,数码宝贝,复活,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3935,汇报,阶段总结,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2508,河伯,风吹浪,神话,神话,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6621,狼人,禁锢者,狼人杀,狼人杀,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4048,升职,薪级上调,工作,工作,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5143,悬梁刺股,众叛亲离,典故,典故,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4352,赶车,节拍速度,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2505,西王母,昆仑主,神话,神话,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4989,八面玲珑,负薪读书,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4965,画饼充饥,画龙点睛,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4870,锦上添花,再加亮点,成语,成语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+973,七夕,死神,节日,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+6382,自豪,可观测,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1392,斗破苍穹,天空之城,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3310,烦闷,细流,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1821,上网,版本节奏,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4065,方案,里程碑,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4525,沙漠,青浪起伏,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1475,面条,热汤,美食,美食,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+72,果汁,果汁,美食,,same_answer_exact,95-100,100,完全一样,
+5659,琴棋,琴音,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1172,银魂,魂环,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4380,安检,检查线路,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4151,下线,请假,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6813,守护神,纸里包火,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7051,后来,憧憬,歌曲,歌曲,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1745,逛街,早起,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5304,黄鼠狼拜年,表里不一,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+627,白狼王,鲛人,狼人杀,,cross_category_low,0-30,7,二者不搭界,
+4833,盲人摸象,白费好意,成语,成语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+965,游戏王,地理,动漫,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+6656,守墓人,猎魔人,狼人杀,狼人杀,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+204,挑灯夜战,通宵赶工,成语,,hint_like_high,70-90,70,字面意思接近,
+3719,听讲,听老师,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4141,上线,提建议,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6853,周杰伦,刺绣,歌手,歌手,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3793,测验,意识研究,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4071,需求,不用提前愁,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5250,程门立雪,立冬,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3949,招聘,发布岗位,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1205,全职猎人,狼人,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2834,复活,数码宝贝,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1389,斗罗大陆,魂环,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3924,加班,排队,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6248,韩愈,韩信,人物,人物,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5825,物理,繁殖机制,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+142,做家务,清理屋,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4486,瀑布,崖口飞水,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+552,纸上谈兵,期待,典故,,cross_category_low,0-30,7,二者不搭界,
+6757,熊,天气之子,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5518,墙头草,随风左右,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1618,螺蛳粉,臭豆腐,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6818,守护神,守卫,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4105,汇总,演示,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6960,梁静茹,寓言高手,歌手,歌手,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6959,梁静茹,听讲,歌手,歌手,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3541,弯腰,石壁陡立,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+7034,演员,李荣浩,歌曲,歌曲,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1118,蜡笔小新,猎魔人,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3821,听课,背下来,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+859,滥竽充数,滥竽充数,成语,,exact_match,98-100,100,完全一致,
+1376,白蛇缘起,诸葛亮,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+319,练习,阅读,学习,,same_category_mid,60-70,30,关联度低,
+3622,翻滚,回滚,动作,动作,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6827,先知,狐妖小红娘,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6545,压抑,窘迫,感情,感情,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4156,自检,通过安检,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1674,三明治,三顾茅庐,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3609,迈步,暴击,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2836,复活,变位,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1832,追剧,演员,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5730,漆器,海阔天空,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4993,八面玲珑,里外难做,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4182,请假,纪念品,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4726,石桥,应龙,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2052,万圣节,新春习俗,节日,节日,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3416,挤压,俯卧,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3432,抬头,腿勾住,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3131,失落,心里空,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3053,掉线,离地,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4464,看夜景,车窗风景,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4657,花田,草原,风景,风景,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6350,开心,惊讶,感情,感情,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6280,文天祥,草堂,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3457,倒挂,起落有劲,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5484,麻雀虽小,内里俱全,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3593,后退,撤一步,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4659,花田,自然,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1889,淋浴,起床,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4299,夜游,海阔天空,旅游,旅游,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4364,托运,文档递,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6526,惬意,安心,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+634,皮影,春分,文化,,cross_category_low,0-30,7,二者不搭界,
+5127,黔驴技穷,程门立雪,典故,典故,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5984,气象,雨量增,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1391,斗破苍穹,百发百中,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1657,冰淇淋,冰川,美食,美食,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4147,下线,失望,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5442,瞎子戴眼镜,无用之物,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+810,火锅,涮锅,美食,,near_synonym_high,90,90,近义称呼,
+5972,材料,成分,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5515,墙头草,醒目提示,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3762,批改,入职,学习,学习,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3379,潜伏,不被发现,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6897,张学友,言叶之庭,歌手,歌手,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1275,未闻花名,往事,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1776,租房,押金,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3210,欣慰,释然,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6197,花木兰,丹心,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6020,植物,花木,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4683,稻田,梯田,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5214,三令五申,多次告诫,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5286,老鼠过街,花样用尽,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6834,白狼,传道,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5059,指鹿为马,狼美人,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3220,疑惑,害怕,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6410,激动,震惊,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1161,幽游白书,棕兽,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4100,跟踪,课后题,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1351,狐妖小红娘,未闻花名,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+651,洗漱,樱桃小丸子,生活,,cross_category_low,0-30,7,二者不搭界,
+5073,退避三舍,贬谪,典故,典故,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6212,王羲之,郑板桥,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3881,做实验,控蓝,学习,学习,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6472,平和,伤心,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4472,免税,月费,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2623,彗星,彗尾碎,宇宙,宇宙,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3312,烦闷,心里闷,情感,情感,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1956,通风,空气润,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5413,擀面杖吹火,赶鸭子上架,歇后语,歇后语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1903,晚睡,做饭,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3890,写论文,口述,学习,学习,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+841,盘腿,仰卧起坐,动作,,exact_match,98-100,100,完全一致,
+3728,整理,结果不会,学习,学习,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3238,心疼,冷漠,情感,情感,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6642,石像鬼,神话,狼人杀,狼人杀,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+7060,十年,长身,歌曲,歌曲,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6606,守卫,驯熊师,狼人杀,狼人杀,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5331,船到桥头,一截很短,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1724,洗漱,起床,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1299,天空之城,夸父,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7027,告白气球,海阔天空,歌曲,歌曲,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5057,纸上谈兵,书面推演,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4144,上线,催办,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6681,机械狼,终会暴露,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5102,三顾茅庐,吃亏后改,典故,典故,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1015,开心,高兴,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6275,辛弃疾,多情公子,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3034,手柄,控制器,游戏,游戏,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1597,烤鸭,元旦,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5650,香道,京剧,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6715,通灵师,通话,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2652,星云,守护神,宇宙,宇宙,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5782,花灯,节日竞赛,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+186,工程,土木,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6155,贾宝玉,兵仙,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1748,逛街,小店买,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3499,伸展,冲刺,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6929,孙燕姿,女声,歌手,歌手,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+184,守口如瓶,不外传,成语,,hint_like_high,70-90,80,关联度较高,
+2860,排位,段级上升,游戏,游戏,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5013,心猿意马,嘴不能说,成语,成语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5705,竹编,布袋角色,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6224,李时珍,韩愈,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4289,泡汤,影在液面,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4512,峡谷,冰川,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4198,调休,替补,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4592,丹霞,晚霞,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1162,幽游白书,电子,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4676,牧场,喂养,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+166,停下,不再动,动作,,hint_like_high,70-90,80,关联度较高,
+3922,讲解,讲解中,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6099,孟子,腊八,人物,人物,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1995,春节,立春,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3205,惆怅,质疑,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6861,林俊杰,相声,歌手,歌手,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2825,望远镜,聚光具,宇宙,宇宙,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+962,值机,语文,旅游,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+6488,无聊,满足,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2545,玄鸟,传说祖,神话,神话,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3502,伸展,颈部伸展,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4427,露台,登机,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1120,蜡笔小新,混血儿,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2547,玄鸟,祥瑞,神话,神话,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1248,排球少年,起风了,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3579,弓步,前腿弯,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3451,旋转,椭圆,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6756,驯熊师,训兽,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4672,牧场,养宠,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+597,对接,驯熊师,工作,,cross_category_low,0-30,7,二者不搭界,
+4119,催办,拍照,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3835,记忆,口述,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5977,测绘,地质,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+868,河伯,河伯,神话,,exact_match,98-100,100,完全一致,
+4699,山脊,李白,风景,风景,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+205,追剧,下一集,生活,,hint_like_high,70-90,50,关联度中等,
+6254,白居易,桂树,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3398,转身,战术迂回,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3315,释怀,促进度,情感,情感,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+595,匹配,运动,游戏,,cross_category_low,0-30,7,二者不搭界,
+7071,勇气,心里安慰,歌曲,歌曲,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3080,连麦,隐藏提示,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+767,挥拳,连线图,动作,,nonsense_low,0-20,2,毫无关联,
+6024,动物,生物,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3183,担忧,心里难受,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+665,亡羊补牢,上课,成语,,cross_category_low,0-30,7,二者不搭界,
+6139,孙悟空,鲛人,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6013,考古,出土文物,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5671,京剧,香道,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+135,视角,镜头位置,游戏,,hint_like_high,70-90,80,词义上接近，但后者只是前者的一个方面,
+1345,铃芽之旅,江湖,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1519,沙拉,酸辣粉,美食,美食,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6935,蔡依林,舞台,歌手,歌手,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2962,联机,同步行动,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4960,井然有序,有条不紊,成语,成语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2421,饕餮,霓虹,神话,神话,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3832,记忆,白痴,学习,学习,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+414,国画,楹联,文化,,same_category_mid,60-70,40,都是文化，但关联度不高,
+2223,白露,油菜花,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3948,招聘,提出方案,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3547,伸手,擦桌,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+129,望远镜,天文器,宇宙,,hint_like_high,70-90,60,包含关系,
+2775,月食,夜空暗,宇宙,宇宙,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4249,订房,订票,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+948,蔡依林,张信哲,歌手,,related_mid,45-75,50,同类词（需人工复核）,
+4658,花田,打野,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5630,书法,书写,文化,文化,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4746,湖畔,水边,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3958,培训,默写,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4847,趁热打铁,狼狈为奸,成语,成语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1320,魔女宅急便,暴击,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+633,小行星,愚者,宇宙,,cross_category_low,0-30,7,二者不搭界,
+2314,大禹,豪放派,神话,神话,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4390,换汇,存档,旅游,旅游,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5799,拓印,京剧,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5195,闻鸡起舞,名不副实,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6596,女巫,毒人,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5858,计算,天文,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6783,影子,树影,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5482,麻雀虽小,井底青蛙,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1379,白蛇缘起,天气之子,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3307,烦闷,船到桥头,情感,情感,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2991,首领,中心点,游戏,游戏,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5112,毛遂自荐,主动报名,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3005,卡关,控蓝,游戏,游戏,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3342,羞怯,感恩节,情感,情感,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3158,坦诚,实心实意,情感,情感,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3068,公会,召集队友,游戏,游戏,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2713,木星,大红斑,宇宙,宇宙,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5959,经济,财务,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2729,水星,文学,宇宙,宇宙,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6453,孤独,脑袋空,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+975,韩愈,下线,人物,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+261,先知,预言家,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3056,掉线,销假,游戏,游戏,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5523,剪纸,书写,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+38,翻译,翻译,学习,,same_answer_exact,95-100,100,完全一样,
+295,八面玲珑,同舟共济,成语,,same_category_mid,60-70,20,二者词义关联度低,
+149,粥品,清淡,美食,,hint_like_high,70-90,50,关联度中等,
+2533,阎罗,阴司主,神话,神话,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3394,转身,敬佩,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4741,湖畔,古拱,风景,风景,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6118,庄子,鲲鹏,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4280,看海,看夜景,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3521,拍手,前臂出,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6056,管理,里程碑,学科,学科,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4837,以卵击石,挟天子,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5192,凿壁借光,露出一点,典故,典故,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4728,石桥,绿色波涛,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4885,对牛弹琴,蔡依林,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1797,打扫,扫一遍,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1455,秦时明月,晴天,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+7120,匆匆那年,没想到,歌曲,歌曲,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+558,王安石,青之驱魔师,人物,,cross_category_low,0-30,7,二者不搭界,
+4219,邮轮,订房,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2242,寒露,温度低,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5405,兔子尾巴,龙猫,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3241,心疼,悲伤,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1052,寿司,米饭卷,美食,美食,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5654,琴棋,形成串联,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2686,空间站,航天员,宇宙,宇宙,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4571,林间,山间,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2319,共工,代数,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6421,释然,舒一口气,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5985,气象,温度,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+13,释然,释然,感情,,same_answer_exact,95-100,100,完全一样,
+1924,刷牙,以偏概全,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4832,盲人摸象,百发百中,成语,成语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5457,赶鸭子上架,起床,歇后语,歇后语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6025,动物,通兽语,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1678,三明治,街头常见早餐,美食,美食,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1358,罗小黑战记,排球少年,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3976,对齐,需求,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1317,风之谷,远航,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2076,腊八,玄女,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2614,卫星,天文仪,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2831,打野,丛林位,游戏,游戏,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2388,朱雀,祥瑞,神话,神话,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4578,竹海,梯田,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2188,夏至,刑天,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3298,郁闷,惆怅,情感,情感,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+528,李白,混血儿,人物,,cross_category_low,0-30,10,二者不搭界,
+6763,熊,叫声警示,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4922,对症下药,久久不改,成语,成语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2767,日食,力电光热,宇宙,宇宙,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2405,女魃,水府,神话,神话,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+757,沙拉,近乎无物,美食,,nonsense_low,0-20,2,毫无关联,
+2287,后羿,混血儿,神话,神话,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4611,山谷,白顶入云,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+800,猫咪,猫,锚点词,,alias_synonym_high,90-98,90,昵称与本词,
+2209,立秋,日食,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6918,张杰,言叶之庭,歌手,歌手,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+437,樱桃小丸子,魔女宅急便,动漫,,same_category_mid,60-70,50,关联度中等,
+3325,心酸,失望,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4618,森林,机器猫,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5574,相声,台上说学,文化,文化,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3157,坦诚,折服,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5948,政治,洪灾,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1263,夏目友人帐,幽游白书,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4077,评审,单机,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1735,做饭,煮菜,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+637,潜狼,瞎子点灯,狼人杀,,cross_category_low,0-30,7,二者不搭界,
+4469,免税,换汇,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3278,欣喜,乐滋滋,情感,情感,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2550,星球,美术,宇宙,宇宙,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1228,青之驱魔师,祓邪,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2078,腊八,七夕,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6414,激动,大受触动,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1021,厉害,一鸣惊人,,,related_mid,40-80,34,人工锚点覆盖：近义语义（口语表达，反向）,manual_override
+2159,春分,秧苗长,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3362,热切,急迫,情感,情感,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3718,听讲,看板书,学习,学习,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4329,觅食,纪念品,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2416,貔貅,祥瑞,神话,神话,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1149,美少女战士,月亮,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6746,吹笛者,临死带,狼人杀,狼人杀,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1720,起床,街头常见早餐,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5244,四面楚歌,人人出招,典故,典故,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1235,鬼灭之刃,退妖,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4369,值机,影子,旅游,旅游,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+534,命运之夜,山脊,动漫,,cross_category_low,0-30,2,二者不搭界,
+3822,听课,模拟,学习,学习,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5873,数学,推算,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+7059,十年,狐妖小红娘,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2970,单机,联机,游戏,游戏,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5958,经济,产业,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6034,气候,降雨量,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1624,螺蛳粉,白饼,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4128,交接,键合关系,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+21,法学,法学,学科,,same_answer_exact,95-100,100,完全一样,
+6026,动物,兽类,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1273,未闻花名,死神,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5463,赶鸭子上架,硬撑着,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2396,雷公,灌篮高手,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+71,冰川,冰川,风景,,same_answer_exact,95-100,100,完全一样,
+3330,惋惜,低头叹气,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3237,心疼,点头,情感,情感,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5634,国画,京剧,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+797,远程,不受管束,工作,,nonsense_low,0-20,2,毫无关联,
+3270,敬佩,敬重,情感,情感,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4405,攻略,抢座,旅游,旅游,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4214,露营,民宿,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1871,取件,预约,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3973,对齐,多人讨论,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1827,追剧,护肤,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4729,石桥,石间过,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2640,真空,不值,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6684,机械狼,混血儿,狼人杀,狼人杀,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6858,周杰伦,张杰,歌手,歌手,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1667,果汁,托运,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5138,约法三章,先定规则,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4684,油菜花,告白,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4913,一鸣惊人,鬼灭之刃,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4975,持之以恒,投笔从戎,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4345,订票,邮轮,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3045,升级,变更,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2785,暗能量,丘比特,宇宙,宇宙,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3467,俯冲,乘势前行,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6632,狼美人,指鹿为马,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2219,处暑,二十四节气之一,节日,节日,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5376,老马识途,狼狈为奸,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3646,复习,跟老师,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1311,红猪,妖精尾巴,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6435,焦虑,不用焦虑,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6625,白狼王,郑和,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1034,沙盒,哈雷,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3588,后退,落地,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+265,名侦探柯南,黑衣,动漫,,hint_like_high,70-90,50,后者范围较广,
+5872,数学,材料,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1611,酸辣粉,冬至,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6232,司马光,三吏三别,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6774,梦魇,夜里出刀,狼人杀,狼人杀,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4456,登楼,超重费,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3484,腾挪,层层台阶,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4942,唇亡齿寒,一鸣惊人,成语,成语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6658,守墓人,查尸,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1841,护肤,医学,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+93,斗罗大陆,武魂,动漫,,hint_like_high,70-90,70,都为动漫,
+956,宇宙,教程,宇宙,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+238,豆花,勺舀,美食,,hint_like_high,70-90,50,后者为前者的动作行为,
+6790,隐狼,暗处跟随,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4670,牧场,极光,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3620,翻滚,晃一晃,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6699,混血儿,可变阵,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2523,判官,惩戒,神话,神话,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3178,温柔,凉意重,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5068,破釜沉舟,最终战斗,典故,典故,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1803,洗衣,晒衣,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5632,国画,王羲之,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5321,拿鸡毛,白泽,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+740,泥菩萨过,兔子尾巴,歇后语,,nonsense_low,0-20,2,毫无关联,
+1731,做饭,质地,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+383,溪流,稻田,风景,,same_category_mid,60-70,20,都是风景，但关联度不高,
+5350,秃子头上,晨雾重,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3642,俯卧,交叉坐,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2522,判官,志愿上阵,神话,神话,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2107,儿童节,春日放飞,节日,节日,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5372,水中捞月,圈住自己,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1554,粽子,端午,美食,美食,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6252,白居易,瑞兽,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+105,狐妖小红娘,搞笑,动漫,,hint_like_high,70-90,30,关联度不高,
+351,面条,三明治,美食,,same_category_mid,60-70,30,都是吃的，仅此而已,
+1210,黑执事,白蛇缘起,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3195,愧疚,释怀,情感,情感,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5621,茶道,石凳,文化,文化,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1164,幽游白书,妖怪,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+447,鲛人,麒麟,神话,,same_category_mid,60-70,60,都是神话，但关联度不高,
+4625,海岸,桨划水面,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5496,井底青蛙,麻雀虽小,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5555,花鼓,那英,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2981,读档,走位,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6098,孟子,朱雀,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5975,测绘,数学,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4560,云海,晚霞,风景,风景,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1660,奶茶,洗碗,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3779,模拟,听老师,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5351,秃子头上,不走神,歇后语,歇后语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+966,打卡,网球王子,旅游,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+4640,海浪,风吹浪,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4535,梯田,田间,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5882,美术,视觉创意,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2918,暴击,积分,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2465,烛龙,立春,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4705,悬崖,黑洞,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6134,关羽,水府,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+24,悬梁刺股,悬梁刺股,典故,,same_answer_exact,95-100,100,完全一样,
+5746,楹联,舞台程式,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5920,地质,空间分布,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4724,古镇,老街,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4629,礁石,海王星,风景,风景,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4753,云雾,缭绕,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3226,惊喜,更显光彩,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3908,解答,提问,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4417,民宿,露营,旅游,旅游,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3751,演示,诵念,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6550,迷茫,悬疑,感情,感情,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6245,韩愈,班固,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+734,嫉妒,规整,感情,,nonsense_low,0-20,2,毫无关联,
+5786,碑刻,哑巴吃黄连,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5638,国画,文人气韵,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+610,烤鱼,陶器,美食,,cross_category_low,0-30,7,二者不搭界,
+3786,预读,借阅,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4944,唇亡齿寒,刻舟求剑,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6133,关羽,王安石,人物,人物,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1856,洗碗,小笼包,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6415,激动,震撼,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5620,茶道,圈出生词,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5605,青铜,出游潮,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6272,辛弃疾,三顾茅庐,人物,人物,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6110,老子,游说诸侯,人物,人物,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3485,腾挪,前臂出,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5983,气象,地表湿,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5865,语文,语速,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2103,劳动节,重阳,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+822,跑步,奔跑,锚点词,,near_synonym_high,90,90,动作近义,
+5150,邯郸学步,尝百草,典故,典故,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+62,张信哲,张信哲,歌手,,same_answer_exact,95-100,100,完全一样,
+1082,龙珠,日食,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4760,夜色,天黑,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4938,杯水车薪,力量太小,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1370,大鱼海棠,宫刑,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6215,张衡,盘古,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+293,理财,洗衣,生活,,same_category_mid,60-70,10,二者完全不搭界,
+2753,小行星,暗物质,宇宙,宇宙,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4845,趁热打铁,卧冰求鲤,成语,成语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5548,社火,孤独,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4555,极光,牧群点点,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5992,海洋,岛礁,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1443,喜羊羊,牧畜,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1344,铃芽之旅,樱桃小丸子,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5556,花鼓,挥拳,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3979,交付,技能,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6148,林黛玉,莲蓉,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2438,白泽,先知,神话,神话,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1563,咖喱,邮轮,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4402,签证,护照出,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5122,背水一战,隐藏提示,典故,典故,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4894,刻舟求剑,等待对局,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2155,春分,插柳,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5718,皮雕,平实风,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1282,言叶之庭,薛之谦,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2692,地球,海洋多,宇宙,宇宙,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+752,排查,校准方向,工作,,nonsense_low,0-20,2,毫无关联,
+3274,欣喜,坦诚,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2561,行星,绕日体,宇宙,宇宙,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6806,血月使者,夜游,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3037,技能,评分,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+7081,平凡之路,人生,歌曲,歌曲,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4172,日报,阶段汇,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+951,饺子,馒头,美食,,related_mid,45-75,40,同类词（需人工复核）,
+5966,材料,教程,学科,学科,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1272,未闻花名,醒来记得,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6195,花木兰,国画,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3208,惆怅,郁闷,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+692,圣诞,虚惊一场,节日,,nonsense_low,0-20,2,毫无关联,
+3424,推挡,晃一晃,动作,动作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2607,火箭,空间站,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6873,邓紫棋,王力宏,歌手,歌手,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2127,冬至,中秋,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5841,文学,美术,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5341,哑巴吃黄连,瓜田李下,歇后语,歇后语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2885,塔防,封住技能,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3303,惊恐,诚心,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6386,自豪,骄傲,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6344,蒲松龄,文采,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5317,猫哭耗子,竹竿进城,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+687,触龙说赵,祭灶,典故,,nonsense_low,0-20,2,毫无关联,
+6557,淡定,失望,感情,感情,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6703,狼王,守卫,狼人杀,狼人杀,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1040,烧烤,寿司,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6405,惊讶,难为情,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6370,紧张,震惊众人,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+117,历史,时序,学科,,hint_like_high,70-90,30,某种意义上的关联，但很难联想,
+1226,青之驱魔师,火影,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6418,释然,松软,感情,感情,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1157,游戏王,游戏,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1740,购物,抢座,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3176,温柔,青花瓷,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5807,地理,诸葛亮,学科,学科,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6047,护理,康复,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5924,地质,岩层构造,学科,学科,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2584,超新星,弹跳,宇宙,宇宙,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+905,应龙,天降雨,神话,,near_synonym_high,80-92,70,答案提示词（需人工复核）,
+3800,考试,反复做,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+231,模拟,提前熟悉,学习,,hint_like_high,70-90,50,关联度中等,
+718,挥手,仙桃宴,动作,,nonsense_low,0-20,2,毫无关联,
+4709,悬崖,狭长通道,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1357,罗小黑战记,刀剑神域,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1687,蛋挞,鸡蛋加,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2855,排位,周报,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5678,越剧,脸谱鲜艳,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5388,狗咬吕洞宾,铁公鸡,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+661,京剧,风之谷,文化,,cross_category_low,0-30,7,二者不搭界,
+5601,编钟,鼓声,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5702,竹编,烛龙,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5546,龙舟,鼓点齐鸣,文化,文化,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1517,沙拉,酱汁,美食,美食,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1495,炸鸡,闻鸡起舞,美食,美食,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2229,秋分,编钟,节日,节日,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+144,晚霞,云层晕彩,风景,,hint_like_high,70-90,70,关联度中等,
+6547,压抑,难抑,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+792,理发,步行区,生活,,nonsense_low,0-20,2,毫无关联,
+7126,青花瓷,轻松,歌曲,歌曲,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4871,雪中送炭,感恩节,成语,成语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4634,礁石,岩块,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+338,天王星,海王星,宇宙,,same_category_mid,60-70,70,关联度较高,
+4779,守株待兔,等时机,成语,成语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5261,高山流水,牵线放天,典故,典故,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4980,持之以恒,依序进行,成语,成语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1592,馒头,薄皮,美食,美食,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1844,护肤,皮肤,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1063,火影,夜里出刀,动漫,动漫,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+7030,夜曲,一人之下,歌曲,歌曲,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3956,入职,正式上班,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2284,后羿,中秋,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+272,猪八戒照镜,夹在中间,歇后语,,hint_like_high,70-90,70,语义较为接近，但后者非歇后语,
+4698,山脊,指鹿为马,风景,风景,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6220,张衡,浑天,人物,人物,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5352,秃子头上,井底之蛙,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3422,推挡,禁锢者,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6820,祭司,模拟,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6674,盗贼,安检,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5432,猪八戒照镜,细节具备,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+7031,夜曲,夏目友人帐,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2456,刑天,无首战,神话,神话,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6808,血月使者,宗教职,狼人杀,狼人杀,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3717,听讲,唱念做打,学习,学习,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4498,湖泊,岸畔,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1204,全职猎人,邪语,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5404,兔子尾巴,追魂,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3363,无奈,孤寂,情感,情感,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3454,旋转,倒挂,动作,动作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+4582,花海,色彩构图,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+511,月食,流星雨,宇宙,,same_category_mid,60-70,40,都是宇宙相关，但关联度不高,
+7110,最美的期待,盼望,歌曲,歌曲,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4444,看展,观赏,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3542,弯腰,束手,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+794,柳宗元,叙事,人物,,nonsense_low,0-20,2,毫无关联,
+1047,寿司,烧烤,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6323,郑和,隆中对,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+7035,演员,王力宏,歌曲,歌曲,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6491,无聊,厌烦,感情,感情,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+862,应龙,应龙,神话,,exact_match,98-100,100,完全一致,
+1945,收拾,化万物,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4012,投标,招聘,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+262,后退,保持距离,动作,,hint_like_high,70-90,70,后者联想度一般，也可联想成为前进,
+2829,打野,收束内容,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+763,气候,你是猪,学科,,nonsense_low,0-20,2,毫无关联,
+6329,祖冲之,放翁,人物,人物,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3666,抄写,回顾知识,学习,学习,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1459,虹猫蓝兔,完璧归赵,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1791,装修,水电改,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4720,古镇,凉意重,风景,风景,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+381,死神,全职高手,动漫,,same_category_mid,60-70,50,均为动漫，语义不同,
+1312,红猪,美少女战士,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6553,迷茫,惘然,感情,感情,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+236,潜伏,等时机,动作,,hint_like_high,70-90,80,关联度较高,
+2131,冬至,寒冬,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4743,湖畔,近地邻,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4312,自驾,乘车游览,旅游,旅游,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5121,背水一战,指鹿为马,典故,典故,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4904,画蛇添足,多余举,成语,成语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1007,四面楚歌,排球少年,典故,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+5734,漆器,窑火烧制,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2937,拉怪,开荒,游戏,游戏,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+461,郁闷,惋惜,情感,,same_category_mid,60-70,30,语义不同,
+2191,夏至,春节,节日,节日,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5732,漆器,灯谜,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5915,天文,小行星,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3498,伸展,外力代做,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3360,热切,担忧,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+900,冰淇淋,融化快,美食,,near_synonym_high,80-92,70,答案提示词（需人工复核）,
+3775,答辩,讨论,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1513,牛排,串成排,美食,美食,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2210,立秋,夜最短,节日,节日,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3324,心酸,气炸,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3046,升级,波次怪,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6111,老子,道德经,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+815,医生,大夫,锚点词,,near_synonym_high,99,99,职业近义,
+486,悬崖,古镇,风景,,same_category_mid,60-70,30,都是风景，但关联度不高,
+6907,刘德华,港乐,歌手,歌手,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6143,孙悟空,哪吒,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6054,教育,培养,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+981,白居易,大公无私,人物,,hard_negative_low,0-20,2,跨类无关（需人工复核）,
+2710,木星,地间彩,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+777,伤心,幕布戏偶,感情,,nonsense_low,0-20,2,毫无关联,
+1494,炸鸡,粥品,美食,美食,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5066,破釜沉舟,苦闷,典故,典故,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5519,墙头草,和尚打伞,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+7001,晴天,守护神,歌曲,歌曲,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+583,月饼,热切,美食,,cross_category_low,0-30,7,二者不搭界,
+4243,打卡,打卡路,旅游,旅游,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5844,哲学,地理,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5831,生物,卫生,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2217,处暑,高耸天际,节日,节日,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5683,评弹,阅读写作,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+519,解谜,升级,游戏,,same_category_mid,60-70,40,都是游戏，但关联度不高,
+3902,解答,释怀,学习,学习,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3150,羞涩,自豪,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+19,饺子,饺子,美食,,same_answer_exact,95-100,100,完全一样,
+273,郁闷,想叹气,情感,,hint_like_high,70-90,80,关联度较高,
+1902,晚睡,林间,生活,生活,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7135,后来我们,甜甜的,歌曲,歌曲,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5631,书法,篆书,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6040,药学,疾病研究,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+945,梦魇,愚者,狼人杀,,related_mid,45-75,70,同类词（需人工复核）,
+674,薛之谦,满足,歌手,,cross_category_low,0-30,7,二者不搭界,
+6640,石像鬼,随身,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+580,苏轼,抬头,人物,,cross_category_low,0-30,7,二者不搭界,
+2651,光年,大尺度,宇宙,宇宙,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5012,心猿意马,投入太微,成语,成语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5581,昆曲,舞台程式,文化,文化,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+708,张信哲,立夏,歌手,,nonsense_low,0-20,2,毫无关联,
+3994,复盘,手感准,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2515,孟婆,香道,神话,神话,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3004,卡关,封口,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6848,预备役,背水一战,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4275,登顶,上举,旅游,旅游,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2075,重阳,大暑,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6917,张杰,梁静茹,歌手,歌手,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1743,购物,网购,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5660,刺绣,对牛弹琴,文化,文化,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4958,井然有序,狗尾续貂,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+388,杨千嬅,林俊杰,歌手,,same_category_mid,60-70,40,都是歌手，但关联度不高,
+4654,草甸,野花,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2194,夏至,白昼长,节日,节日,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6164,鲁迅,古诗词,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5680,越剧,京剧,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3282,感动,心里燃,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+502,女娲,朱雀,神话,,same_category_mid,60-70,60,都是神话，但关联度不高,
+400,塔防,手柄,游戏,,same_category_mid,60-70,30,都是游戏，但关联度不高,
+1573,甜品,奶香浓,美食,美食,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+699,红豆,轨道群,歌曲,,nonsense_low,0-20,2,毫无关联,
+5231,围魏救赵,断绝退路,典故,典故,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1732,做饭,早餐常见,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5349,秃子头上,抬头,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5297,秀才遇鬼,疑神疑鬼,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1390,斗破苍穹,毛不易,动漫,动漫,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1989,理财,负薪读书,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6324,郑和,汉代史官,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5814,化学,星系,学科,学科,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5266,八仙过海,嘴角上扬,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5452,竹竿进城,拿鸡毛,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5668,京剧,女歌手,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5495,井底青蛙,深更出手,歇后语,歇后语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+688,评弹,降雨量,文化,,nonsense_low,0-20,2,毫无关联,
+652,黑洞,惊喜,宇宙,,cross_category_low,0-30,7,二者不搭界,
+4681,稻田,豆花,风景,风景,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2871,开荒,对局记录,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+192,画地为牢,自我束缚,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5486,铁公鸡,夜里难眠,歇后语,歇后语,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4197,调休,投标,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2060,感恩节,十一月末,节日,节日,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3276,欣喜,十分盼,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+666,大暑,琴棋,节日,,cross_category_low,0-30,7,二者不搭界,
+6067,社会,政治,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6126,诸葛亮,白蛇缘起,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5978,测绘,地图制,学科,学科,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3914,归纳,整理表达,学习,学习,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5766,舞狮,公开对抗,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3850,练习,巩固记忆,学习,学习,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+232,订房,确认日期,旅游,,hint_like_high,70-90,50,关联度中等,
+3951,入职,批改,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1483,粥品,生菜,美食,美食,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4158,自检,观察,工作,工作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5503,纸里包火,遮住事实,歇后语,歇后语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+172,三顾茅庐,求才若渴,典故,,hint_like_high,70-90,70,字面意思接近,
+6214,王羲之,伏羲,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1027,刮骨疗毒,华佗,,,related_mid,58-68,62,人工精调：历史事件与人物,manual_patch
+6065,社会,文学,学科,学科,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6142,孙悟空,乐悠悠,人物,人物,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+334,医学,逻辑,学科,,same_category_mid,60-70,20,关联度较高,
+2696,月球,空间站,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4463,看夜景,昼渐长,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1137,数码宝贝,妖精尾巴,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3494,握拳,拉长四肢,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4178,周报,合并信,工作,工作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2218,处暑,团圆夜,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1718,起床,正式启动,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4675,牧场,饲养者,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6724,猎魔人,推理,狼人杀,狼人杀,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3395,转身,弹跳,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5898,医学,班固,学科,学科,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5929,生态,气象,学科,学科,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5445,小葱拌豆腐,永州八记,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1761,运动,动作轻,生活,生活,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6312,范仲淹,屈原,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2586,超新星,音量,宇宙,宇宙,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3752,演示,归纳,学习,学习,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2126,冬至,冷香丸,节日,节日,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6166,鲁迅,杂文名家,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+495,首领,战绩,游戏,,same_category_mid,60-70,40,都是游戏，但关联度不高,
+2857,排位,权力微小,游戏,游戏,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3670,抄写,逐字誊录,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1347,铃芽之旅,行程,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4205,徒步,背包,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+109,社火,民间踩街,文化,,hint_like_high,70-90,40,社火包含民间踩街但后者关联度确实不高,
+5280,瞎子点灯,徒费功夫,歇后语,歇后语,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4180,周报,下段安排,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+929,对症下药,有的放矢,成语,,near_synonym_high,80-92,70,答案提示词（需人工复核）,
+5255,程门立雪,恭敬,典故,典故,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1883,理发,不良人,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1552,粽子,屈原念,美食,美食,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2162,谷雨,儿童节,节日,节日,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+844,黔驴技穷,黔驴技穷,典故,,exact_match,98-100,100,完全一致,
+6729,守夜人,斗罗大陆,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4641,海浪,水面动,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+4619,森林,茂密植被,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2220,处暑,白昼长,节日,节日,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1783,搬家,迁徙,生活,生活,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1326,魔女宅急便,巫师,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+748,懊悔,果汁,感情,,nonsense_low,0-20,2,毫无关联,
+3833,记忆,梦蝶典故,学习,学习,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3525,鞠躬,满足,动作,动作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+398,石雕,篆刻,文化,,same_category_mid,60-70,40,都是文化，但关联度不高,
+4184,请假,确认时间,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+4808,叶公好龙,借刀杀人,成语,成语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3412,落座,翻身坐,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3209,欣慰,画蛇添足,感情,感情,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6576,苦闷,兴奋,感情,感情,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+520,远程,离职,工作,,same_category_mid,60-70,40,都是工作，但关联度不高,
+2814,红移,轨道远,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5082,刮骨疗毒,婉约词,典故,典故,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3615,迈步,一步步做,动作,动作,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3199,愧疚,心里空,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3350,冷淡,烦躁,情感,情感,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3345,羞怯,手抖,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5478,麻雀虽小,排位,歇后语,歇后语,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6692,禁言长老,限制行动,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6673,盗贼,晴天,狼人杀,狼人杀,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+3870,朗读,评弹,学习,学习,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4316,租车,返费处,旅游,旅游,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5037,名不副实,虚有其表,成语,成语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3059,匹配,检查功能,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6992,杨千嬅,那英,歌手,歌手,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6600,猎人,靠近出声,狼人杀,狼人杀,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+1789,装修,刷盘,生活,生活,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3960,培训,教程,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1079,死神,未知生命,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6475,平和,淡定,感情,感情,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3185,担忧,敬佩,情感,情感,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1402,一人之下,不良人,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6305,韩信,韩愈,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1648,汤圆,庙会,美食,美食,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+1099,名侦探柯南,秦时明月,动漫,动漫,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+60,小年,小年,节日,,same_answer_exact,95-100,100,完全一样,
+6354,伤心,脑袋空,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3887,做实验,动手检测,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2722,金星,风车,宇宙,宇宙,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7004,晴天,青花瓷,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+4577,竹海,叶声沙沙,风景,风景,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3486,腾挪,摆姿势,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4476,纪念品,成果移给,旅游,旅游,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2967,单机,需求,游戏,游戏,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1777,租房,中介,生活,生活,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2800,太阳系,影遮光,宇宙,宇宙,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+140,凿壁借光,夜读无灯,典故,典故,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+403,紧张,焦虑,感情,,same_category_mid,60-70,30,语义不同,
+5780,花灯,台上说学,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6109,老子,佛寺施粥,人物,人物,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3770,答辩,练习,学习,学习,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3439,俯身,态度谦卑,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+3617,翻滚,奔跑,动作,动作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4124,催办,跟进,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6665,白痴,发言权,狼人杀,狼人杀,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+6800,狼骑士,三只眼,狼人杀,狼人杀,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3447,踢踏,步频加快,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1432,灵笼,驯熊师,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+6299,韩信,玄鸟,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4064,方案,随从多,工作,工作,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1129,哆啦A梦,小学生,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2157,春分,法式点,节日,节日,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5880,美术,园艺,学科,学科,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4047,升职,级别上调,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1779,搬家,安检,生活,生活,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3184,担忧,想好风险,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5664,刺绣,民间舞蹈,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+5690,木偶,戏文流行,文化,文化,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3649,复习,回顾知识,学习,学习,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3482,弹跳,蹦起来,动作,动作,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+2743,海王星,湖泊,宇宙,宇宙,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+2403,女魃,柳宗元,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+6235,司马光,王安石,人物,人物,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+5658,琴棋,古典雅事,文化,文化,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+5745,楹联,汇总,文化,文化,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+3168,依恋,认真,情感,情感,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+5559,花鼓,化妆舞,文化,文化,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2884,塔防,探图,游戏,游戏,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+6559,淡定,平和,感情,感情,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6384,自豪,害臊,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6084,苏轼,哲学,人物,人物,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+5757,庙会,民俗集市,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+260,做实验,器材,学习,,hint_like_high,70-90,80,关联度较高,
+2594,宇宙,未知生命,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3981,交付,入职,工作,工作,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+3198,愧疚,离不开,情感,情感,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6377,害怕,期待落空,感情,感情,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+5074,退避三舍,三顾茅庐,典故,典故,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+7062,告白,樱桃小丸子,歌曲,歌曲,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4363,托运,发射,旅游,旅游,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+321,女巫,丘比特,狼人杀,,same_category_mid,60-70,70,关联度较高,
+4103,跟踪,跟进,工作,工作,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+7109,最美的期待,心中盼,歌曲,歌曲,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1049,寿司,白饼,美食,美食,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+2230,秋分,稻田,节日,节日,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+65,咒术回战,咒术回战,动漫,,same_answer_exact,95-100,100,完全一样,
+3837,记忆,保持印象,学习,学习,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3351,冷淡,懊悔,情感,情感,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+594,计算,大雪,学科,,cross_category_low,0-30,7,二者不搭界,
+3993,复盘,感恩,工作,工作,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+7134,后来我们,误解善意,歌曲,歌曲,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+5269,八仙过海,各显神通,歇后语,歇后语,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+6430,焦虑,依恋,感情,感情,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+302,海岸,溪流,风景,,same_category_mid,60-70,30,都有水，总体关联度不高,
+138,踮脚,前掌起,动作,,hint_like_high,70-90,40,字面意思有关联，但很难联系那个动作,
+4453,登楼,熬夜,旅游,旅游,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1128,哆啦A梦,荣耀,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+426,瓜田李下,老鼠过街,歇后语,,same_category_mid,60-70,30,都是歇后语，但关联度不高,
+5395,老虎头上,铁公鸡,歇后语,歇后语,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+1115,樱桃小丸子,童年,动漫,动漫,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1981,修灯,装箱,生活,生活,hint_distill_mid,45-55,50,hint distill target 50,hint_distill_v25
+314,背水一战,闻鸡起舞,典故,,same_category_mid,60-70,30,关联度低,
+4999,百发百中,井然有序,成语,成语,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+4596,溪流,风轻,风景,风景,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+6885,薛之谦,言叶之庭,歌手,歌手,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+1651,汤圆,芝麻心,美食,美食,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2401,雷公,司水,神话,神话,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+3508,点头,例行碰头,动作,动作,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+560,心疼,柳宗元,情感,,cross_category_low,0-30,7,二者不搭界,
+881,山脊,山脊,风景,,exact_match,98-100,100,完全一致,
+5617,陶瓷,彩陶,文化,文化,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+3577,弓步,伸展,动作,动作,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2257,小雪,夜空带,节日,节日,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+2816,红移,银河,宇宙,宇宙,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3710,上课,教育,学习,学习,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6882,薛之谦,幽游白书,歌手,歌手,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+1411,镇魂街,惩戒,动漫,动漫,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4557,极光,彩带流动,风景,风景,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25
+7038,演员,现场滑稽,歌曲,歌曲,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+3644,复习,佩服他人,学习,学习,hint_distill_mid,35-45,40,hint distill target 40,hint_distill_v25
+4208,徒步,弓步,旅游,旅游,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+2347,杨戬,你的名字,神话,神话,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+4834,盲人摸象,心猿意马,成语,成语,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+6755,驯熊师,狼王,狼人杀,狼人杀,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+1240,咒术回战,附身,动漫,动漫,hint_distill_high,65-75,70,hint distill target 70,hint_distill_v25
+2482,盘瓠,谷香,神话,神话,hint_distill_high,55-65,60,hint distill target 60,hint_distill_v25
+2074,重阳,登高,节日,节日,hint_distill_top,75-85,80,hint distill target 80,hint_distill_v25
+631,露台,复盘,旅游,,cross_category_low,0-30,7,二者不搭界,
+11,销假,销假,工作,,same_answer_exact,95-100,100,完全一样,
+3825,复述,日报,学习,学习,hint_distill_low,25-35,30,hint distill target 30,hint_distill_v25
+1165,幽游白书,夏目友人帐,动漫,动漫,hint_distill_top,85-95,90,hint distill target 90,hint_distill_v25

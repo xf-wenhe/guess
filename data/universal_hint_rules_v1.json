@@ -1,0 +1,31 @@
+{
+  "scope": "all_categories",
+  "hint_count": 7,
+  "targets": [30, 40, 50, 60, 70, 80, 90],
+  "monotonic_non_decreasing": true,
+  "forbidden_meta_terms": [
+    "标志性冲突",
+    "代表性设定",
+    "核心母题",
+    "高光桥段",
+    "知名剧情节点",
+    "粉丝高共识",
+    "答案锁定线索",
+    "唯一锚点",
+    "终局指向",
+    "强辨识设定"
+  ],
+  "forbid_any_char_overlap_between_answer_and_hints": true,
+  "prefer_weak_to_strong_progression": true,
+  "low_slots": [1, 2, 3, 4],
+  "high_slots": [5, 6, 7],
+  "max_name_like_tokens_per_item": 1,
+  "forbid_name_like_tokens_before_slot": 6,
+  "prefer_name_like_tokens_in_slots": [5, 6, 7],
+  "notes": [
+    "所有分类统一使用7条hint。",
+    "提示词从上到下按弱到强递进，目标语义强度为30%-90%。",
+    "禁止元描述、禁止与答案字符重叠、禁止重复hint。",
+    "若存在人名或强专名，单条最多1个，且优先放在第5-7槽。"
+  ]
+}

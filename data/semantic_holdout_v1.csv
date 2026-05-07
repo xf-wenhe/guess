@@ -1,0 +1,11 @@
+case_id,split,answer,user_input,score_0_100,relation_tag,error_type,rationale,reviewer,status
+1,holdout,火,水,18,same_category_but_far,same_category_but_far,传统五行相克，语义对立且不近似,error_review_v1,frozen
+2,holdout,飞机,轮船,22,same_category_but_far,same_category_but_far,同为交通工具，媒介（空vs水）和语义不同,error_review_v1,frozen
+3,holdout,语文,体育,18,same_category_but_far,same_category_but_far,同为学科，但这两门课相差极大,error_review_v1,frozen
+4,holdout,星球,物理,15,abstract_confusion,abstract_confusion,星球是天体概念，物理是学科，仅因抽象词共现被高估,error_review_v1,frozen
+5,holdout,春天,秋天,28,same_category_but_far,same_category_but_far,同为季节，描述完全不同的季节特征,error_review_v1,frozen
+6,holdout,智慧,力量,28,abstract_confusion,abstract_confusion,智慧和力量都是人的属性，但语义核心不同,error_review_v1,frozen
+7,holdout,苹果,书法,8,cross_domain_negative,cross_domain_negative,水果与书法艺术，无语义关联,error_review_v1,frozen
+8,holdout,钢琴,黑白键,40,hint_like,hint_like,黑白键是钢琴的组成描述，属于提示级别的关联,error_review_v1,frozen
+9,holdout,高兴,难过,10,antonym_or_conflict,antonym_or_conflict,明确情绪反义词,error_review_v1,frozen
+10,holdout,宇宙,物理,20,abstract_confusion,abstract_confusion,宇宙与物理是关联抽象词，但语义核心不同，模型因共现语境高估,error_review_v1,frozen

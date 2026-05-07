@@ -1,0 +1,4 @@
+case_id,split,answer,user_input,score_0_100,relation_tag,error_type,rationale,reviewer,status
+1,holdout,猫咪,刘备,10,hard_negative_low,cross_domain_negative,完全无关对照,manual_gold,approved
+2,holdout,医生,大夫,80,near_synonym_high,near_synonym,常见近义替代,manual_gold,approved
+3,holdout,月食,流星雨,40,same_category_mid,same_category_but_far,同属宇宙类但语义不近,manual_gold,approved
