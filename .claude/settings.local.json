@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -la /Volumes/新/work/flutter/guess/scripts/*.sh)",
+      "Bash(ls -la /Volumes/新/work/flutter/guess/data/*.csv)",
+      "Bash(ls -la /Volumes/新/work/flutter/guess/data/*.json)"
+    ]
+  }
+}

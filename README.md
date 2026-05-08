@@ -52,6 +52,61 @@ PY
 python scripts/run_regression_pairs_v23.py | tail -n 8
 ```
 
+## 模型文件获取 & Embedding Server 配置 {#embedding-server-setup}
+
+### 自动下载（推荐，首次运行）
+
+模型文件（约 2 GB）未随代码一同提交。首次运行 embedding server 时会**自动从 HuggingFace 下载**基础模型：
+
+```bash
+python embedding_server.py
+```
+
+默认下载 [`BAAI/bge-m3`](https://huggingface.co/BAAI/bge-m3)，存放至 `models/bge-m3-finetuned-v27-semreal-anchor/`。
+
+下载进度显示在终端：
+
+```
+[embedding_server] Model not found at 'models/...'. Downloading 'BAAI/bge-m3' from HuggingFace...
+```
+
+### 使用微调版模型（可选，精度更高）
+
+若你已有本地微调模型，指定路径后启动：
+
+```bash
+EMBED_MODEL_DIR=/path/to/bge-m3-finetuned-v27-semreal-anchor python embedding_server.py
+```
+
+若微调模型已发布到 HuggingFace，可通过以下方式自动下载：
+
+```bash
+EMBED_HF_REPO=your-username/bge-m3-finetuned-v27 python embedding_server.py
+```
+
+### 无本地服务时的回退行为
+
+若 embedding server 未运行，Flutter 应用会降级为**纯词形相似度**评分（仍可游玩，但语义反馈精度下降）。
+应用界面会提示"未连接到语义模型服务"，并显示启动方法。
+
+### 代理 / 离线环境
+
+HuggingFace 下载需要网络访问。如在受限网络中，可手动下载后放置到项目根目录：
+
+```
+models/
+  bge-m3-finetuned-v27-semreal-anchor/
+    config.json
+    tokenizer_config.json
+    tokenizer.json
+    model.safetensors     ← 主权重文件（约 2 GB）
+    ...
+```
+
+放置完成后重新启动 `python embedding_server.py`，无需联网。
+
+---
+
 ## 上线前检查清单
 
 一键执行（推荐）：

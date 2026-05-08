@@ -3,6 +3,21 @@ import 'dart:convert';
 import 'package:guess/resources/resources.dart';
 import 'package:http/http.dart' as http;
 
+/// HuggingFace repo used by the embedding server as the auto-download fallback
+/// when the fine-tuned model is not present locally.
+///
+/// The server downloads this model on first start:
+///   python embedding_server.py
+///
+/// To use the fine-tuned model instead, set the env var before starting:
+///   EMBED_MODEL_DIR=/path/to/bge-m3-finetuned-v27-semreal-anchor python embedding_server.py
+///
+/// Or, once the fine-tuned model is published on HuggingFace:
+///   EMBED_HF_REPO=your-username/bge-m3-finetuned-v27 python embedding_server.py
+const String kEmbeddingModelHfRepo = 'BAAI/bge-m3';
+const String kEmbeddingServerSetupDoc =
+    'https://github.com/xf-wenhe/guess#embedding-server-setup';
+
 class EmbeddingFetchResult {
   const EmbeddingFetchResult({required this.embedding, required this.source});
 
@@ -26,6 +41,14 @@ class EmbeddingService {
   String onlineUrl = '';
 
   String _embeddingText(String text) => '$embeddingPrefix$text';
+
+  /// Returns a human-readable message shown when neither endpoint is reachable.
+  /// Instructs the user how to start the local embedding server.
+  String get serverUnavailableHint =>
+      '未连接到语义模型服务。\n'
+      '请在项目目录执行：python embedding_server.py\n'
+      '首次运行将自动下载 $kEmbeddingModelHfRepo 模型（约 2 GB）。\n'
+      '详见：$kEmbeddingServerSetupDoc';
 
   void clearCache() {
     _cache.clear();
