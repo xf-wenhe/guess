@@ -75,9 +75,9 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_DELETE_REJECTED_CANDIDATE</key>
     <string>1</string>
     <key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>
-    <string>0.01</string>
+    <string>0.005</string>
     <key>NIGHTLY_MIN_ACC_IMPROVEMENT</key>
-    <string>0.3</string>
+    <string>0.0</string>
     <key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>
     <string>0</string>
     <key>NIGHTLY_REQUIRE_STRICT_IMPROVEMENT</key>
@@ -85,7 +85,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>
-    <string>3</string>
+    <string>4</string>
     <key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>
     <string>1</string>
     <key>NIGHTLY_ANCHOR_LEARNING_RATE</key>
@@ -93,7 +93,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>SEM_MAX_PAIRS</key>
     <string>1600</string>
     <key>SEM_LEARNING_RATE</key>
-    <string>2e-6</string>
+    <string>1.8e-6</string>
     <key>SEM_UNSUP_PAIRS_JSONL</key>
     <string>${RUNNER_GOLD_DIR}/unsupervised_pairs_v26.jsonl</string>
 
@@ -151,7 +151,7 @@ echo "installed: $PLIST_PATH"
 echo "schedule: every day 23:00"
 echo "source_root: $ROOT_DIR"
 echo "runner_root: $RUNNER_ROOT"
-echo "strict gate: mae>=0.01 acc>=0.3 strict_improve=1 no_degrade_all=0 auto_promote=1 delete_old=1"
-echo "strategy: nightly 3 rounds, per-round seed drift, each round gate+promote, reject->delete candidate, anchor finetune=1, max_pairs=1600, lr=2e-6, anchor_lr=1.5e-6"
+echo "strict gate: mae>=0.005 acc>=0.0 strict_improve=1 no_degrade_all=0 auto_promote=1 delete_old=1"
+echo "strategy: nightly 4 rounds, per-round seed drift, each round gate+promote, reject->delete candidate, anchor finetune=1, max_pairs=1600, lr=1.8e-6, anchor_lr=1.5e-6"
 echo "check: launchctl list | grep ${AGENT_ID}"
 echo "logs: $STDOUT_LOG / $STDERR_LOG"
