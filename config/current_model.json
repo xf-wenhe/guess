@@ -1,0 +1,12 @@
+{
+  "production_model_dir": "models/bge-m3-finetuned-v27-semreal-anchor",
+  "production_calibration": "data/semantic_calibration_v27_semreal_anchor.json",
+  "manual_overrides": "data/manual_similarity_overrides.json",
+  "embedding_server": {
+    "host": "127.0.0.1",
+    "port": 8000,
+    "endpoints": ["/health", "/ready", "/embed", "/embed_batch"]
+  },
+  "nightly_schedule": "23:00",
+  "playable_puzzle_count": 890
+}
