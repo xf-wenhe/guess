@@ -4,7 +4,9 @@ import 'resources/resources.dart';
 import 'screens/guess_home_page.dart';
 
 class GuessApp extends StatelessWidget {
-  const GuessApp({super.key});
+  const GuessApp({super.key, this.autoStartLocalEmbedding = true});
+
+  final bool autoStartLocalEmbedding;
 
   @override
   Widget build(BuildContext context) {
@@ -14,8 +16,7 @@ class GuessApp extends StatelessWidget {
       scaffoldBackgroundColor: AppColors.scaffoldBackground,
       useMaterial3: true,
     );
-    final appBarTitleStyle =
-        baseTheme.textTheme.titleLarge?.copyWith(
+    final appBarTitleStyle = baseTheme.textTheme.titleLarge?.copyWith(
           fontFamily: AppFonts.primaryFamily,
           fontSize: AppTextStyles.appBarTitle.fontSize,
           fontWeight: AppTextStyles.appBarTitle.fontWeight,
@@ -48,7 +49,8 @@ class GuessApp extends StatelessWidget {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppColors.snackBarBackground,
           contentTextStyle: AppTextStyles.snackBarContent,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
         ),
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
@@ -61,7 +63,7 @@ class GuessApp extends StatelessWidget {
           ),
         ),
       ),
-      home: const GuessHomePage(),
+      home: GuessHomePage(autoStartLocalEmbedding: autoStartLocalEmbedding),
     );
   }
 }

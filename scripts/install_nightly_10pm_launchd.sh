@@ -3,6 +3,7 @@ set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
+SOURCE_ROOT="$ROOT_DIR"
 
 AGENT_ID="com.guess.nightly-train-v26"
 PLIST_PATH="$HOME/Library/LaunchAgents/${AGENT_ID}.plist"
@@ -68,6 +69,8 @@ cat > "$PLIST_PATH" <<PLIST
     -->
     <key>NIGHTLY_WORK_DIR</key>
     <string>${RUNNER_TMP_DIR}</string>
+    <key>NIGHTLY_SYNC_BACK_ROOT</key>
+    <string>${SOURCE_ROOT}</string>
     <key>NIGHTLY_AUTO_PROMOTE</key>
     <string>1</string>
     <key>NIGHTLY_DELETE_OLD_ON_PROMOTE</key>
@@ -86,6 +89,18 @@ cat > "$PLIST_PATH" <<PLIST
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>
     <string>4</string>
+    <key>NIGHTLY_CONTINUE_ON_ROUND_ERROR</key>
+    <string>1</string>
+    <key>NIGHTLY_BUILD_TIMEOUT_SEC</key>
+    <string>1200</string>
+    <key>NIGHTLY_PRETRAIN_TIMEOUT_SEC</key>
+    <string>10800</string>
+    <key>NIGHTLY_ANCHOR_TIMEOUT_SEC</key>
+    <string>7200</string>
+    <key>NIGHTLY_EVAL_TIMEOUT_SEC</key>
+    <string>1800</string>
+    <key>NIGHTLY_REGRESSION_TIMEOUT_SEC</key>
+    <string>1200</string>
     <key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>
     <string>1</string>
     <key>NIGHTLY_ANCHOR_LEARNING_RATE</key>

@@ -45,7 +45,8 @@ extension _GuessHomePageActions on _GuessHomePageState {
         _triggerWinAnimation();
       }
 
-      if (_controller.embeddingSourceLabel == AppStrings.disconnectedSourceLabel &&
+      if (_controller.embeddingSourceLabel ==
+              AppStrings.disconnectedSourceLabel &&
           !_embeddingToastShown) {
         _embeddingToastShown = true;
         _showStatusTip(AppStrings.semanticFallback);
@@ -147,11 +148,6 @@ extension _GuessHomePageActions on _GuessHomePageState {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                AppStrings.onlineModelUrl,
-                style: AppTextStyles.settingsTitle,
-              ),
-              const SizedBox(height: 8),
               const Text(
                 AppStrings.localModelDir,
                 style: AppTextStyles.settingsTitle,
@@ -278,13 +274,16 @@ extension _GuessHomePageActions on _GuessHomePageState {
       const maxAttempts = 30;
       for (var attempt = 0; attempt < maxAttempts; attempt += 1) {
         await _controller.refreshEmbeddingSourceLabel();
-        if (_controller.embeddingSourceLabel != AppStrings.disconnectedSourceLabel) {
+        if (_controller.embeddingSourceLabel !=
+            AppStrings.disconnectedSourceLabel) {
           break;
         }
         await Future<void>.delayed(const Duration(milliseconds: 800));
       }
-      if (_controller.embeddingSourceLabel == AppStrings.disconnectedSourceLabel) {
-        _localRunnerError = _localRunner.lastError ?? AppStrings.localModelPortNotReady;
+      if (_controller.embeddingSourceLabel ==
+          AppStrings.disconnectedSourceLabel) {
+        _localRunnerError =
+            _localRunner.lastError ?? AppStrings.localModelPortNotReady;
         _showToast(AppStrings.localModelPortNotReady);
         if (auto) {
           Future<void>.delayed(const Duration(seconds: 5), () {
@@ -296,7 +295,8 @@ extension _GuessHomePageActions on _GuessHomePageState {
       } else {
         _modelDownloadPending = false;
         _localRunnerError = null;
-        _showToast(AppStrings.currentModelLabel(_controller.embeddingSourceLabel));
+        _showToast(
+            AppStrings.currentModelLabel(_controller.embeddingSourceLabel));
         if (auto) {
           _autoRefreshAttempts = 0;
         }

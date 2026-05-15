@@ -44,68 +44,172 @@ class EmbeddingService {
 
   /// Returns a human-readable message shown when neither endpoint is reachable.
   /// Instructs the user how to start the local embedding server.
-  String get serverUnavailableHint =>
-      '未连接到语义模型服务。\n'
+  String get serverUnavailableHint => '未连接到语义模型服务。\n'
       '请在项目目录执行：python embedding_server.py\n'
       '首次运行将自动下载 $kEmbeddingModelHfRepo 模型（约 2 GB）。\n'
       '详见：$kEmbeddingServerSetupDoc';
 
   void clearCache() {
     _cache.clear();
+    _readyChecked.clear();
   }
 
   Future<EmbeddingFetchResult?> fetch(String text) async {
-    final payloadText = _embeddingText(text);
+    final results = await fetchMany([text]);
+    return results?[text];
+  }
+
+  Future<Map<String, EmbeddingFetchResult>?> fetchMany(
+      List<String> texts) async {
+    if (texts.isEmpty) {
+      return <String, EmbeddingFetchResult>{};
+    }
+    final uniqueTexts = texts.toSet().toList(growable: false);
     final resolvedOnline =
         onlineUrl.isNotEmpty ? onlineUrl.trim() : onlineEndpoint.trim();
     final endpoints = <_EmbeddingEndpoint>[
       if (resolvedOnline.isNotEmpty)
-        _EmbeddingEndpoint(label: AppStrings.onlineSourceLabel, url: resolvedOnline),
-      _EmbeddingEndpoint(label: AppStrings.localSourceLabel, url: localEndpoint),
+        _EmbeddingEndpoint(
+            label: AppStrings.onlineSourceLabel, url: resolvedOnline),
+      _EmbeddingEndpoint(
+          label: AppStrings.localSourceLabel, url: localEndpoint),
     ];
 
     for (final endpoint in endpoints) {
       await _waitReadyIfNeeded(endpoint.url);
 
-      final cacheKey = '${endpoint.url}|$payloadText';
-      final cached = _cache[cacheKey];
-      if (cached != null) {
-        return EmbeddingFetchResult(embedding: cached, source: endpoint.label);
+      final resolved = <String, EmbeddingFetchResult>{};
+      final missingPayloads = <String>[];
+      final payloadToText = <String, String>{};
+      for (final text in uniqueTexts) {
+        final payloadText = _embeddingText(text);
+        final cacheKey = '${endpoint.url}|$payloadText';
+        final cached = _cache[cacheKey];
+        if (cached != null) {
+          resolved[text] = EmbeddingFetchResult(
+            embedding: cached,
+            source: endpoint.label,
+          );
+        } else {
+          missingPayloads.add(payloadText);
+          payloadToText[payloadText] = text;
+        }
       }
+
       try {
-        final response = await http.post(
-          Uri.parse(endpoint.url),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'text': payloadText}),
-        ).timeout(const Duration(milliseconds: 2200));
-        if (response.statusCode != 200) {
-          continue;
+        if (missingPayloads.isNotEmpty) {
+          final fetched = await _fetchBatch(endpoint.url, missingPayloads) ??
+              await _fetchIndividually(endpoint.url, missingPayloads);
+          if (fetched == null) {
+            continue;
+          }
+          for (final entry in fetched.entries) {
+            final text = payloadToText[entry.key];
+            if (text == null) {
+              continue;
+            }
+            final cacheKey = '${endpoint.url}|${entry.key}';
+            _cache[cacheKey] = entry.value;
+            resolved[text] = EmbeddingFetchResult(
+              embedding: entry.value,
+              source: endpoint.label,
+            );
+          }
         }
-        final data = jsonDecode(response.body) as Map<String, dynamic>;
-        final embedding = (data['embedding'] as List<dynamic>?)
-            ?.map((e) => (e as num).toDouble())
-            .toList();
-        if (embedding == null || embedding.isEmpty) {
-          continue;
-        }
-        _cache[cacheKey] = embedding;
-        return EmbeddingFetchResult(embedding: embedding, source: endpoint.label);
       } catch (_) {
         continue;
+      }
+
+      if (resolved.length == uniqueTexts.length) {
+        return resolved;
       }
     }
 
     return null;
   }
 
+  Future<Map<String, List<double>>?> _fetchBatch(
+    String url,
+    List<String> payloadTexts,
+  ) async {
+    final uri = Uri.parse(url);
+    final batchUri = uri.path.endsWith('/embed')
+        ? uri.replace(
+            path: uri.path.replaceFirst(RegExp(r'/embed$'), '/embed_batch'))
+        : uri;
+    try {
+      final response = await http
+          .post(
+            batchUri,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'texts': payloadTexts}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        return null;
+      }
+      final data = jsonDecode(response.body) as Map<String, dynamic>;
+      final rawEmbeddings = data['embeddings'] as List<dynamic>?;
+      if (rawEmbeddings == null ||
+          rawEmbeddings.length != payloadTexts.length) {
+        return null;
+      }
+      final result = <String, List<double>>{};
+      for (var i = 0; i < payloadTexts.length; i += 1) {
+        final embedding = (rawEmbeddings[i] as List<dynamic>?)
+            ?.map((e) => (e as num).toDouble())
+            .toList();
+        if (embedding == null || embedding.isEmpty) {
+          return null;
+        }
+        result[payloadTexts[i]] = embedding;
+      }
+      return result;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  Future<Map<String, List<double>>?> _fetchIndividually(
+    String url,
+    List<String> payloadTexts,
+  ) async {
+    final result = <String, List<double>>{};
+    for (final payloadText in payloadTexts) {
+      try {
+        final response = await http
+            .post(
+              Uri.parse(url),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'text': payloadText}),
+            )
+            .timeout(const Duration(milliseconds: 2200));
+        if (response.statusCode != 200) {
+          return null;
+        }
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final embedding = (data['embedding'] as List<dynamic>?)
+            ?.map((e) => (e as num).toDouble())
+            .toList();
+        if (embedding == null || embedding.isEmpty) {
+          return null;
+        }
+        result[payloadText] = embedding;
+      } catch (_) {
+        return null;
+      }
+    }
+    return result;
+  }
+
   Future<bool> probe(String url) async {
     final uri = Uri.parse(url);
     if (uri.path.endsWith('/embed')) {
-      final healthUri = uri.replace(path: uri.path.replaceFirst(RegExp(r'/embed$'), '/health'));
+      final healthUri = uri.replace(
+          path: uri.path.replaceFirst(RegExp(r'/embed$'), '/health'));
       try {
-        final response = await http
-            .get(healthUri)
-            .timeout(const Duration(seconds: 2));
+        final response =
+            await http.get(healthUri).timeout(const Duration(seconds: 2));
         if (response.statusCode == 200) {
           return true;
         }
@@ -145,7 +249,8 @@ class EmbeddingService {
       return;
     }
 
-    final readyUri = uri.replace(path: uri.path.replaceFirst(RegExp(r'/embed$'), '/ready'));
+    final readyUri =
+        uri.replace(path: uri.path.replaceFirst(RegExp(r'/embed$'), '/ready'));
     final deadline = DateTime.now().add(const Duration(milliseconds: 1600));
     var readySupported = true;
     while (DateTime.now().isBefore(deadline)) {

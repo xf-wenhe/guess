@@ -56,8 +56,8 @@ curl -sS http://127.0.0.1:8000/health
 # 检查模型是否就绪（预热后）
 curl -sS http://127.0.0.1:8000/ready
 
-# 自定义模型/校准路径（可选）
-EMBED_MODEL_DIR=/path/to/model EMBED_CALIB_PATH=/path/to/calibration.json python embedding_server.py
+# 自定义模型路径（可选；校准文件由 Flutter 从 data/ 读取）
+EMBED_MODEL_DIR=/path/to/model python embedding_server.py
 ```
 
 ### 上线前检查
@@ -103,7 +103,7 @@ SEM_MODEL_PATH=models/bge-m3-finetuned-v26-unsup \
 #### 夜间训练（自动化）
 
 ```bash
-# 安装夜间训练（每天 22:00 执行）
+# 安装夜间训练（每天 23:00 执行）
 bash scripts/install_nightly_10pm_launchd.sh
 
 # 检查状态
@@ -200,11 +200,12 @@ FastAPI 服务：
 - `/health`：返回状态，可选触发后台预热
 - `/ready`：返回预热完成状态
 - `/embed`：返回归一化嵌入
+- `/embed_batch`：一次返回多个文本的归一化嵌入
 - 预热：`EMBED_WARMUP_ON_HEALTH=1`（默认）在首次健康检查时触发懒加载预热
 
 ### 数据文件
 
-- `assets/puzzles.json` - 1000+ 词语谜题，含提示、类别、词性
+- `assets/puzzles.json` - 约 890 条词语谜题，含提示、类别、词性
 - `data/semantic_calibration_v27_semreal_anchor.json` - 保序回归曲线（x_pred → y_calibrated）
 - `data/manual_similarity_overrides.json` - 硬编码相似度覆盖
 - `data/gold_v26_*.csv` - 人工标注金标准，用于校准/评估

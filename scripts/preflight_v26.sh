@@ -46,7 +46,7 @@ echo "[4/5] regression check (expect 30/30)"
 "$PYTHON_BIN" scripts/run_regression_pairs_v23.py | tail -n 8
 
 echo "[5/5] puzzle naturalness check (expect 0 impacted)"
-"$PYTHON_BIN" -c "import json;json.load(open('assets/puzzles.json','r',encoding='utf-8'));print('puzzles ok')"
+"$PYTHON_BIN" scripts/validate_puzzle_data.py
 "$PYTHON_BIN" tmp/puzzle_naturalness_diff_report.py >/dev/null
 "$PYTHON_BIN" - <<'PY'
 import os

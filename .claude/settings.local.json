@@ -3,7 +3,16 @@
     "allow": [
       "Bash(ls -la /Volumes/新/work/flutter/guess/scripts/*.sh)",
       "Bash(ls -la /Volumes/新/work/flutter/guess/data/*.csv)",
-      "Bash(ls -la /Volumes/新/work/flutter/guess/data/*.json)"
+      "Bash(ls -la /Volumes/新/work/flutter/guess/data/*.json)",
+      "Skill(superpowers:using-superpowers)",
+      "Skill(update-config)",
+      "Bash(python3 *)",
+      "Bash(lsof *)",
+      "Bash(lsof -nP -iTCP:15721 -sTCP:LISTEN)",
+      "Bash(rg -n \"15721|ANTHROPIC_BASE_URL|PROXY_MANAGED|api.anthropic.com\" \"/Users/fengye/.claude\" \"/Volumes/新/work/flutter/guess/.claude\")",
+      "Read(//Users/fengye/.claude/**)",
+      "Bash(ps -p 63507 -o pid=,ppid=,etime=,command=)",
+      "Bash(ps *)"
     ]
   }
 }

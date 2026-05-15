@@ -23,7 +23,9 @@ part 'guess_home_page_actions.dart';
 part 'guess_home_page_build.dart';
 
 class GuessHomePage extends StatefulWidget {
-  const GuessHomePage({super.key});
+  const GuessHomePage({super.key, this.autoStartLocalEmbedding = true});
+
+  final bool autoStartLocalEmbedding;
 
   @override
   State<GuessHomePage> createState() => _GuessHomePageState();
@@ -71,14 +73,16 @@ class _GuessHomePageState extends State<GuessHomePage>
       puzzleRepository: const PuzzleRepository(),
       embeddingService: EmbeddingService(
         localEndpoint: 'http://127.0.0.1:8000/embed',
-        onlineEndpoint:
-            const String.fromEnvironment('ONLINE_EMBEDDING_URL', defaultValue: ''),
+        onlineEndpoint: const String.fromEnvironment('ONLINE_EMBEDDING_URL',
+            defaultValue: ''),
         embeddingPrefix: '',
       ),
     )..addListener(_onControllerChanged);
 
     _controller.initialize();
-    _initLocalEmbedding();
+    if (widget.autoStartLocalEmbedding) {
+      _initLocalEmbedding();
+    }
   }
 
   @override
@@ -127,10 +131,12 @@ class _GuessHomePageState extends State<GuessHomePage>
 
   void _onControllerChanged() {
     if (!mounted) return;
-    if (_controller.embeddingSourceLabel != AppStrings.disconnectedSourceLabel) {
+    if (_controller.embeddingSourceLabel !=
+        AppStrings.disconnectedSourceLabel) {
       _embeddingToastShown = false;
     }
-    if (_controller.embeddingSourceLabel == AppStrings.disconnectedSourceLabel) {
+    if (_controller.embeddingSourceLabel ==
+        AppStrings.disconnectedSourceLabel) {
       _maybeAutoRefresh();
     }
     setState(() {});
@@ -140,7 +146,8 @@ class _GuessHomePageState extends State<GuessHomePage>
     if (!_localRunnerReady) {
       return;
     }
-    if (_refreshingEmbedding || _autoRefreshAttempts >= _maxAutoRefreshAttempts) {
+    if (_refreshingEmbedding ||
+        _autoRefreshAttempts >= _maxAutoRefreshAttempts) {
       return;
     }
     _autoRefreshAttempts += 1;
@@ -194,7 +201,8 @@ class _GuessHomePageState extends State<GuessHomePage>
       return resolved;
     }
     final supportDir = await getApplicationSupportDirectory();
-    final embedDir = Directory('${supportDir.path}${Platform.pathSeparator}embedding');
+    final embedDir =
+        Directory('${supportDir.path}${Platform.pathSeparator}embedding');
     if (!embedDir.existsSync()) {
       await embedDir.create(recursive: true);
     }
@@ -252,7 +260,8 @@ class _GuessHomePageState extends State<GuessHomePage>
         try {
           final entries = current.listSync(followLinks: true);
           for (final entry in entries) {
-            if (entry is File && entry.path.endsWith('${Platform.pathSeparator}config.json')) {
+            if (entry is File &&
+                entry.path.endsWith('${Platform.pathSeparator}config.json')) {
               return entry.parent.path;
             }
             if (entry is Directory) {
@@ -328,7 +337,8 @@ class _GuessHomePageState extends State<GuessHomePage>
                   padding: const EdgeInsets.only(left: 10),
                   child: Container(
                     constraints: const BoxConstraints(maxWidth: 270),
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
                       color: AppColors.primaryTealSoft,
                       borderRadius: BorderRadius.circular(999),
@@ -440,5 +450,4 @@ class _GuessHomePageState extends State<GuessHomePage>
       ),
     );
   }
-
 }

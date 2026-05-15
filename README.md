@@ -129,6 +129,7 @@ curl -sS http://127.0.0.1:8000/health
 
 说明：`/health` 默认会触发一次后台语义预热（`EMBED_WARMUP_ON_HEALTH=1`），可显著降低首个 `/embed` 请求耗时。
 若希望客户端在首个语义请求前等待预热完成，可调用 `/ready`（返回 `ready: true/false`）。
+批量评分使用 `/embed_batch`，用于一次请求多个语义角度，减少 Flutter 端往返次数。
 如需关闭可设置：
 
 ```bash
@@ -265,6 +266,7 @@ NIGHTLY_MIN_MAE_IMPROVEMENT=0.2 NIGHTLY_MIN_ACC_IMPROVEMENT=2.0 bash scripts/nig
 
 - 当前默认模型：`models/bge-m3-finetuned-v27-semreal-anchor`
 - 当前默认校准：`data/semantic_calibration_v27_semreal_anchor.json`
+- 当前默认配置索引：`config/current_model.json`
 
 ### 跨电脑携带本地模型
 
@@ -272,7 +274,7 @@ NIGHTLY_MIN_MAE_IMPROVEMENT=0.2 NIGHTLY_MIN_ACC_IMPROVEMENT=2.0 bash scripts/nig
 - 新电脑建议直接保持同样目录结构（项目根目录下 `models/` 与 `data/`）
 - 若模型不在默认路径，可启动时指定环境变量：
 	- `EMBED_MODEL_DIR=/你的路径/bge-m3-finetuned-v27-semreal-anchor`
-	- `EMBED_CALIB_PATH=/你的路径/semantic_calibration_v27_semreal_anchor.json`
+- 校准文件由 Flutter 从项目 `data/` 目录读取；跨电脑时保持同名文件即可。
 - 本地服务验证：
 	- `bash scripts/preflight_v26.sh`
 	- `curl http://127.0.0.1:8000/health`

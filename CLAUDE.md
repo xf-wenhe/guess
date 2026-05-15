@@ -56,8 +56,8 @@ curl -sS http://127.0.0.1:8000/health
 # Check if model is ready (after warmup)
 curl -sS http://127.0.0.1:8000/ready
 
-# Custom model/calibration paths (optional)
-EMBED_MODEL_DIR=/path/to/model EMBED_CALIB_PATH=/path/to/calibration.json python embedding_server.py
+# Custom model path (optional; calibration is read by Flutter from data/)
+EMBED_MODEL_DIR=/path/to/model python embedding_server.py
 ```
 
 ### Pre-flight Checks
@@ -103,7 +103,7 @@ SEM_MODEL_PATH=models/bge-m3-finetuned-v26-unsup \
 #### Nightly Training (Automated)
 
 ```bash
-# Install nightly training (runs at 22:00 daily)
+# Install nightly training (runs at 23:00 daily)
 bash scripts/install_nightly_10pm_launchd.sh
 
 # Check status
@@ -200,11 +200,12 @@ FastAPI server:
 - `/health`: Returns status, optionally triggers background warmup
 - `/ready`: Returns warmup completion status
 - `/embed`: Returns normalized embeddings
+- `/embed_batch`: Returns normalized embeddings for multiple texts in one request
 - Warmup: `EMBED_WARMUP_ON_HEALTH=1` (default) triggers lazy warmup on first health check
 
 ### Data Files
 
-- `assets/puzzles.json` - 1000+ word puzzles with hints, category, POS
+- `assets/puzzles.json` - ~890 word puzzles with hints, category, POS
 - `data/semantic_calibration_v27_semreal_anchor.json` - Isotonic regression curve (x_pred → y_calibrated)
 - `data/manual_similarity_overrides.json` - Hardcoded similarity overrides
 - `data/gold_v26_*.csv` - Human-labeled gold standard for calibration/eval

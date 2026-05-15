@@ -5,6 +5,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
 WORK_DIR="${NIGHTLY_WORK_DIR:-$ROOT_DIR/tmp}"
+SYNC_BACK_ROOT="${NIGHTLY_SYNC_BACK_ROOT:-}"
 mkdir -p "$WORK_DIR"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$WORK_DIR/nightly_train_v26_${STAMP}.log"
@@ -54,6 +55,7 @@ REQUIRE_NO_DEGRADE_ALL="${NIGHTLY_REQUIRE_NO_DEGRADE_ALL:-0}"
 REQUIRE_STRICT_IMPROVEMENT="${NIGHTLY_REQUIRE_STRICT_IMPROVEMENT:-1}"
 TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-4}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
+CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
 MAX_PAIRS="${SEM_MAX_PAIRS:-1600}"
 BATCH_SIZE="${SEM_BATCH_SIZE:-8}"
 EPOCHS="${SEM_EPOCHS:-1}"
@@ -62,6 +64,11 @@ LEARNING_RATE="${SEM_LEARNING_RATE:-1.8e-6}"
 UNSUP_PAIRS_JSONL="${SEM_UNSUP_PAIRS_JSONL:-data/unsupervised_pairs_v26.jsonl}"
 GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-data/gold_v26_calib.csv}"
 GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-data/gold_v26_eval.csv}"
+BUILD_TIMEOUT_SEC="${NIGHTLY_BUILD_TIMEOUT_SEC:-1200}"
+PRETRAIN_TIMEOUT_SEC="${NIGHTLY_PRETRAIN_TIMEOUT_SEC:-10800}"
+ANCHOR_TIMEOUT_SEC="${NIGHTLY_ANCHOR_TIMEOUT_SEC:-7200}"
+EVAL_TIMEOUT_SEC="${NIGHTLY_EVAL_TIMEOUT_SEC:-1800}"
+REGRESSION_TIMEOUT_SEC="${NIGHTLY_REGRESSION_TIMEOUT_SEC:-1200}"
 
 CURRENT_ROUND=""
 CURRENT_ROUND_OUTPUT_MODEL=""
@@ -87,23 +94,46 @@ cleanup_current_round_artifacts() {
   fi
 }
 
-on_error() {
-  local exit_code="$1"
-  local line_no="$2"
-  echo "[nightly] ERROR at line $line_no (exit=$exit_code)"
-  cleanup_current_round_artifacts "error"
-  exit "$exit_code"
-}
+run_with_timeout() {
+  local cmd="$1"
+  local timeout_sec="$2"
+  local start_ts now_ts pid
 
-trap 'on_error $? $LINENO' ERR
+  if [[ "$timeout_sec" -le 0 ]]; then
+    eval "$cmd"
+    return $?
+  fi
+
+  (
+    eval "$cmd"
+  ) &
+  pid=$!
+  start_ts="$(date +%s)"
+
+  while kill -0 "$pid" 2>/dev/null; do
+    now_ts="$(date +%s)"
+    if (( now_ts - start_ts >= timeout_sec )); then
+      echo "[nightly] timeout after ${timeout_sec}s, kill pid=$pid"
+      kill "$pid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$pid" 2>/dev/null || true
+      wait "$pid" 2>/dev/null || true
+      return 124
+    fi
+    sleep 5
+  done
+
+  wait "$pid"
+}
 
 run_cmd() {
   local cmd="$1"
+  local timeout_sec="${2:-0}"
   echo "[nightly] $cmd"
   if [[ "$DRY_RUN" == "1" ]]; then
     return 0
   fi
-  eval "$cmd"
+  run_with_timeout "$cmd" "$timeout_sec"
 }
 
 if ! [[ "$TOTAL_RUNS" =~ ^[1-9][0-9]*$ ]]; then
@@ -142,7 +172,7 @@ run_single_round() {
   echo "[nightly] ===== round ${round}/${TOTAL_RUNS} ====="
   echo "[nightly] round_seed=${round_seed}"
 
-  run_cmd "SEM_SEED=$round_seed $PYTHON_BIN scripts/build_v26_gold_and_unsup.py"
+  run_cmd "SEM_SEED=$round_seed $PYTHON_BIN scripts/build_v26_gold_and_unsup.py" "$BUILD_TIMEOUT_SEC" || return $?
 
   run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
     SEM_SEED=$round_seed \
@@ -150,13 +180,13 @@ run_single_round() {
     SEM_BASE_MODEL=$BASE_MODEL \
     SEM_OUTPUT_MODEL=$round_output_model \
     SEM_MAX_PAIRS=$MAX_PAIRS SEM_BATCH_SIZE=$BATCH_SIZE SEM_EPOCHS=$EPOCHS SEM_WARMUP_STEPS=$WARMUP_STEPS SEM_LEARNING_RATE=$LEARNING_RATE \
-    $PYTHON_BIN scripts/pretrain_v26_unsupervised.py"
+    $PYTHON_BIN scripts/pretrain_v26_unsupervised.py" "$PRETRAIN_TIMEOUT_SEC" || return $?
 
   run_cmd "SEM_MODEL_PATH=$round_output_model \
     SEM_CALIB_CSV=$GOLD_CALIB_CSV \
     SEM_EVAL_CSV=$GOLD_EVAL_CSV \
     SEM_CALIB_JSON=$round_output_calib \
-    $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json"
+    $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
 
   if [[ "$ENABLE_ANCHOR_FINETUNE" == "1" ]]; then
     run_cmd "SEM_TRAIN_CSV=$ANCHOR_TRAIN_CSV \
@@ -166,7 +196,7 @@ run_single_round() {
       SEM_EPOCHS=$ANCHOR_EPOCHS \
       SEM_WARMUP_STEPS=$ANCHOR_WARMUP_STEPS \
       SEM_LEARNING_RATE=$ANCHOR_LEARNING_RATE \
-      $PYTHON_BIN scripts/finetune_v19_split.py"
+      $PYTHON_BIN scripts/finetune_v19_split.py" "$ANCHOR_TIMEOUT_SEC" || return $?
 
     candidate_model="$round_anchor_model"
     candidate_stage="anchor"
@@ -174,7 +204,7 @@ run_single_round() {
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
-      $PYTHON_BIN scripts/eval_v26_gold.py --json-out $anchor_metrics_json"
+      $PYTHON_BIN scripts/eval_v26_gold.py --json-out $anchor_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
 
     if [[ "$DRY_RUN" != "1" ]]; then
       selection_output="$(PRETRAIN_METRICS_JSON="$pretrain_metrics_json" ANCHOR_METRICS_JSON="$anchor_metrics_json" $PYTHON_BIN - <<'PY'
@@ -225,7 +255,7 @@ PY
 
   if [[ "$DRY_RUN" == "1" ]]; then
     echo "[nightly] (dry-run) skip metric gating and promotion for round $round"
-    run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py | tail -n 12"
+    run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py | tail -n 12" "$REGRESSION_TIMEOUT_SEC" || return $?
     printf "%s\t%s\t-\t-\t-\t-\t-\tDRY_RUN\t-\n" "$round" "$candidate_stage" >> "$SUMMARY_FILE"
     return 0
   fi
@@ -235,17 +265,17 @@ PY
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$BASE_CALIB" \
-  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$base_metrics_json"
+  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$base_metrics_json" || return $?
 
   echo "[nightly] evaluate nightly metrics"
   SEM_MODEL_PATH="$candidate_model" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$round_output_calib" \
-  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$nightly_metrics_json"
+  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$nightly_metrics_json" || return $?
 
   echo "[nightly] run nightly regression"
-  SEM_MODEL_PATH="$candidate_model" SEM_CALIB_PATH="$round_output_calib" "$PYTHON_BIN" scripts/run_regression_pairs_v23.py > "$regression_out"
+  run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py > $regression_out" "$REGRESSION_TIMEOUT_SEC" || return $?
   tail -n 12 "$regression_out"
 
   python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
@@ -387,7 +417,20 @@ PY
 }
 
 for ((round=1; round<=TOTAL_RUNS; round++)); do
-  run_single_round "$round"
+  if ! run_single_round "$round"; then
+    echo "[nightly] round ${round} failed"
+    cleanup_current_round_artifacts "round-error"
+    printf "%s\tround_error\t-\t-\t-\t-\tFalse\tERROR\tFalse\n" "$round" >> "$SUMMARY_FILE"
+    CURRENT_ROUND=""
+    CURRENT_ROUND_OUTPUT_MODEL=""
+    CURRENT_ROUND_ANCHOR_MODEL=""
+    CURRENT_ROUND_OUTPUT_CALIB=""
+    if [[ "$CONTINUE_ON_ROUND_ERROR" != "1" ]]; then
+      echo "[nightly] stop on round error because NIGHTLY_CONTINUE_ON_ROUND_ERROR=$CONTINUE_ON_ROUND_ERROR"
+      exit 1
+    fi
+    echo "[nightly] continue to next round"
+  fi
 done
 
 echo "[nightly] done at $(date '+%F %T')"
@@ -398,8 +441,13 @@ cat "$SUMMARY_FILE"
 
 # 自动同步晋升产物到开发仓库
 if [[ -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
-  echo "[nightly] rsync晋升模型到开发仓库..."
-  rsync -a --delete "$BASE_MODEL" "$ROOT_DIR/models/$(basename $BASE_MODEL)"
-  rsync -a --delete "$BASE_CALIB" "$ROOT_DIR/data/$(basename $BASE_CALIB)"
-  echo "[nightly] rsync完成"
+  if [[ -n "$SYNC_BACK_ROOT" && -d "$SYNC_BACK_ROOT" && "$SYNC_BACK_ROOT" != "$ROOT_DIR" ]]; then
+    echo "[nightly] rsync晋升模型到开发仓库: $SYNC_BACK_ROOT"
+    mkdir -p "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")" "$SYNC_BACK_ROOT/data"
+    rsync -a --delete "$BASE_MODEL/" "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")/"
+    rsync -a "$BASE_CALIB" "$SYNC_BACK_ROOT/data/$(basename "$BASE_CALIB")"
+    echo "[nightly] rsync完成"
+  else
+    echo "[nightly] skip sync-back: NIGHTLY_SYNC_BACK_ROOT is empty, missing, or same as ROOT_DIR"
+  fi
 fi

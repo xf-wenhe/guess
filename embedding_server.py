@@ -23,6 +23,7 @@ _model: Optional[SentenceTransformer] = None
 _model_lock = Lock()
 _warmup_started = False
 _warmup_done = False
+_warmup_error: Optional[str] = None
 _warmup_lock = Lock()
 
 
@@ -77,25 +78,32 @@ def get_model() -> SentenceTransformer:
 
 
 def _start_warmup_once() -> None:
-    global _warmup_started, _warmup_done
+    global _warmup_started, _warmup_done, _warmup_error
     with _warmup_lock:
         if _warmup_started:
             return
         _warmup_started = True
+        _warmup_error = None
 
     def _warmup() -> None:
-        global _warmup_done
+        global _warmup_done, _warmup_error
         try:
             model = get_model()
             model.encode(WARMUP_TEXT, normalize_embeddings=True)
+        except Exception as exc:
+            with _warmup_lock:
+                _warmup_error = str(exc)
+            raise
         finally:
             with _warmup_lock:
-                _warmup_done = True
+                _warmup_done = _warmup_error is None
 
     Thread(target=_warmup, daemon=True).start()
 
 
 def _ready_state() -> bool:
+    if _warmup_error is not None:
+        return False
     if _warmup_done:
         return True
     if not WARMUP_ON_HEALTH and _model is not None:
@@ -103,15 +111,38 @@ def _ready_state() -> bool:
     return False
 
 
+def _model_state() -> dict:
+    model_present = os.path.isdir(LOCAL_DIR) and os.path.exists(os.path.join(LOCAL_DIR, "config.json"))
+    return {
+        "model_loaded": _model is not None,
+        "model_present": model_present,
+        "model_dir": LOCAL_DIR,
+        "hf_repo": HF_REPO,
+        "preload_on_start": PRELOAD_ON_START,
+        "warmup_on_health": WARMUP_ON_HEALTH,
+    }
+
+
 class EmbedRequest(BaseModel):
     text: str
+
+
+class EmbedBatchRequest(BaseModel):
+    texts: list[str]
 
 
 @app.get("/health")
 def health():
     if WARMUP_ON_HEALTH:
         _start_warmup_once()
-    return {"status": "ok", "warmup_started": _warmup_started, "warmup_done": _warmup_done}
+    return {
+        "status": "ok" if _warmup_error is None else "error",
+        "ready": _ready_state(),
+        "warmup_started": _warmup_started,
+        "warmup_done": _warmup_done,
+        "warmup_error": _warmup_error,
+        **_model_state(),
+    }
 
 
 @app.get("/ready")
@@ -120,10 +151,12 @@ def ready():
         _start_warmup_once()
     ready_ok = _ready_state()
     return {
-        "status": "ok" if ready_ok else "warming",
+        "status": "ok" if ready_ok else ("error" if _warmup_error else "warming"),
         "ready": ready_ok,
         "warmup_started": _warmup_started,
         "warmup_done": _warmup_done,
+        "warmup_error": _warmup_error,
+        **_model_state(),
     }
 
 
@@ -131,6 +164,14 @@ def ready():
 def embed(req: EmbedRequest):
     embedding = get_model().encode(req.text, normalize_embeddings=True)
     return {"embedding": embedding.tolist()}
+
+
+@app.post("/embed_batch")
+def embed_batch(req: EmbedBatchRequest):
+    if not req.texts:
+        return {"embeddings": []}
+    embeddings = get_model().encode(req.texts, normalize_embeddings=True)
+    return {"embeddings": embeddings.tolist()}
 
 
 if __name__ == "__main__":
