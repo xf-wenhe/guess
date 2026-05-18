@@ -12,7 +12,32 @@
       "Bash(rg -n \"15721|ANTHROPIC_BASE_URL|PROXY_MANAGED|api.anthropic.com\" \"/Users/fengye/.claude\" \"/Volumes/新/work/flutter/guess/.claude\")",
       "Read(//Users/fengye/.claude/**)",
       "Bash(ps -p 63507 -o pid=,ppid=,etime=,command=)",
-      "Bash(ps *)"
+      "Bash(ps *)",
+      "Skill(superpowers:test-driven-development)",
+      "Skill(superpowers:test-driven-development:*)",
+      "Skill(superpowers:brainstorming)",
+      "Skill(superpowers:brainstorming:*)",
+      "Skill(superpowers:dispatching-parallel-agents)",
+      "Skill(superpowers:dispatching-parallel-agents:*)",
+      "Bash(find \"/Users/fengye\" \\\\\\( -path \"/Users/fengye/.Trash\" -o -path \"/Users/fengye/Library\" \\\\\\) -prune -o \\\\\\( -iname \"*xuanheng*\" -o -iname \"*玄衡*\" \\\\\\) -print)",
+      "Read(//Users/fengye/**)",
+      "Skill(superpowers:writing-skills)",
+      "Skill(superpowers:writing-skills:*)",
+      "Bash(rg --line-buffered \"guess|flutter|Volumes|memory$\")",
+      "Bash(rg -n \"assets/puzzles.json|backup|tmp/|tmp\\\\\\\\.|threshold|monotonic|validate|check|idiom|workflow|safe|recover|score|hint|json.dump|copy|shutil|manual|rollback\" \"/Volumes/新/work/flutter/guess\"/xuanheng_*.py)",
+      "Bash(rg --line-buffered \"518d20ec|5ea3618a|eb392cb7|memory|jsonl$|md$\")",
+      "Skill(superpowers:writing-plans)",
+      "Skill(superpowers:writing-plans:*)",
+      "Bash(git -C \"/Volumes/新/work/flutter/guess\" status --short --ignored --untracked-files=normal -- \".claude\" \".github\")",
+      "Skill(superpowers:executing-plans)",
+      "Skill(superpowers:executing-plans:*)",
+      "Skill(superpowers:using-git-worktrees)",
+      "Skill(superpowers:using-git-worktrees:*)",
+      "Bash(python xuanheng_check_answer.py 护理)",
+      "Bash(python xuanheng_check_answer.py 教育)",
+      "Bash(python xuanheng_check_answer.py 管理)",
+      "Bash(python xuanheng_check_answer.py 社会)",
+      "Bash(python scripts/validate_global_hint_rules_v1.py)"
     ]
   }
 }

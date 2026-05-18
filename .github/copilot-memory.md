@@ -36,6 +36,24 @@ Project: guess (Flutter + local semantic model)
   - no duplicate hints within item
 - Audit and repair scripts exist for strict global checks.
 
+## Xuanheng Workflow Trigger
+- In this repo, if the user says `玄衡`, treat it as a request to use the strict Xuanheng workflow rather than a casual nickname.
+- Route by task type:
+  - score anomaly / unreasonable percentage / calibration suspicion -> diagnose manual overrides, calibration, and controller post-processing before touching `assets/puzzles.json`
+  - category or hint optimization -> use per-answer closure inside the requested category, then report only after the full category closes
+- Stable hard gates:
+  - front 6 hints + known category must not directly lock the answer
+  - slot 7 is the strongest anchor
+  - 7 hints should use 7 distinct main dimensions
+  - hints must not share characters with the answer
+  - no duplicate hints within item / category / globally
+  - no meta/template/filler fragments; natural semantics beats forced uniform wording
+- Durable validation tools:
+  - per-answer: `xuanheng_check_answer.py`
+  - category-level: `xuanheng_check_detailed.py`
+  - global rules: `scripts/validate_global_hint_rules_v1.py`
+- Do not treat `tmp/xuanheng_*` trial scripts as authoritative workflow sources.
+
 ## Operational Constraints Learned
 - On Apple MPS, training can hit OOM; use:
   - `PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0`

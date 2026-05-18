@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(python xuanheng_check_answer.py 地理)",
+      "Bash(python xuanheng_check_answer.py 化学)",
+      "Bash(python xuanheng_check_answer.py 物理)",
+      "Bash(python xuanheng_check_answer.py 生物)",
+      "Bash(python xuanheng_check_answer.py 文学)"
+    ]
+  }
+}

@@ -56,3 +56,5 @@ embedding_server.log
 
 # Additional build artifacts
 build/
+data/
+models/
