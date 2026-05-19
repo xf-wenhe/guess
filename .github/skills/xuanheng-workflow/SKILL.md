@@ -113,7 +113,9 @@ description: Use when the user says “玄衡”, or asks to optimize puzzle hin
 ## 最小必跑校验
 
 ### 题库/分类优化时
-- 单答案：`python xuanheng_check_answer.py`
+- 单答案硬闸：`python3 scripts/xuanheng_check_answer_strict.py <答案>`
+- 单答案闭环：若要宣称“玄衡闭环通过”，必须额外提供 `--review-json`，并包含 7 条 hint 的维度、目标强度、依据、前6提前锁词风险。
+- 旧脚本 `python xuanheng_check_answer.py` 只能作为兼容补充，不能再作为闭环依据。
 - 整分类：`python xuanheng_check_detailed.py`
 - 全局规则：`python scripts/validate_global_hint_rules_v1.py`
 

@@ -195,6 +195,9 @@
 ### 第五步：运行自动验证脚本
 
 如果可用，运行项目中的验证脚本：
+- `python3 scripts/xuanheng_check_answer_strict.py <答案>`
+  - 若要宣称当前答案“玄衡闭环通过”，必须附带 `--review-json`，结构化校验 7 条 hints 的维度、目标强度、判断依据、前6提前锁词风险。
+  - 旧 `python xuanheng_check_answer.py <答案>` 只作为兼容补充，不能替代严格脚本。
 - `python scripts/validate_global_hint_rules_v1.py`
 - 检查输出报告
 
@@ -239,6 +242,7 @@
 
 - [ ] 已完整阅读并理解全部核心规则
 - [ ] 修改内容仅涉及 puzzles.json
+- [ ] 已运行 `python3 scripts/xuanheng_check_answer_strict.py <答案>`，且没有自动硬闸错误
 - [ ] 所有7条 hints 都符合自然语义要求
 - [ ] 无字面泄露（hints 与 answer 无相同字）
 - [ ] 强度阶梯合理（30%→90%）

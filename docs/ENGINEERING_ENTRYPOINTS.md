@@ -19,6 +19,7 @@ is proven unused by the active app, validation, or training workflows.
 - Embedding regression: `python3 scripts/run_regression_pairs_v23.py`
 - Puzzle structure: `python3 scripts/validate_puzzle_data.py`
 - Global hint policy: `python3 scripts/validate_global_hint_rules_v1.py`
+- Xuanheng single-answer hard gate: `python3 scripts/xuanheng_check_answer_strict.py <答案>`
 - Full local preflight: `bash scripts/preflight_v26.sh`
 
 `scripts/preflight_v26.sh` now includes the global hint policy gate. The current

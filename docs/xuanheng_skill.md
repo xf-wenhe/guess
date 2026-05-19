@@ -245,7 +245,9 @@
 
 | 验证级别 | 脚本 |
 |----------|------|
-| 单题级 | `xuanheng_check_answer.py` |
+| 单题硬闸 | `python3 scripts/xuanheng_check_answer_strict.py <答案>` |
+| 单题闭环 | `python3 scripts/xuanheng_check_answer_strict.py <答案> --review-json <review.json>` |
+| 单题兼容补充 | `xuanheng_check_answer.py` |
 | 分类级 | `xuanheng_check_detailed.py` |
 | 全局规则级 | `scripts/validate_global_hint_rules_v1.py` |
 | 强度/可猜度展示（按需） | `scripts/score_category_semantic_guess_v1.py` |
