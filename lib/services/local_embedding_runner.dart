@@ -58,21 +58,7 @@ class LocalEmbeddingRunner {
       pythonExe = managedPython;
     }
 
-    final env = Map<String, String>.from(Platform.environment);
-    env.remove('PYTHONHOME');
-    env.remove('PYTHONPATH');
-    if (envOverrides != null && envOverrides!.isNotEmpty) {
-      env.addAll(envOverrides!);
-    }
-    final venvDir = _resolveVenvDir(pythonExe);
-    if (venvDir != null) {
-      env['VIRTUAL_ENV'] = venvDir;
-      final binPath = Platform.isWindows
-          ? '$venvDir${Platform.pathSeparator}Scripts'
-          : '$venvDir${Platform.pathSeparator}bin';
-      final currentPath = env['PATH'] ?? '';
-      env['PATH'] = '$binPath${Platform.isWindows ? ';' : ':'}$currentPath';
-    }
+    final env = _buildProcessEnvironment(pythonExe);
 
     final pythonArgs = [scriptPath];
     try {
@@ -138,13 +124,33 @@ class LocalEmbeddingRunner {
     }
   }
 
+  Map<String, String> _buildProcessEnvironment(String pythonExe) {
+    final env = Map<String, String>.from(Platform.environment);
+    env.remove('PYTHONHOME');
+    env.remove('PYTHONPATH');
+    if (envOverrides != null && envOverrides!.isNotEmpty) {
+      env.addAll(envOverrides!);
+    }
+    final venvDir = _resolveVenvDir(pythonExe);
+    if (venvDir != null) {
+      env['VIRTUAL_ENV'] = venvDir;
+      final binPath = Platform.isWindows
+          ? '$venvDir${Platform.pathSeparator}Scripts'
+          : '$venvDir${Platform.pathSeparator}bin';
+      final currentPath = env['PATH'] ?? '';
+      env['PATH'] = '$binPath${Platform.isWindows ? ';' : ':'}$currentPath';
+    }
+    return env;
+  }
+
   Future<void> restart() async {
     await stop();
     await Future<void>.delayed(const Duration(milliseconds: 200));
     await start();
   }
 
-  Future<bool> restartAndWait({Duration timeout = const Duration(seconds: 25)}) async {
+  Future<bool> restartAndWait(
+      {Duration timeout = const Duration(seconds: 25)}) async {
     await stop();
     await Future<void>.delayed(const Duration(milliseconds: 200));
     if (await _checkHealth()) {
@@ -189,7 +195,8 @@ class LocalEmbeddingRunner {
     return false;
   }
 
-  Future<bool> waitForReady({Duration timeout = const Duration(seconds: 25)}) async {
+  Future<bool> waitForReady(
+      {Duration timeout = const Duration(seconds: 25)}) async {
     final deadline = DateTime.now().add(timeout);
     while (DateTime.now().isBefore(deadline)) {
       final ok = await _checkHealth();
@@ -292,12 +299,11 @@ class LocalEmbeddingRunner {
       return false;
     }
     if (install.exitCode != 0) {
-      final stderr = (install.stderr is String)
-          ? (install.stderr as String).trim()
-          : '';
+      final stderr =
+          (install.stderr is String) ? (install.stderr as String).trim() : '';
       lastError = stderr.isNotEmpty
-        ? _shortenForToast(stderr)
-        : AppStrings.runnerDependencyInstallFailed;
+          ? _shortenForToast(stderr)
+          : AppStrings.runnerDependencyInstallFailed;
       return false;
     }
     return true;
@@ -383,7 +389,8 @@ class LocalEmbeddingRunner {
     }
     final binDir = file.parent;
     final venvDir = binDir.parent;
-    if (File('${venvDir.path}${Platform.pathSeparator}pyvenv.cfg').existsSync()) {
+    if (File('${venvDir.path}${Platform.pathSeparator}pyvenv.cfg')
+        .existsSync()) {
       return venvDir.path;
     }
     return null;
@@ -411,10 +418,9 @@ class LocalEmbeddingRunner {
       workingDirectory: scriptDir,
     );
     if (create.exitCode != 0) {
-      final stderr = (create.stderr is String)
-          ? (create.stderr as String).trim()
-          : '';
-        lastError = stderr.isNotEmpty
+      final stderr =
+          (create.stderr is String) ? (create.stderr as String).trim() : '';
+      lastError = stderr.isNotEmpty
           ? stderr.split('\n').first
           : AppStrings.runnerRepairFailed;
       return false;
@@ -439,9 +445,8 @@ class LocalEmbeddingRunner {
       workingDirectory: scriptDir,
     );
     if (install.exitCode != 0) {
-      final stderr = (install.stderr is String)
-          ? (install.stderr as String).trim()
-          : '';
+      final stderr =
+          (install.stderr is String) ? (install.stderr as String).trim() : '';
       lastError = stderr.isNotEmpty
           ? stderr.split('\n').first
           : AppStrings.runnerDependencyInstallFailed;

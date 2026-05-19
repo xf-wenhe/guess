@@ -4,50 +4,12 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
+from semantic_common import apply_calibration, semantic_multi_angle
+
 PAIRS_PATH = Path('data/regression_pairs_v23.json')
 MODEL_PATH = os.getenv('SEM_MODEL_PATH', 'models/bge-m3-finetuned-v27-semreal-anchor')
 CALIB_PATH = Path(os.getenv('SEM_CALIB_PATH', 'data/semantic_calibration_v27_semreal_anchor.json'))
 OVERRIDES_PATH = Path(os.getenv('SEM_OVERRIDES_PATH', 'data/manual_similarity_overrides.json'))
-
-
-ANGLES = ['从含义角度看：', '从用途角度看：', '从场景角度看：', '从特征角度看：', '从关联角度看：']
-
-
-def cosine_similarity(a, b):
-    dot = float((a * b).sum())
-    na = float((a * a).sum()) ** 0.5
-    nb = float((b * b).sum()) ** 0.5
-    if na == 0 or nb == 0:
-        return 0.0
-    return dot / (na * nb)
-
-
-def semantic_multi_angle(model, guess: str, answer: str):
-    scores = []
-    for angle in ANGLES:
-        vg = model.encode([f'{angle}{guess}'], normalize_embeddings=True)[0]
-        va = model.encode([f'{angle}{answer}'], normalize_embeddings=True)[0]
-        scores.append(cosine_similarity(vg, va))
-    scores.sort()
-    trimmed = scores[1:-1] if len(scores) >= 3 else scores
-    return sum(trimmed) / len(trimmed) * 100.0
-
-
-def apply_calibration(pred, x, y):
-    if pred <= x[0]:
-        return y[0]
-    if pred >= x[-1]:
-        return y[-1]
-    for i in range(len(x) - 1):
-        left = x[i]
-        right = x[i + 1]
-        if left <= pred <= right:
-            span = right - left
-            if span == 0:
-                return y[i]
-            t = (pred - left) / span
-            return y[i] + (y[i + 1] - y[i]) * t
-    return pred
 
 
 def lexical_score(guess: str, target: str):

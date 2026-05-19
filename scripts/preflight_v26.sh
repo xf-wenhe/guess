@@ -9,10 +9,10 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
 
-echo "[1/5] stop old embedding server on :8000"
+echo "[1/6] stop old embedding server on :8000"
 lsof -ti tcp:8000 | xargs -r kill -9 || true
 
-echo "[2/5] start embedding server"
+echo "[2/6] start embedding server"
 mkdir -p tmp
 LOG_FILE="tmp/preflight_embedding_server.log"
 "$PYTHON_BIN" embedding_server.py > "$LOG_FILE" 2>&1 &
@@ -26,7 +26,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[3/5] health check"
+echo "[3/6] health check"
 for _ in {1..30}; do
   if curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
     echo "health: ok"
@@ -42,10 +42,10 @@ if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[4/5] regression check (expect 30/30)"
+echo "[4/6] regression check (expect 30/30)"
 "$PYTHON_BIN" scripts/run_regression_pairs_v23.py | tail -n 8
 
-echo "[5/5] puzzle naturalness check (expect 0 impacted)"
+echo "[5/6] puzzle structural/naturalness check"
 "$PYTHON_BIN" scripts/validate_puzzle_data.py
 "$PYTHON_BIN" tmp/puzzle_naturalness_diff_report.py >/dev/null
 "$PYTHON_BIN" - <<'PY'
@@ -91,6 +91,9 @@ print(
   f'阈值={max_impacted}/{max_filtered})'
 )
 PY
+
+echo "[6/6] global hint quality gate"
+"$PYTHON_BIN" scripts/validate_global_hint_rules_v1.py
 
 echo "preflight done"
 echo "next: flutter run -d macos"

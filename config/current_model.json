@@ -8,5 +8,5 @@
     "endpoints": ["/health", "/ready", "/embed", "/embed_batch"]
   },
   "nightly_schedule": "23:00",
-  "playable_puzzle_count": 890
+  "playable_puzzle_count": 878
 }

@@ -55,13 +55,19 @@ class PairDataset(Dataset):
                 b = (row.get('user_input') or '').strip()
                 s = (row.get('score_0_100') or '').strip()
                 tag = (row.get('relation_tag') or '').strip()
+                sample_weight_raw = (row.get('sample_weight') or '').strip()
                 if not a or not b or not s:
                     continue
                 try:
                     score = float(s) / 100.0
                 except ValueError:
                     continue
-                weight = HARD_NEG_BOOST if tag in HARD_NEG_TAGS else 1.0
+                try:
+                    sample_weight = float(sample_weight_raw) if sample_weight_raw else 1.0
+                except ValueError:
+                    sample_weight = 1.0
+                sample_weight = max(0.0, min(10.0, sample_weight))
+                weight = sample_weight * (HARD_NEG_BOOST if tag in HARD_NEG_TAGS else 1.0)
                 rows.append((a, b, score, weight, tag))
 
         random.Random(seed).shuffle(rows)

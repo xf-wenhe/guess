@@ -30,11 +30,13 @@ class EmbeddingService {
     required this.localEndpoint,
     required this.onlineEndpoint,
     required this.embeddingPrefix,
-  });
+    http.Client? client,
+  }) : _client = client ?? http.Client();
 
   final String localEndpoint;
   final String onlineEndpoint;
   final String embeddingPrefix;
+  final http.Client _client;
 
   final Map<String, List<double>> _cache = {};
   final Set<String> _readyChecked = <String>{};
@@ -138,7 +140,7 @@ class EmbeddingService {
             path: uri.path.replaceFirst(RegExp(r'/embed$'), '/embed_batch'))
         : uri;
     try {
-      final response = await http
+      final response = await _client
           .post(
             batchUri,
             headers: {'Content-Type': 'application/json'},
@@ -177,7 +179,7 @@ class EmbeddingService {
     final result = <String, List<double>>{};
     for (final payloadText in payloadTexts) {
       try {
-        final response = await http
+        final response = await _client
             .post(
               Uri.parse(url),
               headers: {'Content-Type': 'application/json'},
@@ -209,7 +211,7 @@ class EmbeddingService {
           path: uri.path.replaceFirst(RegExp(r'/embed$'), '/health'));
       try {
         final response =
-            await http.get(healthUri).timeout(const Duration(seconds: 2));
+            await _client.get(healthUri).timeout(const Duration(seconds: 2));
         if (response.statusCode == 200) {
           return true;
         }
@@ -218,7 +220,7 @@ class EmbeddingService {
       }
     }
     try {
-      final response = await http
+      final response = await _client
           .post(
             uri,
             headers: {'Content-Type': 'application/json'},
@@ -255,7 +257,7 @@ class EmbeddingService {
     var readySupported = true;
     while (DateTime.now().isBefore(deadline)) {
       try {
-        final response = await http
+        final response = await _client
             .get(readyUri)
             .timeout(const Duration(milliseconds: 1200));
         if (response.statusCode == 404) {

@@ -5,6 +5,12 @@ import os
 from pathlib import Path
 from collections import Counter
 
+from hint_policy_common import (
+    collect_hint_counts,
+    hint_quality_weight,
+    load_hint_policy,
+)
+
 PUZZLES_JSON = Path(os.getenv('SEM_PUZZLES_JSON', 'assets/puzzles.json'))
 MANUAL_OVERRIDES = Path(os.getenv('SEM_MANUAL_OVERRIDES', 'data/manual_similarity_overrides.json'))
 GOLD_POOL = Path(os.getenv('SEM_GOLD_POOL', 'data/gold_v26_pool.csv'))
@@ -24,6 +30,7 @@ SEED = int(os.getenv('SEM_SEED', '20260515'))
 FIELDNAMES = [
     'id', 'answer', 'user_input', 'answer_category', 'input_category_guess',
     'relation_tag', 'expected_range', 'score_0_100', 'reason', 'reviewer',
+    'sample_weight',
 ]
 
 HARD_NEG_TAGS = {
@@ -36,8 +43,18 @@ HARD_NEG_TAGS = {
 def main():
     seen = set()
     rows = []
+    hint_policy = load_hint_policy()
 
-    def push(answer, user_input, score, category, relation_tag, reason, reviewer):
+    def push(
+        answer,
+        user_input,
+        score,
+        category,
+        relation_tag,
+        reason,
+        reviewer,
+        sample_weight=1.0,
+    ):
         a = str(answer).strip()
         b = str(user_input).strip()
         if not a or not b:
@@ -63,6 +80,7 @@ def main():
             'score_0_100': str(score),
             'reason': reason,
             'reviewer': reviewer,
+            'sample_weight': f'{max(0.0, min(10.0, float(sample_weight))):.4f}',
         })
 
     # 1. Manual overrides
@@ -76,7 +94,15 @@ def main():
             score = item.get('score')
             if not answer or not user_input or not isinstance(score, (int, float)):
                 continue
-            push(answer, user_input, int(round(float(score))), '', '', str(item.get('reason', '')), 'manual_gold')
+            push(
+                answer,
+                user_input,
+                int(round(float(score))),
+                '',
+                '',
+                str(item.get('reason', '')),
+                'manual_gold',
+            )
 
     # 2. Gold pool
     if GOLD_POOL.exists():
@@ -92,8 +118,15 @@ def main():
                     score = int(float(s))
                 except ValueError:
                     continue
-                push(a, b, score, row.get('answer_category', ''), row.get('relation_tag', ''),
-                     row.get('reason', ''), row.get('reviewer', 'gold_v26'))
+                push(
+                    a,
+                    b,
+                    score,
+                    row.get('answer_category', ''),
+                    row.get('relation_tag', ''),
+                    row.get('reason', ''),
+                    row.get('reviewer', 'gold_v26'),
+                )
 
     # 3. Extra CSVs (all hard neg + synonym + category + subset data)
     for csv_path, reviewer in EXTRA_CSVS:
@@ -113,7 +146,15 @@ def main():
                     score = int(float(s))
                 except ValueError:
                     continue
-                push(a, b, score, '', row.get('relation_tag', ''), row.get('reason', ''), reviewer)
+                push(
+                    a,
+                    b,
+                    score,
+                    '',
+                    row.get('relation_tag', ''),
+                    row.get('reason', ''),
+                    reviewer,
+                )
                 count += 1
         print(f'  {csv_path}: +{count}')
 
@@ -121,30 +162,75 @@ def main():
     puzzles = json.loads(PUZZLES_JSON.read_text(encoding='utf-8'))
     hint_targets = [30, 40, 50, 60, 70, 80, 90]
     hint_count = 0
+    low_quality_hint_count = 0
 
     rng = random.Random(SEED)
     puzzle_hints = []
+    global_hint_counts = collect_hint_counts(puzzles)
     for item in puzzles:
         answer = str(item.get('answer', '')).strip()
         category = str(item.get('category', '')).strip()
         hints = [str(h).strip() for h in (item.get('hints') or [])]
         if not answer:
             continue
-        push(answer, answer, 98, category, 'same_answer_exact', 'self anchor', 'auto_v28c')
+        push(
+            answer,
+            answer,
+            98,
+            category,
+            'same_answer_exact',
+            'self anchor',
+            'auto_v28c',
+        )
         if len(hints) == 7:
             for idx, hint in enumerate(hints):
                 if not hint:
                     continue
                 target = hint_targets[idx]
-                puzzle_hints.append((answer, hint, target, category, idx))
+                weight, quality_reason = hint_quality_weight(
+                    answer,
+                    hint,
+                    hints,
+                    hint_policy,
+                    global_hint_counts,
+                )
+                if weight < 1.0:
+                    low_quality_hint_count += 1
+                puzzle_hints.append(
+                    (answer, hint, target, category, idx, weight, quality_reason)
+                )
 
     rng.shuffle(puzzle_hints)
-    for answer, hint, target, category, idx in puzzle_hints:
+    for answer, hint, target, category, idx, weight, quality_reason in puzzle_hints:
         if hint_count >= HINT_MAX:
             break
-        push(answer, hint, target, category, '', f'puzzle_hint_lvl_{idx+1}', 'auto_v28c')
+        tag = (
+            'puzzle_hint_clean'
+            if quality_reason == 'clean'
+            else 'puzzle_hint_low_quality'
+        )
+        reason = f'puzzle_hint_lvl_{idx+1};quality={quality_reason}'
+        push(
+            answer,
+            hint,
+            target,
+            category,
+            tag,
+            reason,
+            'auto_v28c',
+            sample_weight=weight,
+        )
         if target >= 70:
-            push(hint, answer, min(95, target + 5), category, '', f'reverse_hint_lvl_{idx+1}', 'auto_v28c')
+            push(
+                hint,
+                answer,
+                min(95, target + 5),
+                category,
+                tag,
+                reason,
+                'auto_v28c',
+                sample_weight=weight,
+            )
         hint_count += 1
 
     # 5. Cross-category negatives
@@ -167,10 +253,20 @@ def main():
     neg_per_answer = 2
     for ans in unique_answers:
         cat = answer_cat.get(ans, '')
-        neg_pool = [x for x in unique_answers if x != ans and answer_cat.get(x, '') != cat]
+        neg_pool = [
+            x for x in unique_answers if x != ans and answer_cat.get(x, '') != cat
+        ]
         rng.shuffle(neg_pool)
         for neg in neg_pool[:neg_per_answer]:
-            push(ans, neg, rng.choice([4, 6, 8, 10]), cat, 'cross_category_negative', 'cross_category_negative', 'auto_v28c')
+            push(
+                ans,
+                neg,
+                rng.choice([4, 6, 8, 10]),
+                cat,
+                'cross_category_negative',
+                'cross_category_negative',
+                'auto_v28c',
+            )
 
     # Shuffle & ID
     rng.shuffle(rows)
@@ -181,6 +277,9 @@ def main():
     tag_counts = Counter(r['relation_tag'] for r in rows)
     score_buckets = Counter((int(r['score_0_100']) // 10) * 10 for r in rows)
     hard_count = sum(1 for r in rows if r['relation_tag'] in HARD_NEG_TAGS)
+    weighted_hint_count = sum(
+        1 for r in rows if r['relation_tag'] == 'puzzle_hint_low_quality'
+    )
 
     OUTPUT.parent.mkdir(parents=True, exist_ok=True)
     with OUTPUT.open('w', encoding='utf-8', newline='') as f:
@@ -191,6 +290,8 @@ def main():
     print(f'\n=== train_v28c_balanced.csv ===')
     print(f'Total: {len(rows)} rows')
     print(f'Hint rows capped at: {HINT_MAX}')
+    print(f'Low-quality puzzle hints detected: {low_quality_hint_count}')
+    print(f'Low-quality weighted training rows: {weighted_hint_count}')
     print(f'Hard negatives: {hard_count} ({hard_count/len(rows)*100:.1f}%)')
 
     print(f'\nBy relation_tag:')

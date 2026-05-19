@@ -12,7 +12,6 @@ class AppAssets {
       'data/manual_similarity_overrides.json';
 
   static const semanticCalibrationCandidates = <String>[
-    'data/semantic_calibration_v28_conservative.json',
     'data/semantic_calibration_v27_semreal_anchor.json',
     'data/semantic_calibration_v21_refine.json',
     'data/semantic_calibration_v19.json',
