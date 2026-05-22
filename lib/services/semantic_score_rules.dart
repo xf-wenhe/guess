@@ -40,6 +40,12 @@ class SemanticScoreRules {
     var combined = ((percent * 0.8) + (lexical * 0.2)).round();
     final isNearSynonymLike = lexical >= 40 && percent >= 70;
 
+    // Prevent irrelevant lexical-zero guesses from hovering in the high teens.
+    if (lexical == 0 && semanticPercentRaw < 35) {
+      combined = min(combined, 10);
+      notes.add('lexical_zero_raw_lt35_cap10');
+    }
+
     if (percent < 40) {
       if (percent < 20) {
         combined = min(combined, 10);

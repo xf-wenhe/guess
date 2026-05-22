@@ -4,7 +4,82 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-WORK_DIR="${NIGHTLY_WORK_DIR:-$ROOT_DIR/tmp}"
+DEFAULT_NIGHTLY_ROOT="$ROOT_DIR/.nightly"
+case "$ROOT_DIR" in
+  */.nightly/workspaces/*)
+    DEFAULT_NIGHTLY_ROOT="${ROOT_DIR%%/.nightly/workspaces/*}/.nightly"
+    ;;
+esac
+
+NIGHTLY_ROOT="${NIGHTLY_ROOT:-$DEFAULT_NIGHTLY_ROOT}"
+if [[ "$NIGHTLY_ROOT" != /* ]]; then
+  NIGHTLY_ROOT="$ROOT_DIR/$NIGHTLY_ROOT"
+fi
+
+to_abs_path() {
+  local p="$1"
+  if [[ "$p" == /* ]]; then
+    printf '%s' "$p"
+  else
+    printf '%s' "$ROOT_DIR/$p"
+  fi
+}
+
+ensure_under_nightly() {
+  local p="$1"
+  case "$p" in
+    "$NIGHTLY_ROOT"/*) return 0 ;;
+    *)
+      echo "[v28-nightly] path escapes NIGHTLY_ROOT: $p" >&2
+      return 1
+      ;;
+  esac
+}
+
+assert_readable_file() {
+  local p="$1"
+  if [[ ! -f "$p" ]]; then
+    echo "[v28-nightly] missing file: $p" >&2
+    return 1
+  fi
+  if [[ ! -r "$p" ]]; then
+    echo "[v28-nightly] unreadable file: $p" >&2
+    return 1
+  fi
+}
+
+assert_writable_dir() {
+  local d="$1"
+  mkdir -p "$d"
+  if [[ ! -w "$d" ]]; then
+    echo "[v28-nightly] directory not writable: $d" >&2
+    return 1
+  fi
+}
+
+check_free_space() {
+  local dir="$1"
+  local min_gb="$2"
+  local avail_kb
+  avail_kb="$(df -Pk "$dir" | awk 'NR==2 {print $4}')"
+  if [[ -z "$avail_kb" ]]; then
+    echo "[v28-nightly] failed to read free space for: $dir" >&2
+    return 1
+  fi
+  local min_kb
+  min_kb="$((min_gb * 1024 * 1024))"
+  if (( avail_kb < min_kb )); then
+    echo "[v28-nightly] insufficient free space at $dir: available_kb=$avail_kb required_kb=$min_kb" >&2
+    return 1
+  fi
+}
+
+WORK_DIR="${NIGHTLY_WORK_DIR:-$NIGHTLY_ROOT/data/tmp}"
+PROJECT_ROOT="${NIGHTLY_PROJECT_ROOT:-${NIGHTLY_ROOT%/.nightly}}"
+SYNC_BACK_ROOT="${NIGHTLY_SYNC_BACK_ROOT:-$PROJECT_ROOT}"
+WORK_DIR="$(to_abs_path "$WORK_DIR")"
+PROJECT_ROOT="$(to_abs_path "$PROJECT_ROOT")"
+SYNC_BACK_ROOT="$(to_abs_path "$SYNC_BACK_ROOT")"
 mkdir -p "$WORK_DIR"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$WORK_DIR/nightly_train_v28_${STAMP}.log"
@@ -28,21 +103,24 @@ PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
+PYTHON_BIN="$(to_abs_path "$PYTHON_BIN")"
 
 DRY_RUN="${NIGHTLY_DRY_RUN:-0}"
 AUTO_PROMOTE="${NIGHTLY_AUTO_PROMOTE:-1}"
 DELETE_OLD_ON_PROMOTE="${NIGHTLY_DELETE_OLD_ON_PROMOTE:-1}"
+ENFORCE_FREE_SPACE_CHECK="${NIGHTLY_ENFORCE_FREE_SPACE_CHECK:-1}"
+MIN_FREE_GB="${NIGHTLY_MIN_FREE_GB:-24}"
 
-BASE_MODEL="${SEM_BASE_MODEL:-models/bge-m3-finetuned-v27-semreal-anchor}"
-CANDIDATE_MODEL="${SEM_OUTPUT_MODEL:-models/bge-m3-finetuned-v28c-candidate}"
-CANDIDATE_CALIB="${SEM_OUTPUT_CALIB:-data/semantic_calibration_v28c_candidate.json}"
-PRODUCTION_MODEL="models/bge-m3-finetuned-v27-semreal-anchor"
-PRODUCTION_CALIB="data/semantic_calibration_v27_semreal_anchor.json"
+BASE_MODEL="${SEM_BASE_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-v27-semreal-anchor}"
+CANDIDATE_MODEL="${SEM_OUTPUT_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-v28c-candidate}"
+CANDIDATE_CALIB="${SEM_OUTPUT_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_v28c_candidate.json}"
+PRODUCTION_MODEL="${SEM_PRODUCTION_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-v27-semreal-anchor}"
+PRODUCTION_CALIB="${SEM_BASE_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_v27_semreal_anchor.json}"
 
-TRAIN_CSV="${SEM_TRAIN_CSV:-data/train_v28c_balanced.csv}"
-GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-data/gold_v28_calib.csv}"
-GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-data/gold_v28_eval.csv}"
-REGRESSION_PAIRS="${SEM_REGRESSION_PAIRS:-data/regression_pairs_v23.json}"
+TRAIN_CSV="${SEM_TRAIN_CSV:-$ROOT_DIR/data/train_v28c_balanced.csv}"
+GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-$ROOT_DIR/data/gold_v28_calib.csv}"
+GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-$ROOT_DIR/data/gold_v28_eval.csv}"
+REGRESSION_PAIRS="${SEM_REGRESSION_PAIRS:-$ROOT_DIR/data/regression_pairs_v23.json}"
 
 EPOCHS="${SEM_EPOCHS:-3}"
 BATCH_SIZE="${SEM_BATCH_SIZE:-8}"
@@ -51,6 +129,66 @@ MSE_WEIGHT="${SEM_MSE_WEIGHT:-0.5}"
 CONTRASTIVE_WEIGHT="${SEM_CONTRASTIVE_WEIGHT:-0.5}"
 CONTRASTIVE_MARGIN="${SEM_CONTRASTIVE_MARGIN:-0.5}"
 HARD_NEG_BOOST="${SEM_HARD_NEG_BOOST:-3.0}"
+
+TRAIN_CSV="$(to_abs_path "$TRAIN_CSV")"
+GOLD_CALIB_CSV="$(to_abs_path "$GOLD_CALIB_CSV")"
+GOLD_EVAL_CSV="$(to_abs_path "$GOLD_EVAL_CSV")"
+REGRESSION_PAIRS="$(to_abs_path "$REGRESSION_PAIRS")"
+BASE_MODEL="$(to_abs_path "$BASE_MODEL")"
+CANDIDATE_MODEL="$(to_abs_path "$CANDIDATE_MODEL")"
+CANDIDATE_CALIB="$(to_abs_path "$CANDIDATE_CALIB")"
+PRODUCTION_MODEL="$(to_abs_path "$PRODUCTION_MODEL")"
+PRODUCTION_CALIB="$(to_abs_path "$PRODUCTION_CALIB")"
+
+echo "[v28-nightly][paths] PYTHON_BIN=$PYTHON_BIN"
+echo "[v28-nightly][paths] NIGHTLY_ROOT=$NIGHTLY_ROOT"
+echo "[v28-nightly][paths] PROJECT_ROOT=$PROJECT_ROOT"
+echo "[v28-nightly][paths] WORK_DIR=$WORK_DIR"
+echo "[v28-nightly][paths] SYNC_BACK_ROOT=$SYNC_BACK_ROOT"
+echo "[v28-nightly][paths] TRAIN_CSV=$TRAIN_CSV"
+echo "[v28-nightly][paths] GOLD_CALIB_CSV=$GOLD_CALIB_CSV"
+echo "[v28-nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
+echo "[v28-nightly][paths] REGRESSION_PAIRS=$REGRESSION_PAIRS"
+echo "[v28-nightly][paths] BASE_MODEL=$BASE_MODEL"
+echo "[v28-nightly][paths] CANDIDATE_MODEL=$CANDIDATE_MODEL"
+echo "[v28-nightly][paths] CANDIDATE_CALIB=$CANDIDATE_CALIB"
+echo "[v28-nightly][paths] PRODUCTION_MODEL=$PRODUCTION_MODEL"
+echo "[v28-nightly][paths] PRODUCTION_CALIB=$PRODUCTION_CALIB"
+
+ensure_under_nightly "$WORK_DIR"
+ensure_under_nightly "$BASE_MODEL"
+ensure_under_nightly "$CANDIDATE_MODEL"
+ensure_under_nightly "$CANDIDATE_CALIB"
+ensure_under_nightly "$PRODUCTION_MODEL"
+ensure_under_nightly "$PRODUCTION_CALIB"
+
+assert_writable_dir "$NIGHTLY_ROOT"
+assert_writable_dir "$WORK_DIR"
+assert_writable_dir "$(dirname "$CANDIDATE_MODEL")"
+assert_writable_dir "$(dirname "$CANDIDATE_CALIB")"
+assert_writable_dir "$(dirname "$PRODUCTION_MODEL")"
+assert_writable_dir "$(dirname "$PRODUCTION_CALIB")"
+assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/models")"
+assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/data")"
+
+if [[ "$SYNC_BACK_ROOT" != "$PROJECT_ROOT" && "$SYNC_BACK_ROOT" != "$NIGHTLY_ROOT/sync_back" ]]; then
+  echo "[v28-nightly] unsupported NIGHTLY_SYNC_BACK_ROOT=$SYNC_BACK_ROOT (allowed: PROJECT_ROOT or $NIGHTLY_ROOT/sync_back)" >&2
+  exit 1
+fi
+
+assert_readable_file "$TRAIN_CSV"
+assert_readable_file "$GOLD_CALIB_CSV"
+assert_readable_file "$GOLD_EVAL_CSV"
+assert_readable_file "$REGRESSION_PAIRS"
+assert_readable_file "$PRODUCTION_CALIB"
+assert_readable_file "$BASE_MODEL/config_sentence_transformers.json"
+
+if [[ "$ENFORCE_FREE_SPACE_CHECK" == "1" ]]; then
+  check_free_space "$NIGHTLY_ROOT" "$MIN_FREE_GB"
+fi
+
+echo "[v28-nightly][df]"
+df -h "$NIGHTLY_ROOT"
 
 export TOKENIZERS_PARALLELISM=false
 export PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0
@@ -110,6 +248,7 @@ REGRESSION_LOG="$WORK_DIR/v28c_regression_${STAMP}.log"
 step "regression-test" env \
   SEM_MODEL_PATH="$CANDIDATE_MODEL" \
   SEM_CALIB_PATH="$CANDIDATE_CALIB" \
+  SEM_REGRESSION_PAIRS="$REGRESSION_PAIRS" \
   "$PYTHON_BIN" scripts/run_regression_pairs_v23.py | tee "$REGRESSION_LOG"
 
 PASS_RATE=$(grep 'pass_rate=' "$REGRESSION_LOG" | tail -1 | sed 's/.*pass_rate=//' | tr -d '%')
@@ -143,6 +282,16 @@ if python3 -c "exit(0 if float('$PASS_RATE') >= 100.0 else 1)" 2>/dev/null; then
     cp -r "$CANDIDATE_MODEL" "$PRODUCTION_MODEL"
     cp "$CANDIDATE_CALIB" "$PRODUCTION_CALIB"
     echo "[v28-nightly] PROMOTED to production!"
+
+    if [[ -d "$PRODUCTION_MODEL" && -f "$PRODUCTION_CALIB" && -d "$SYNC_BACK_ROOT" ]]; then
+      echo "[v28-nightly] rsync promoted artifacts to: $SYNC_BACK_ROOT"
+      mkdir -p "$SYNC_BACK_ROOT/models/$(basename "$PRODUCTION_MODEL")" "$SYNC_BACK_ROOT/data"
+      rsync -a --delete "$PRODUCTION_MODEL/" "$SYNC_BACK_ROOT/models/$(basename "$PRODUCTION_MODEL")/"
+      rsync -a "$PRODUCTION_CALIB" "$SYNC_BACK_ROOT/data/$(basename "$PRODUCTION_CALIB")"
+      echo "[v28-nightly] rsync done"
+    else
+      echo "[v28-nightly] skip sync-back: missing promoted artifacts or sync target"
+    fi
 
     if [[ "$DELETE_OLD_ON_PROMOTE" == "1" ]]; then
       echo "[v28-nightly] cleaning up candidate..."

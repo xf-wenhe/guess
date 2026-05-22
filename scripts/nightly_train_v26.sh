@@ -4,8 +4,82 @@ set -euo pipefail
 ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$ROOT_DIR"
 
-WORK_DIR="${NIGHTLY_WORK_DIR:-$ROOT_DIR/tmp}"
-SYNC_BACK_ROOT="${NIGHTLY_SYNC_BACK_ROOT:-}"
+DEFAULT_NIGHTLY_ROOT="$ROOT_DIR/.nightly"
+case "$ROOT_DIR" in
+  */.nightly/workspaces/*)
+    DEFAULT_NIGHTLY_ROOT="${ROOT_DIR%%/.nightly/workspaces/*}/.nightly"
+    ;;
+esac
+
+NIGHTLY_ROOT="${NIGHTLY_ROOT:-$DEFAULT_NIGHTLY_ROOT}"
+if [[ "$NIGHTLY_ROOT" != /* ]]; then
+  NIGHTLY_ROOT="$ROOT_DIR/$NIGHTLY_ROOT"
+fi
+
+to_abs_path() {
+  local p="$1"
+  if [[ "$p" == /* ]]; then
+    printf '%s' "$p"
+  else
+    printf '%s' "$ROOT_DIR/$p"
+  fi
+}
+
+ensure_under_nightly() {
+  local p="$1"
+  case "$p" in
+    "$NIGHTLY_ROOT"/*) return 0 ;;
+    *)
+      echo "[nightly] path escapes NIGHTLY_ROOT: $p" >&2
+      return 1
+      ;;
+  esac
+}
+
+assert_readable_file() {
+  local p="$1"
+  if [[ ! -f "$p" ]]; then
+    echo "[nightly] missing file: $p" >&2
+    return 1
+  fi
+  if [[ ! -r "$p" ]]; then
+    echo "[nightly] unreadable file: $p" >&2
+    return 1
+  fi
+}
+
+assert_writable_dir() {
+  local d="$1"
+  mkdir -p "$d"
+  if [[ ! -w "$d" ]]; then
+    echo "[nightly] directory not writable: $d" >&2
+    return 1
+  fi
+}
+
+check_free_space() {
+  local dir="$1"
+  local min_gb="$2"
+  local avail_kb
+  avail_kb="$(df -Pk "$dir" | awk 'NR==2 {print $4}')"
+  if [[ -z "$avail_kb" ]]; then
+    echo "[nightly] failed to read free space for: $dir" >&2
+    return 1
+  fi
+  local min_kb
+  min_kb="$((min_gb * 1024 * 1024))"
+  if (( avail_kb < min_kb )); then
+    echo "[nightly] insufficient free space at $dir: available_kb=$avail_kb required_kb=$min_kb" >&2
+    return 1
+  fi
+}
+
+WORK_DIR="${NIGHTLY_WORK_DIR:-$NIGHTLY_ROOT/data/tmp}"
+PROJECT_ROOT="${NIGHTLY_PROJECT_ROOT:-${NIGHTLY_ROOT%/.nightly}}"
+SYNC_BACK_ROOT="${NIGHTLY_SYNC_BACK_ROOT:-$PROJECT_ROOT}"
+WORK_DIR="$(to_abs_path "$WORK_DIR")"
+PROJECT_ROOT="$(to_abs_path "$PROJECT_ROOT")"
+SYNC_BACK_ROOT="$(to_abs_path "$SYNC_BACK_ROOT")"
 mkdir -p "$WORK_DIR"
 STAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$WORK_DIR/nightly_train_v26_${STAMP}.log"
@@ -32,15 +106,21 @@ PYTHON_BIN="$ROOT_DIR/.venv/bin/python"
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
+PYTHON_BIN="$(to_abs_path "$PYTHON_BIN")"
 
 DRY_RUN="${NIGHTLY_DRY_RUN:-0}"
+ENFORCE_FREE_SPACE_CHECK="${NIGHTLY_ENFORCE_FREE_SPACE_CHECK:-1}"
+MIN_FREE_GB="${NIGHTLY_MIN_FREE_GB:-24}"
+PUZZLES_JSON="${SEM_PUZZLES_JSON:-$ROOT_DIR/assets/puzzles.json}"
+MANUAL_OVERRIDES_JSON="${SEM_MANUAL_OVERRIDES:-$ROOT_DIR/data/manual_similarity_overrides.json}"
+SCORED_CSV="${SEM_SCORED_CSV:-$ROOT_DIR/data/semantic_scoring_user_input_template.csv}"
 
-BASE_MODEL="${SEM_BASE_MODEL:-models/bge-m3-finetuned-v27-semreal-anchor}"
-OUTPUT_MODEL="${SEM_OUTPUT_MODEL:-models/bge-m3-finetuned-local-candidate}"
+BASE_MODEL="${SEM_BASE_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-v27-semreal-anchor}"
+OUTPUT_MODEL="${SEM_OUTPUT_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-local-candidate}"
 ANCHOR_MODEL="${SEM_ANCHOR_MODEL:-${OUTPUT_MODEL}-anchor}"
-OUTPUT_CALIB="${SEM_OUTPUT_CALIB:-data/semantic_calibration_local_candidate.json}"
-BASE_CALIB="${SEM_BASE_CALIB:-data/semantic_calibration_v27_semreal_anchor.json}"
-ANCHOR_TRAIN_CSV="${SEM_ANCHOR_TRAIN_CSV:-data/gold_v26_manual_anchor.csv}"
+OUTPUT_CALIB="${SEM_OUTPUT_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_local_candidate.json}"
+BASE_CALIB="${SEM_BASE_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_v27_semreal_anchor.json}"
+ANCHOR_TRAIN_CSV="${SEM_ANCHOR_TRAIN_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_manual_anchor.csv}"
 ENABLE_ANCHOR_FINETUNE="${NIGHTLY_ENABLE_ANCHOR_FINETUNE:-1}"
 ANCHOR_BATCH_SIZE="${NIGHTLY_ANCHOR_BATCH_SIZE:-4}"
 ANCHOR_EPOCHS="${NIGHTLY_ANCHOR_EPOCHS:-1}"
@@ -61,14 +141,86 @@ BATCH_SIZE="${SEM_BATCH_SIZE:-8}"
 EPOCHS="${SEM_EPOCHS:-1}"
 WARMUP_STEPS="${SEM_WARMUP_STEPS:-50}"
 LEARNING_RATE="${SEM_LEARNING_RATE:-1.8e-6}"
-UNSUP_PAIRS_JSONL="${SEM_UNSUP_PAIRS_JSONL:-data/unsupervised_pairs_v26.jsonl}"
-GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-data/gold_v26_calib.csv}"
-GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-data/gold_v26_eval.csv}"
+UNSUP_PAIRS_JSONL="${SEM_UNSUP_PAIRS_JSONL:-$NIGHTLY_ROOT/data/gold/unsupervised_pairs_v26.jsonl}"
+GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_calib.csv}"
+GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_eval.csv}"
 BUILD_TIMEOUT_SEC="${NIGHTLY_BUILD_TIMEOUT_SEC:-1200}"
 PRETRAIN_TIMEOUT_SEC="${NIGHTLY_PRETRAIN_TIMEOUT_SEC:-10800}"
 ANCHOR_TIMEOUT_SEC="${NIGHTLY_ANCHOR_TIMEOUT_SEC:-7200}"
 EVAL_TIMEOUT_SEC="${NIGHTLY_EVAL_TIMEOUT_SEC:-1800}"
 REGRESSION_TIMEOUT_SEC="${NIGHTLY_REGRESSION_TIMEOUT_SEC:-1200}"
+
+BASE_MODEL="$(to_abs_path "$BASE_MODEL")"
+OUTPUT_MODEL="$(to_abs_path "$OUTPUT_MODEL")"
+ANCHOR_MODEL="$(to_abs_path "$ANCHOR_MODEL")"
+OUTPUT_CALIB="$(to_abs_path "$OUTPUT_CALIB")"
+BASE_CALIB="$(to_abs_path "$BASE_CALIB")"
+ANCHOR_TRAIN_CSV="$(to_abs_path "$ANCHOR_TRAIN_CSV")"
+UNSUP_PAIRS_JSONL="$(to_abs_path "$UNSUP_PAIRS_JSONL")"
+GOLD_CALIB_CSV="$(to_abs_path "$GOLD_CALIB_CSV")"
+GOLD_EVAL_CSV="$(to_abs_path "$GOLD_EVAL_CSV")"
+PUZZLES_JSON="$(to_abs_path "$PUZZLES_JSON")"
+MANUAL_OVERRIDES_JSON="$(to_abs_path "$MANUAL_OVERRIDES_JSON")"
+SCORED_CSV="$(to_abs_path "$SCORED_CSV")"
+
+echo "[nightly][paths] PYTHON_BIN=$PYTHON_BIN"
+echo "[nightly][paths] NIGHTLY_ROOT=$NIGHTLY_ROOT"
+echo "[nightly][paths] PROJECT_ROOT=$PROJECT_ROOT"
+echo "[nightly][paths] WORK_DIR=$WORK_DIR"
+echo "[nightly][paths] SYNC_BACK_ROOT=$SYNC_BACK_ROOT"
+echo "[nightly][paths] BASE_MODEL=$BASE_MODEL"
+echo "[nightly][paths] OUTPUT_MODEL=$OUTPUT_MODEL"
+echo "[nightly][paths] ANCHOR_MODEL=$ANCHOR_MODEL"
+echo "[nightly][paths] BASE_CALIB=$BASE_CALIB"
+echo "[nightly][paths] OUTPUT_CALIB=$OUTPUT_CALIB"
+echo "[nightly][paths] ANCHOR_TRAIN_CSV=$ANCHOR_TRAIN_CSV"
+echo "[nightly][paths] UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL"
+echo "[nightly][paths] GOLD_CALIB_CSV=$GOLD_CALIB_CSV"
+echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
+echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
+echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
+echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
+
+ensure_under_nightly "$WORK_DIR"
+ensure_under_nightly "$BASE_MODEL"
+ensure_under_nightly "$OUTPUT_MODEL"
+ensure_under_nightly "$ANCHOR_MODEL"
+ensure_under_nightly "$BASE_CALIB"
+ensure_under_nightly "$OUTPUT_CALIB"
+ensure_under_nightly "$ANCHOR_TRAIN_CSV"
+ensure_under_nightly "$UNSUP_PAIRS_JSONL"
+ensure_under_nightly "$GOLD_CALIB_CSV"
+ensure_under_nightly "$GOLD_EVAL_CSV"
+assert_readable_file "$PUZZLES_JSON"
+assert_readable_file "$MANUAL_OVERRIDES_JSON"
+assert_readable_file "$SCORED_CSV"
+
+assert_writable_dir "$NIGHTLY_ROOT"
+assert_writable_dir "$WORK_DIR"
+assert_writable_dir "$(dirname "$OUTPUT_MODEL")"
+assert_writable_dir "$(dirname "$ANCHOR_MODEL")"
+assert_writable_dir "$(dirname "$OUTPUT_CALIB")"
+assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/models")"
+assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/data")"
+
+if [[ "$SYNC_BACK_ROOT" != "$PROJECT_ROOT" && "$SYNC_BACK_ROOT" != "$NIGHTLY_ROOT/sync_back" ]]; then
+  echo "[nightly] unsupported NIGHTLY_SYNC_BACK_ROOT=$SYNC_BACK_ROOT (allowed: PROJECT_ROOT or $NIGHTLY_ROOT/sync_back)" >&2
+  exit 1
+fi
+
+assert_readable_file "$BASE_CALIB"
+assert_readable_file "$BASE_MODEL/config_sentence_transformers.json"
+
+if [[ "$DRY_RUN" != "1" ]]; then
+  assert_readable_file "$ANCHOR_TRAIN_CSV"
+fi
+
+if [[ "$ENFORCE_FREE_SPACE_CHECK" == "1" ]]; then
+  check_free_space "$NIGHTLY_ROOT" "$MIN_FREE_GB"
+fi
+
+echo "[nightly][df]"
+df -h "$NIGHTLY_ROOT"
 
 CURRENT_ROUND=""
 CURRENT_ROUND_OUTPUT_MODEL=""
@@ -99,6 +251,17 @@ run_with_timeout() {
   local timeout_sec="$2"
   local start_ts now_ts pid
 
+  kill_process_tree() {
+    local root_pid="$1"
+    local sig="$2"
+    local child
+    while IFS= read -r child; do
+      [[ -n "$child" ]] || continue
+      kill_process_tree "$child" "$sig"
+    done < <(pgrep -P "$root_pid" 2>/dev/null || true)
+    kill "-$sig" "$root_pid" 2>/dev/null || true
+  }
+
   if [[ "$timeout_sec" -le 0 ]]; then
     eval "$cmd"
     return $?
@@ -114,9 +277,11 @@ run_with_timeout() {
     now_ts="$(date +%s)"
     if (( now_ts - start_ts >= timeout_sec )); then
       echo "[nightly] timeout after ${timeout_sec}s, kill pid=$pid"
-      kill "$pid" 2>/dev/null || true
+      kill_process_tree "$pid" TERM
       sleep 2
-      kill -9 "$pid" 2>/dev/null || true
+      if kill -0 "$pid" 2>/dev/null; then
+        kill_process_tree "$pid" KILL
+      fi
       wait "$pid" 2>/dev/null || true
       return 124
     fi
@@ -142,7 +307,7 @@ if ! [[ "$TOTAL_RUNS" =~ ^[1-9][0-9]*$ ]]; then
 fi
 
 echo "[nightly] guard: hint/answer char overlap"
-"$PYTHON_BIN" scripts/guard_hint_answer_overlap_v1.py --input assets/puzzles.json --max-print 200
+"$PYTHON_BIN" scripts/guard_hint_answer_overlap_v1.py --input "$PUZZLES_JSON" --max-print 200
 
 printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\tpromoted\n" > "$SUMMARY_FILE"
 
@@ -172,7 +337,12 @@ run_single_round() {
   echo "[nightly] ===== round ${round}/${TOTAL_RUNS} ====="
   echo "[nightly] round_seed=${round_seed}"
 
-  run_cmd "SEM_SEED=$round_seed $PYTHON_BIN scripts/build_v26_gold_and_unsup.py" "$BUILD_TIMEOUT_SEC" || return $?
+  run_cmd "SEM_SEED=$round_seed \
+    SEM_PUZZLES_JSON=$PUZZLES_JSON \
+    SEM_MANUAL_OVERRIDES=$MANUAL_OVERRIDES_JSON \
+    SEM_SCORED_CSV=$SCORED_CSV \
+    SEM_GOLD_MANUAL_ANCHOR_CSV=$ANCHOR_TRAIN_CSV \
+    $PYTHON_BIN scripts/build_v26_gold_and_unsup.py" "$BUILD_TIMEOUT_SEC" || return $?
 
   run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
     SEM_SEED=$round_seed \
@@ -441,13 +611,13 @@ cat "$SUMMARY_FILE"
 
 # 自动同步晋升产物到开发仓库
 if [[ -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
-  if [[ -n "$SYNC_BACK_ROOT" && -d "$SYNC_BACK_ROOT" && "$SYNC_BACK_ROOT" != "$ROOT_DIR" ]]; then
-    echo "[nightly] rsync晋升模型到开发仓库: $SYNC_BACK_ROOT"
+  if [[ -n "$SYNC_BACK_ROOT" && -d "$SYNC_BACK_ROOT" ]]; then
+    echo "[nightly] rsync晋升模型到目标目录: $SYNC_BACK_ROOT"
     mkdir -p "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")" "$SYNC_BACK_ROOT/data"
     rsync -a --delete "$BASE_MODEL/" "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")/"
     rsync -a "$BASE_CALIB" "$SYNC_BACK_ROOT/data/$(basename "$BASE_CALIB")"
     echo "[nightly] rsync完成"
   else
-    echo "[nightly] skip sync-back: NIGHTLY_SYNC_BACK_ROOT is empty, missing, or same as ROOT_DIR"
+    echo "[nightly] skip sync-back: NIGHTLY_SYNC_BACK_ROOT is empty or missing"
   fi
 fi
