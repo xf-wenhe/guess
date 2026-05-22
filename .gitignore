@@ -58,3 +58,6 @@ embedding_server.log
 build/
 data/
 models/
+.nightly/
+.claude/worktrees/
+.nightly/workspaces/**/.claude/worktrees/
