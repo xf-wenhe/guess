@@ -310,6 +310,7 @@ echo "[nightly] guard: hint/answer char overlap"
 "$PYTHON_BIN" scripts/guard_hint_answer_overlap_v1.py --input "$PUZZLES_JSON" --max-print 200
 
 printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\tpromoted\n" > "$SUMMARY_FILE"
+PROMOTED_ANY=0
 
 run_single_round() {
   local round="$1"
@@ -543,6 +544,7 @@ PY
       echo "[nightly] round ${round}: promoted default model=$BASE_MODEL"
       echo "[nightly] round ${round}: promoted default calib=$BASE_CALIB"
       promoted="True"
+      PROMOTED_ANY=1
     else
       echo "[nightly] round ${round}: auto promote disabled, keep as candidate only"
     fi
@@ -609,8 +611,8 @@ echo "[nightly] final_base_calib=$BASE_CALIB"
 echo "[nightly] round_summary=$SUMMARY_FILE"
 cat "$SUMMARY_FILE"
 
-# 自动同步晋升产物到开发仓库
-if [[ -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
+# 自动同步晋升产物到开发仓库（仅当本次运行发生晋升）
+if [[ "$PROMOTED_ANY" == "1" && -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
   if [[ -n "$SYNC_BACK_ROOT" && -d "$SYNC_BACK_ROOT" ]]; then
     echo "[nightly] rsync晋升模型到目标目录: $SYNC_BACK_ROOT"
     mkdir -p "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")" "$SYNC_BACK_ROOT/data"
@@ -620,4 +622,6 @@ if [[ -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
   else
     echo "[nightly] skip sync-back: NIGHTLY_SYNC_BACK_ROOT is empty or missing"
   fi
+else
+  echo "[nightly] skip sync-back: no promotion in this run"
 fi
