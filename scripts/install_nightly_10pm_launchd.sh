@@ -120,7 +120,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>
-    <string>4</string>
+    <string>1</string>
     <key>NIGHTLY_CONTINUE_ON_ROUND_ERROR</key>
     <string>1</string>
     <key>NIGHTLY_BUILD_TIMEOUT_SEC</key>
@@ -214,6 +214,6 @@ echo "base_model_target: $BASE_MODEL_TARGET"
 echo "base_calib_source: $BASE_CALIB_SOURCE"
 echo "base_calib_target: $BASE_CALIB_TARGET"
 echo "strict gate: mae>=0.005 acc>=0.0 strict_improve=1 no_degrade_all=0 auto_promote=1 delete_old=1"
-echo "strategy: nightly 4 rounds, per-round seed drift, each round gate+promote, reject->delete candidate, anchor finetune=1, max_pairs=1600, lr=1.8e-6, anchor_lr=1.5e-6"
+echo "strategy: nightly single run, gate+promote, reject->delete candidate, anchor finetune=1, max_pairs=1600, lr=1.8e-6, anchor_lr=1.5e-6"
 echo "check: launchctl list | grep ${AGENT_ID}"
 echo "logs: $STDOUT_LOG / $STDERR_LOG"

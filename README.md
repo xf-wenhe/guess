@@ -208,6 +208,7 @@ SEM_MODEL_PATH=models/bge-m3-finetuned-v26-unsup \
 - `scripts/nightly_train_v26.sh`：执行一轮夜间训练（无标注预训练 + 手工锚点回灌 + 金标校准验收 + 回归检查 + 达标才晋升默认）
 - `scripts/install_nightly_10pm_launchd.sh`：安装 `launchd` 定时任务（每天 23:00）
 - `scripts/uninstall_nightly_10pm_launchd.sh`：卸载定时任务
+- `scripts/verify_nightly_outcome_v26.sh`：一键验收夜训结果（晋升、模型回写、校准回写、候选清理）
 
 安装定时任务：
 
@@ -239,7 +240,7 @@ NIGHTLY_DRY_RUN=1 bash scripts/nightly_train_v26.sh
 - `NIGHTLY_DELETE_REJECTED_CANDIDATE=1`：未达标时自动删除候选模型与候选校准（默认开启）
 - `NIGHTLY_MIN_MAE_IMPROVEMENT=0.01`：默认要求 `cal_mae` 至少下降 0.01 才算达标
 - `NIGHTLY_MIN_ACC_IMPROVEMENT=0.3`：默认要求 `cal_bucket_acc` 至少上升 0.3 才算达标
-- `NIGHTLY_TOTAL_RUNS=2`：默认每晚从 23:00 开始连续训练 2 轮；每轮都和当前本地默认模型对比，达标则替换并删除旧默认模型
+- `NIGHTLY_TOTAL_RUNS=1`：默认每晚执行 1 轮训练（单链路、单候选名）
 
 训练节奏与稳定性参数（建议）：
 - `NIGHTLY_PROMOTE_WEEKDAYS=6,7`：仅周末执行晋升判定（工作日只训练候选）
@@ -257,10 +258,22 @@ NIGHTLY_MIN_MAE_IMPROVEMENT=0.2 NIGHTLY_MIN_ACC_IMPROVEMENT=2.0 bash scripts/nig
 ```
 
 日志位置：
-- `tmp/nightly_train_v26_*.log`
-- `tmp/launchd_nightly_v26.out.log`
-- `tmp/launchd_nightly_v26.err.log`
-- `tmp/nightly_round_summary_*.txt`（逐轮汇总：round、mae、acc、是否通过回归、是否晋升）
+- `.nightly/data/tmp/nightly_train_v26_*.log`
+- `.nightly/logs/launchd_nightly_v26.out.log`
+- `.nightly/logs/launchd_nightly_v26.err.log`
+- `.nightly/data/tmp/nightly_round_summary_*.txt`（逐轮汇总：round、mae、acc、是否通过回归、是否晋升）
+
+夜训后验收（默认严格要求本轮晋升成功）：
+
+```bash
+bash scripts/verify_nightly_outcome_v26.sh
+```
+
+如只检查流程完整性、允许本轮未晋升：
+
+```bash
+bash scripts/verify_nightly_outcome_v26.sh --allow-reject
+```
 
 ## 生产默认与回滚
 

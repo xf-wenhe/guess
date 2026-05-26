@@ -6,7 +6,16 @@
       "Bash(python xuanheng_check_answer.py 化学)",
       "Bash(python xuanheng_check_answer.py 物理)",
       "Bash(python xuanheng_check_answer.py 生物)",
-      "Bash(python xuanheng_check_answer.py 文学)"
+      "Bash(python xuanheng_check_answer.py 文学)",
+      "Bash(ls /tmp/)",
+      "Read(//private/tmp/**)",
+      "Bash(flutter pub *)",
+      "Bash(flutter analyze *)",
+      "Bash(printf '%s\\\\n' 'import re,textwrap' > /tmp/ui_fix.py && echo \"wrote script header\")",
+      "Bash(git push *)"
+    ],
+    "additionalDirectories": [
+      "/tmp"
     ]
   }
 }

@@ -135,7 +135,7 @@ fi
 2. **我需要创建的文件**（你确认后我立即创建）：
    - `scripts/train_v28c_mse_contrastive.py` — 新训练脚本
    - `scripts/build_v28_gold_calib_supplement.py` — 校准数据补充脚本
-   - 更新 `scripts/nightly_train_v26.sh` 或创建 `scripts/nightly_train_v28.sh`
+   - 更新 `scripts/nightly_train_v26.sh`（当前仅保留单一夜训管线）
 
 3. **不需要你提供额外数据**，所有训练数据已就绪（16,034 条）。
 

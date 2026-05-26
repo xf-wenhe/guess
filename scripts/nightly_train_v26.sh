@@ -133,7 +133,7 @@ MIN_MAE_IMPROVEMENT="${NIGHTLY_MIN_MAE_IMPROVEMENT:-0.0}"
 MIN_ACC_IMPROVEMENT="${NIGHTLY_MIN_ACC_IMPROVEMENT:-0.0}"
 REQUIRE_NO_DEGRADE_ALL="${NIGHTLY_REQUIRE_NO_DEGRADE_ALL:-0}"
 REQUIRE_STRICT_IMPROVEMENT="${NIGHTLY_REQUIRE_STRICT_IMPROVEMENT:-1}"
-TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-4}"
+TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-1}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
 MAX_PAIRS="${SEM_MAX_PAIRS:-1600}"
@@ -210,6 +210,8 @@ fi
 
 assert_readable_file "$BASE_CALIB"
 assert_readable_file "$BASE_MODEL/config_sentence_transformers.json"
+assert_readable_file "$PROJECT_ROOT/models/$(basename "$BASE_MODEL")/config_sentence_transformers.json"
+assert_readable_file "$PROJECT_ROOT/data/$(basename "$BASE_CALIB")"
 
 if [[ "$DRY_RUN" != "1" ]]; then
   assert_readable_file "$ANCHOR_TRAIN_CSV"
@@ -221,6 +223,10 @@ fi
 
 echo "[nightly][df]"
 df -h "$NIGHTLY_ROOT"
+
+echo "[nightly] sync base artifacts from project to nightly root"
+rsync -a --delete "$PROJECT_ROOT/models/$(basename "$BASE_MODEL")/" "$BASE_MODEL/"
+rsync -a "$PROJECT_ROOT/data/$(basename "$BASE_CALIB")" "$BASE_CALIB"
 
 CURRENT_ROUND=""
 CURRENT_ROUND_OUTPUT_MODEL=""
@@ -316,9 +322,9 @@ run_single_round() {
   local round="$1"
   local round_stamp="${STAMP}_r${round}"
   local round_seed="$((BASE_SEED + round - 1))"
-  local round_output_model="${OUTPUT_MODEL}_r${round}"
-  local round_anchor_model="${ANCHOR_MODEL}_r${round}"
-  local round_output_calib="$WORK_DIR/semantic_calibration_local_candidate_${round_stamp}.json"
+  local round_output_model="$OUTPUT_MODEL"
+  local round_anchor_model="$ANCHOR_MODEL"
+  local round_output_calib="$OUTPUT_CALIB"
   local pretrain_metrics_json="$WORK_DIR/nightly_pretrain_metrics_${round_stamp}.json"
   local anchor_metrics_json="$WORK_DIR/nightly_anchor_metrics_${round_stamp}.json"
   local base_metrics_json="$WORK_DIR/nightly_base_metrics_${round_stamp}.json"

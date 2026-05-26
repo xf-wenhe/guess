@@ -28,14 +28,14 @@ is completed.
 
 ## Candidate Model Workflow
 
-- Candidate training data builder: `scripts/build_v28c_balanced_train.py`
-- Candidate train script: `scripts/train_v28c_mse_contrastive.py`
-- Candidate nightly wrapper: `scripts/nightly_train_v28.sh`
-- Candidate calibration/eval: `scripts/eval_v26_gold.py` with v28 gold CSV env vars
+- Candidate nightly wrapper: `scripts/nightly_train_v26.sh`
+- Candidate calibration/eval: `scripts/eval_v26_gold.py`
+- Candidate training output path: `.nightly/data/models/bge-m3-finetuned-local-candidate`
 
-Puzzle hints remain available to v28c training, but the builder now labels
-low-quality hint pairs as `puzzle_hint_low_quality` and emits `sample_weight` so
-training can reduce their influence instead of treating every hint equally.
+Nightly now uses a single pipeline: copy production model/calibration from
+workspace `models/` and `data/` into `.nightly/data/`, train candidate,
+promote on pass, sync back to workspace only on promotion, and clean candidate
+artifacts after run.
 
 ## Shared Helper Modules
 
@@ -49,7 +49,7 @@ training can reduce their influence instead of treating every hint equally.
 Only delete a script or generated data file when all of the following are true:
 
 - It is not referenced by app code, preflight, nightly training, or this document.
-- It is not needed to reproduce the current production model or v28c candidate.
+- It is not needed to reproduce the current production model or current nightly candidate.
 - It is not the latest report for a current gate.
 - The deletion list is reviewed before removal.
 
