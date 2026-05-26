@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 class AppFonts {
   const AppFonts._();
 
-  static const String? primaryFamily = null;
+  static const String primaryFamily = 'NotoSansSC';
 
   static const regular = FontWeight.w400;
   static const medium = FontWeight.w500;

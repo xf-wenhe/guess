@@ -223,11 +223,11 @@ class AppTextStyles {
     );
   }
 
-  static TextStyle historyScore(double fontSize) {
+  static TextStyle historyScore(double fontSize, {Color? color}) {
     return TextStyle(
       fontFamily: AppFonts.primaryFamily,
       fontSize: fontSize,
-      color: AppColors.primaryBlueDeep,
+      color: color ?? AppColors.primaryBlueDeep,
       fontWeight: AppFonts.extraBold,
       height: 1.0,
     );

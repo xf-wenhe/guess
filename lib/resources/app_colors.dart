@@ -109,4 +109,15 @@ class AppColors {
     Color(0xFFFFC107),
     Color(0xFFFFE082),
   ];
+
+  // Score heatmap colors
+  static const scoreGray = Color(0xFF94A3B8);   // 0–29%  无关联
+  static const scoreGreen = Color(0xFF16A34A);  // 60–79% 中关联
+  static const scoreAmber = Color(0xFFF59E0B);  // 80–94% 高关联
+  static const scoreGold = Color(0xFFD97706);   // 95–100% 极近
+
+  static const scoreGrayBg = Color(0xFFF1F5F9);
+  static const scoreGreenBg = Color(0xFFF0FDF4);
+  static const scoreAmberBg = Color(0xFFFFFBEB);
+  static const scoreGoldBg = Color(0xFFFEF3C7);
 }

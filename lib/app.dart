@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
 import 'resources/resources.dart';
 import 'screens/guess_home_page.dart';
@@ -12,6 +13,7 @@ class GuessApp extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = ColorScheme.fromSeed(seedColor: AppColors.seed);
     final baseTheme = ThemeData(
+      fontFamily: GoogleFonts.notoSansSc().fontFamily,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.scaffoldBackground,
       useMaterial3: true,

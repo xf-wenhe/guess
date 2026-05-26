@@ -3,6 +3,22 @@ import 'package:guess/resources/resources.dart';
 
 import '../models/guess_models.dart';
 
+Color _scoreColor(int match) {
+  if (match >= 95) return AppColors.scoreGold;
+  if (match >= 80) return AppColors.scoreAmber;
+  if (match >= 60) return AppColors.scoreGreen;
+  if (match >= 30) return AppColors.primaryBlueBright;
+  return AppColors.scoreGray;
+}
+
+Color _scoreBg(int match) {
+  if (match >= 95) return AppColors.scoreGoldBg;
+  if (match >= 80) return AppColors.scoreAmberBg;
+  if (match >= 60) return AppColors.scoreGreenBg;
+  if (match >= 30) return AppColors.primaryBlueSoft;
+  return AppColors.scoreGrayBg;
+}
+
 class GuessHistoryList extends StatelessWidget {
   const GuessHistoryList({
     super.key,
@@ -48,10 +64,11 @@ class GuessHistoryList extends StatelessWidget {
               height: rowHeight,
               child: Container(
                 padding: EdgeInsets.symmetric(horizontal: 12, vertical: verticalPadding),
+                clipBehavior: Clip.antiAlias,
                 decoration: BoxDecoration(
-                  color: hasData ? AppColors.historyRow : AppColors.historyRowEmpty,
+                  color: (hasData && slotItem != null) ? _scoreBg(slotItem.match) : (hasData ? AppColors.historyRow : AppColors.historyRowEmpty),
                   borderRadius: BorderRadius.circular(14),
-                  border: Border.all(color: AppColors.historyRowBorder),
+                  border: Border.all(color: hasData && slotItem != null ? _scoreColor(slotItem.match).withOpacity(0.3) : AppColors.historyRowBorder),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.start,
@@ -96,7 +113,7 @@ class GuessHistoryList extends StatelessWidget {
                               children: [
                                 Icon(
                                   Icons.bolt,
-                                  color: AppColors.primaryBlue,
+                                  color: _scoreColor(slotItem.match),
                                   size: scoreIconSize,
                                 ),
                                 const SizedBox(width: 4),
@@ -106,7 +123,7 @@ class GuessHistoryList extends StatelessWidget {
                                     forceStrutHeight: true,
                                     height: 1.0,
                                   ),
-                                  style: AppTextStyles.historyScore(scoreBigFont),
+                                  style: AppTextStyles.historyScore(scoreBigFont, color: _scoreColor(slotItem.match)),
                                 ),
                               ],
                             ),

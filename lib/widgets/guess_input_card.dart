@@ -70,17 +70,44 @@ class GuessInputCard extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          ElevatedButton(
-            onPressed: submitDisabled ? null : onSubmit,
-            style: ElevatedButton.styleFrom(
-              minimumSize: const Size(90, 44),
-              backgroundColor: AppColors.primaryBlue,
-              foregroundColor: AppColors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+          Container(
+            decoration: BoxDecoration(
+              gradient: const LinearGradient(
+                colors: [AppColors.primaryBlue, AppColors.primaryBlueBright],
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
               ),
+              borderRadius: BorderRadius.circular(14),
+              boxShadow: const [
+                BoxShadow(
+                  color: AppColors.primaryBlueShadow,
+                  blurRadius: 8,
+                  offset: Offset(0, 3),
+                ),
+              ],
             ),
-            child: Text(submitting ? AppStrings.inputSubmitting : AppStrings.inputSend),
+            child: ElevatedButton(
+              onPressed: submitDisabled ? null : onSubmit,
+              style: ElevatedButton.styleFrom(
+                minimumSize: const Size(90, 44),
+                backgroundColor: AppColors.transparent,
+                foregroundColor: AppColors.white,
+                shadowColor: AppColors.transparent,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+              ),
+              child: submitting
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2.2,
+                        valueColor: AlwaysStoppedAnimation<Color>(AppColors.white),
+                      ),
+                    )
+                  : Text(AppStrings.inputSend),
+            ),
           ),
         ],
       ),

@@ -132,6 +132,8 @@ class GuessStatusCard extends StatelessWidget {
             ),
           ],
         ),
+        const SizedBox(height: 4),
+        _AttemptDots(attemptsLeft: attemptsLeft),
         const Text(
           AppStrings.totalAttempts,
           style: AppTextStyles.statusCaption,
@@ -180,6 +182,33 @@ class GuessStatusCard extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+class _AttemptDots extends StatelessWidget {
+  const _AttemptDots({required this.attemptsLeft});
+
+  final int attemptsLeft;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: List.generate(6, (i) {
+        final used = i >= attemptsLeft;
+        return Container(
+          width: 6,
+          height: 6,
+          margin: const EdgeInsets.only(right: 4),
+          decoration: BoxDecoration(
+            shape: BoxShape.circle,
+            color: used
+                ? AppColors.white.withOpacity(0.25)
+                : AppColors.white,
+          ),
+        );
+      }),
     );
   }
 }
