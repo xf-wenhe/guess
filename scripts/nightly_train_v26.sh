@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
+ROOT_DIR="${NIGHTLY_SCRIPT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT_DIR"
 
 DEFAULT_NIGHTLY_ROOT="$ROOT_DIR/.nightly"

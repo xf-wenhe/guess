@@ -204,6 +204,26 @@ SEM_MODEL_PATH=models/bge-m3-finetuned-v26-unsup \
 
 ## 每晚 23:00 自动训练（macOS）
 
+推荐（不依赖登录会话，不易漏跑）：
+
+```bash
+sudo bash scripts/install_nightly_10pm_daemon.sh
+```
+
+查看 daemon 状态：
+
+```bash
+sudo launchctl print system/com.guess.nightly-train-v26.daemon | egrep 'state =|last exit code =|runs ='
+```
+
+卸载 daemon：
+
+```bash
+sudo bash scripts/uninstall_nightly_10pm_daemon.sh
+```
+
+兼容方案（LaunchAgent，依赖用户会话）：
+
 已提供脚本：
 - `scripts/nightly_train_v26.sh`：执行一轮夜间训练（无标注预训练 + 手工锚点回灌 + 金标校准验收 + 回归检查 + 达标才晋升默认）
 - `scripts/install_nightly_10pm_launchd.sh`：安装 `launchd` 定时任务（每天 23:00）
