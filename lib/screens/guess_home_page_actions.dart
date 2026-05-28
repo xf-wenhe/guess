@@ -102,7 +102,7 @@ extension _GuessHomePageActions on _GuessHomePageState {
       context: context,
       barrierDismissible: true,
       barrierLabel: AppStrings.resultBarrierLabel,
-      barrierColor: AppColors.black54,
+      barrierColor: Colors.black87,
       transitionDuration: const Duration(milliseconds: 220),
       pageBuilder: (context, _, __) {
         return ResultDialog(guess: guess, similarity: similarity);
@@ -133,8 +133,9 @@ extension _GuessHomePageActions on _GuessHomePageState {
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
       ),
+      backgroundColor: const Color(0xFF1A1A2E),
       builder: (context) {
         final bottomInset = MediaQuery.of(context).viewInsets.bottom;
         return Padding(
@@ -150,49 +151,88 @@ extension _GuessHomePageActions on _GuessHomePageState {
             children: [
               const Text(
                 AppStrings.localModelDir,
-                style: AppTextStyles.settingsTitle,
+                style: TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: 16,
+                  color: AppColors.textPrimary,
+                  fontWeight: AppFonts.bold,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: localController,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: InputDecoration(
                   hintText: AppStrings.localModelDirHint,
+                  hintStyle: const TextStyle(color: AppColors.textMuted),
                   filled: true,
-                  fillColor: AppColors.sheetInputFill,
-                  border: OutlineInputBorder(borderSide: BorderSide.none),
+                  fillColor: Colors.white.withOpacity(0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.neonCyan),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
                 AppStrings.localModelDirCaption,
-                style: AppTextStyles.settingsCaption,
+                style: TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               const Text(
                 AppStrings.onlineModelUrl,
-                style: AppTextStyles.settingsTitle,
+                style: TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: 16,
+                  color: AppColors.textPrimary,
+                  fontWeight: AppFonts.bold,
+                ),
               ),
               const SizedBox(height: 8),
               TextField(
                 controller: controller,
-                decoration: const InputDecoration(
+                style: const TextStyle(color: AppColors.textPrimary),
+                decoration: InputDecoration(
                   hintText: AppStrings.onlineModelUrlHint,
+                  hintStyle: const TextStyle(color: AppColors.textMuted),
                   filled: true,
-                  fillColor: AppColors.sheetInputFill,
-                  border: OutlineInputBorder(borderSide: BorderSide.none),
+                  fillColor: Colors.white.withOpacity(0.06),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  focusedBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: const BorderSide(color: AppColors.neonCyan),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),
               const Text(
                 AppStrings.onlineModelUrlCaption,
-                style: AppTextStyles.settingsCaption,
+                style: TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: 12,
+                  color: AppColors.textSecondary,
+                ),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: 16),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppColors.textSecondary,
+                    ),
                     child: const Text(AppStrings.cancel),
                   ),
                   const SizedBox(width: 8),
@@ -201,6 +241,10 @@ extension _GuessHomePageActions on _GuessHomePageState {
                       'online': controller.text.trim(),
                       'local': localController.text.trim(),
                     }),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.neonCyan,
+                      foregroundColor: const Color(0xFF1A1A2E),
+                    ),
                     child: const Text(AppStrings.save),
                   ),
                 ],

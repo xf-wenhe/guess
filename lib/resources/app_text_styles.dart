@@ -33,7 +33,7 @@ class AppTextStyles {
 
   static const statusTip = TextStyle(
     fontFamily: AppFonts.primaryFamily,
-    color: AppColors.primaryTealDark,
+    color: AppColors.primaryTeal,
     fontSize: 12,
     fontWeight: AppFonts.bold,
   );

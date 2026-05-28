@@ -12,6 +12,7 @@ import '../services/embedding_service.dart';
 import '../services/local_embedding_runner.dart';
 import '../services/puzzle_repository.dart';
 import '../utils/text_utils.dart';
+import '../widgets/aurora_background.dart';
 import '../widgets/guess_hint_card.dart';
 import '../widgets/guess_history_list.dart';
 import '../widgets/guess_input_card.dart';
@@ -340,9 +341,9 @@ class _GuessHomePageState extends State<GuessHomePage>
                     padding:
                         const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                     decoration: BoxDecoration(
-                      color: AppColors.primaryTealSoft,
+                      color: AppColors.primaryTeal.withOpacity(0.15),
                       borderRadius: BorderRadius.circular(999),
-                      border: Border.all(color: AppColors.primaryTealBorder),
+                      border: Border.all(color: AppColors.primaryTeal.withOpacity(0.3)),
                     ),
                     child: Text(
                       _statusTip!,
@@ -361,8 +362,8 @@ class _GuessHomePageState extends State<GuessHomePage>
             tooltip: AppStrings.tooltipCheckConnection,
             onPressed: _refreshingEmbedding ? null : _refreshEmbedding,
             style: IconButton.styleFrom(
-              backgroundColor: AppColors.primaryTealSoft,
-              foregroundColor: AppColors.primaryTealDark,
+              backgroundColor: AppColors.primaryTeal.withOpacity(0.15),
+              foregroundColor: AppColors.primaryTeal,
             ),
             icon: const Icon(Icons.radar_outlined),
           ),
@@ -371,59 +372,17 @@ class _GuessHomePageState extends State<GuessHomePage>
             tooltip: AppStrings.tooltipModelSettings,
             onPressed: _showEmbeddingSettings,
             style: IconButton.styleFrom(
-              backgroundColor: AppColors.primaryTealSoft,
-              foregroundColor: AppColors.primaryTealDark,
+              backgroundColor: AppColors.primaryTeal.withOpacity(0.15),
+              foregroundColor: AppColors.primaryTeal,
             ),
             icon: const Icon(Icons.tune),
           ),
           const SizedBox(width: 8),
         ],
       ),
-      body: Stack(
+      body: AuroraBackground(
+        child: Stack(
         children: [
-          Positioned.fill(
-            child: Stack(
-              children: [
-                const DecoratedBox(
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: [
-                        AppColors.decorMint,
-                        AppColors.decorIvory,
-                        AppColors.decorWarm,
-                      ],
-                    ),
-                  ),
-                ),
-                Positioned(
-                  top: -120,
-                  right: -90,
-                  child: Container(
-                    width: 280,
-                    height: 280,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.seed.withOpacity(0.1),
-                    ),
-                  ),
-                ),
-                Positioned(
-                  bottom: -130,
-                  left: -100,
-                  child: Container(
-                    width: 300,
-                    height: 300,
-                    decoration: BoxDecoration(
-                      shape: BoxShape.circle,
-                      color: AppColors.decorAmber.withOpacity(0.1),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
           if (_controller.loading)
             const Center(child: CircularProgressIndicator())
           else if (!_controller.hasPuzzles || current == null)
@@ -447,6 +406,7 @@ class _GuessHomePageState extends State<GuessHomePage>
               current: current,
             ),
         ],
+      ),
       ),
     );
   }

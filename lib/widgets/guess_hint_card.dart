@@ -22,7 +22,8 @@ class GuessHintCard extends StatelessWidget {
     final double height = fixedHeight ?? 320;
     const List<double> weights = [1.15, 1.10, 0.95, 0.95, 0.95, 0.95, 0.95];
     final double baseHeight = (height - gap * (total - 1)) / 7.0;
-    final List<String> visibleHints = List.generate(total, (i) => i < hints.length ? hints[i] : '');
+    final List<String> visibleHints =
+        List.generate(total, (i) => i < hints.length ? hints[i] : '');
 
     return SizedBox(
       height: height,
@@ -36,69 +37,95 @@ class GuessHintCard extends StatelessWidget {
           final bool isCurrent = i == hintIndex;
           final double itemHeight = baseHeight * weights[i];
           final double dotHeight = (itemHeight - 4).clamp(18, 28).toDouble();
-          final double dotWidth = dotHeight;
           final double fontSize = itemHeight < 34 ? 13 : 15;
-          final double lineHeight = (itemHeight - 8).clamp(8, 40).toDouble();
-          final double verticalPadding = (itemHeight * 0.14).clamp(2, 8).toDouble();
+          final double lineHeight =
+              (itemHeight - 8).clamp(8, 40).toDouble();
+          final double verticalPadding =
+              (itemHeight * 0.14).clamp(2, 8).toDouble();
+
+          // 当前激活 = 霓虹琥珀发光, 已解锁 = 青绿, 未解锁 = 灰色
+
           return SizedBox(
             height: itemHeight,
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
+                // 编号圆点
                 Container(
-                  width: dotWidth,
+                  width: dotHeight,
                   height: dotHeight,
                   margin: EdgeInsets.zero,
                   decoration: BoxDecoration(
                     gradient: isCurrent
-                        ? const LinearGradient(
-                            colors: [AppColors.primaryTeal, AppColors.primaryTealDark],
+                        ? LinearGradient(
+                            colors: [
+                              AppColors.neonAmber,
+                              AppColors.neonOrange,
+                            ],
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
                           )
                         : unlocked
-                            ? const LinearGradient(
-                                colors: [AppColors.primaryTealLight, AppColors.primaryMintSoft],
+                            ? LinearGradient(
+                                colors: [
+                                  AppColors.neonGreen.withOpacity(0.6),
+                                  AppColors.neonGreen.withOpacity(0.3),
+                                ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               )
-                            : const LinearGradient(
-                                colors: [AppColors.neutralGradientStart, AppColors.neutralLine],
+                            : LinearGradient(
+                                colors: [
+                                  AppColors.neutralGradientStart,
+                                  AppColors.neutralLine,
+                                ],
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               ),
                     borderRadius: BorderRadius.circular(dotHeight),
                     boxShadow: isCurrent
                         ? [
-                            const BoxShadow(
-                              color: AppColors.primaryTealShadow,
-                              blurRadius: 8,
-                              offset: Offset(0, 2),
+                            BoxShadow(
+                              color: AppColors.neonAmber.withOpacity(0.5),
+                              blurRadius: 10,
+                              spreadRadius: 1,
                             ),
                           ]
-                        : [],
+                        : unlocked
+                            ? [
+                                BoxShadow(
+                                  color: AppColors.neonGreen.withOpacity(0.15),
+                                  blurRadius: 4,
+                                ),
+                              ]
+                            : [],
                     border: Border.all(
                       color: isCurrent
-                          ? AppColors.primaryTealDark
+                          ? AppColors.neonAmber
                           : unlocked
-                              ? AppColors.primaryMint
+                              ? AppColors.neonGreen.withOpacity(0.4)
                               : AppColors.textDisabled,
-                      width: isCurrent ? 2.2 : 1.2,
+                      width: isCurrent ? 2 : 1,
                     ),
                   ),
                   child: Center(
                     child: Text(
                       '${i + 1}',
-                      style: AppTextStyles.hintIndex(
-                        isCurrent: isCurrent,
-                        unlocked: unlocked,
-                        fontSize: fontSize + (itemHeight < 34 ? 1 : 2),
+                      style: TextStyle(
+                        fontFamily: AppFonts.primaryFamily,
+                        color: isCurrent
+                            ? const Color(0xFF1A1A2E)
+                            : unlocked
+                                ? AppColors.neonGreen
+                                : AppColors.textStatusLight,
+                        fontWeight: AppFonts.black,
+                        fontSize: fontSize + 1,
+                        letterSpacing: 0.2,
                         shadows: isCurrent
-                            ? const [
+                            ? [
                                 Shadow(
-                                  color: AppColors.black12,
-                                  blurRadius: 2,
-                                  offset: Offset(0, 1),
+                                  color: AppColors.neonAmber.withOpacity(0.3),
+                                  blurRadius: 4,
                                 ),
                               ]
                             : null,
@@ -106,13 +133,25 @@ class GuessHintCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                // 连接线
                 if (i != total - 1)
                   Container(
                     width: 2,
                     height: lineHeight,
-                    color: unlocked ? AppColors.primaryMint : AppColors.neutralLine,
+                    decoration: BoxDecoration(
+                      gradient: unlocked
+                          ? LinearGradient(
+                              colors: [
+                                AppColors.neonGreen.withOpacity(0.3),
+                                AppColors.neonGreen.withOpacity(0.1),
+                              ],
+                            )
+                          : null,
+                      color: unlocked ? null : AppColors.neutralLine,
+                    ),
                   ),
                 const SizedBox(width: 8),
+                // 提示文字
                 Expanded(
                   child: unlocked
                       ? AnimatedContainer(
@@ -124,21 +163,22 @@ class GuessHintCard extends StatelessWidget {
                           ),
                           decoration: BoxDecoration(
                             color: isCurrent
-                                ? AppColors.primaryTealLight
+                                ? AppColors.neonAmber.withOpacity(0.1)
                                 : AppColors.panelSurface,
                             borderRadius: BorderRadius.circular(10),
                             border: Border.all(
                               color: isCurrent
-                                  ? AppColors.primaryTealDark
-                                  : AppColors.primaryMintBorder,
+                                  ? AppColors.neonAmber.withOpacity(0.3)
+                                  : AppColors.neonGreen.withOpacity(0.15),
                               width: isCurrent ? 1.2 : 1,
                             ),
                             boxShadow: isCurrent
                                 ? [
-                                    const BoxShadow(
-                                      color: AppColors.primaryTealShadowSoft,
-                                      blurRadius: 5,
-                                      offset: Offset(0, 1),
+                                    BoxShadow(
+                                      color:
+                                          AppColors.neonAmber.withOpacity(0.08),
+                                      blurRadius: 6,
+                                      offset: const Offset(0, 1),
                                     ),
                                   ]
                                 : [],
@@ -147,9 +187,15 @@ class GuessHintCard extends StatelessWidget {
                             '${hintPercents.length > i ? hintPercents[i] : ''}% · ${visibleHints[i]}',
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
-                            style: AppTextStyles.hintText(
-                              isCurrent: isCurrent,
+                            style: TextStyle(
+                              fontFamily: AppFonts.primaryFamily,
                               fontSize: fontSize,
+                              fontWeight: isCurrent
+                                  ? AppFonts.bold
+                                  : AppFonts.medium,
+                              color: isCurrent
+                                  ? AppColors.neonAmber
+                                  : AppColors.textSecondary,
                             ),
                           ),
                         )

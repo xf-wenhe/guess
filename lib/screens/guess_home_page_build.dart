@@ -138,7 +138,7 @@ extension _GuessHomePageBuild on _GuessHomePageState {
         : _controller.history
             .map((e) => e.match)
             .reduce((a, b) => a > b ? a : b);
-    return Card(
+    return _GlassPanel(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: Column(
@@ -146,8 +146,8 @@ extension _GuessHomePageBuild on _GuessHomePageState {
           children: [
             _buildPanelHeader(
               icon: Icons.track_changes_rounded,
-              iconColor: AppColors.primaryBlue,
-              background: AppColors.primaryBlueSoft,
+              iconColor: AppColors.neonBlue,
+              background: AppColors.neonBlue.withOpacity(0.15),
               label: AppStrings.historyTitle,
             ),
             const SizedBox(height: 8),
@@ -182,19 +182,21 @@ extension _GuessHomePageBuild on _GuessHomePageState {
   }
 
   Widget _buildHintPanel(GuessPuzzle current, {double? panelHeight}) {
-    return Card(
+    return _GlassPanel(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
         child: LayoutBuilder(
           builder: (context, constraints) {
-            final hintHeight = (constraints.maxHeight - 34).clamp(120.0, constraints.maxHeight).toDouble();
+            final hintHeight = (constraints.maxHeight - 34)
+                .clamp(120.0, constraints.maxHeight)
+                .toDouble();
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 _buildPanelHeader(
                   icon: Icons.lightbulb_outline_rounded,
-                  iconColor: AppColors.primaryTeal,
-                  background: AppColors.primaryTealSoft,
+                  iconColor: AppColors.neonAmber,
+                  background: AppColors.neonAmber.withOpacity(0.15),
                   label: AppStrings.hintTitle,
                 ),
                 const SizedBox(height: 6),
@@ -226,8 +228,11 @@ extension _GuessHomePageBuild on _GuessHomePageState {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: background,
+            gradient: LinearGradient(
+              colors: [iconColor.withOpacity(0.2), iconColor.withOpacity(0.05)],
+            ),
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(color: iconColor.withOpacity(0.3)),
           ),
           child: Icon(icon, size: 17, color: iconColor),
         ),
@@ -239,6 +244,8 @@ extension _GuessHomePageBuild on _GuessHomePageState {
       ],
     );
   }
+
+  // ... existing error/buildNotice methods ...
 
   Widget _buildError() {
     return Center(
@@ -274,12 +281,68 @@ extension _GuessHomePageBuild on _GuessHomePageState {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
       decoration: BoxDecoration(
         color: background,
-        borderRadius: BorderRadius.circular(10),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: border),
       ),
       child: Text(
         message,
-        style: AppTextStyles.notice(textColor),
+        style: TextStyle(
+          fontFamily: AppFonts.primaryFamily,
+          fontSize: 12,
+          color: textColor,
+          fontWeight: AppFonts.semibold,
+        ),
+      ),
+    );
+  }
+}
+
+/// 玻璃态面板组件
+class _GlassPanel extends StatelessWidget {
+  const _GlassPanel({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(20),
+      child: Stack(
+        children: [
+          // 背景模糊层
+          Positioned.fill(
+            child: Container(
+              decoration: BoxDecoration(
+                color: AppColors.glassPanelBg,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: AppColors.glassPanelBorder,
+                  width: 1,
+                ),
+              ),
+            ),
+          ),
+          // 顶部高光
+          Positioned(
+            top: 0,
+            left: 20,
+            right: 20,
+            child: Container(
+              height: 1,
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    Colors.white.withOpacity(0),
+                    Colors.white.withOpacity(0.15),
+                    Colors.white.withOpacity(0),
+                  ],
+                ),
+              ),
+            ),
+          ),
+          // 内容
+          child,
+        ],
       ),
     );
   }
@@ -297,20 +360,25 @@ class _HistoryMetaChip extends StatelessWidget {
       height: 32,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
-        color: AppColors.primaryBlueSoft,
+        color: AppColors.neonBlue.withOpacity(0.1),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: AppColors.primaryBlueBorder),
+        border: Border.all(color: AppColors.neonBlue.withOpacity(0.2)),
       ),
       child: Row(
         children: [
-          Icon(icon, size: 16, color: AppColors.primaryBlueDeep),
+          Icon(icon, size: 16, color: AppColors.neonBlue),
           const SizedBox(width: 6),
           Expanded(
             child: Text(
               label,
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
-              style: AppTextStyles.historyMetaChip,
+              style: const TextStyle(
+                fontFamily: AppFonts.primaryFamily,
+                fontSize: 13,
+                color: AppColors.neonBlue,
+                fontWeight: AppFonts.bold,
+              ),
             ),
           ),
         ],

@@ -11,12 +11,16 @@ class GuessApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final colorScheme = ColorScheme.fromSeed(seedColor: AppColors.seed);
+    final colorScheme = ColorScheme.fromSeed(
+      seedColor: AppColors.seed,
+      brightness: Brightness.dark,
+    );
     final baseTheme = ThemeData(
       fontFamily: GoogleFonts.notoSansSc().fontFamily,
       colorScheme: colorScheme,
       scaffoldBackgroundColor: AppColors.scaffoldBackground,
       useMaterial3: true,
+      brightness: Brightness.dark,
     );
     final appBarTitleStyle = baseTheme.textTheme.titleLarge?.copyWith(
           fontFamily: AppFonts.primaryFamily,
@@ -40,11 +44,12 @@ class GuessApp extends StatelessWidget {
           centerTitle: true,
         ).copyWith(titleTextStyle: appBarTitleStyle),
         cardTheme: CardTheme(
-          color: AppColors.cardBackground,
+          color: AppColors.glassPanelBg,
           elevation: 0,
+          shadowColor: Colors.transparent,
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(18),
-            side: const BorderSide(color: AppColors.cardBorder, width: 1),
+            borderRadius: BorderRadius.circular(20),
+            side: const BorderSide(color: AppColors.glassPanelBorder, width: 1),
           ),
         ),
         snackBarTheme: SnackBarThemeData(
