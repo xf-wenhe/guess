@@ -71,7 +71,8 @@
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 感恩)",
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 喜悦)",
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 羞涩)",
-      "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 坦诚)"
+      "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 坦诚)",
+      "Bash(launchctl list *)"
     ],
     "additionalDirectories": [
       "/Volumes/新/work/flutter/guess/docs/superpowers"
