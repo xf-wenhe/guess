@@ -4,14 +4,7 @@ set -euo pipefail
 ROOT_DIR="${NIGHTLY_SCRIPT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT_DIR"
 
-DEFAULT_NIGHTLY_ROOT="$ROOT_DIR/.nightly"
-case "$ROOT_DIR" in
-  */.nightly/workspaces/*)
-    DEFAULT_NIGHTLY_ROOT="${ROOT_DIR%%/.nightly/workspaces/*}/.nightly"
-    ;;
-esac
-
-NIGHTLY_ROOT="${NIGHTLY_ROOT:-$DEFAULT_NIGHTLY_ROOT}"
+NIGHTLY_ROOT="${NIGHTLY_ROOT:-$ROOT_DIR/.nightly}"
 if [[ "$NIGHTLY_ROOT" != /* ]]; then
   NIGHTLY_ROOT="$ROOT_DIR/$NIGHTLY_ROOT"
 fi
@@ -23,17 +16,6 @@ to_abs_path() {
   else
     printf '%s' "$ROOT_DIR/$p"
   fi
-}
-
-ensure_under_nightly() {
-  local p="$1"
-  case "$p" in
-    "$NIGHTLY_ROOT"/*) return 0 ;;
-    *)
-      echo "[nightly] path escapes NIGHTLY_ROOT: $p" >&2
-      return 1
-      ;;
-  esac
 }
 
 assert_readable_file() {
@@ -74,13 +56,12 @@ check_free_space() {
   fi
 }
 
+# ---- path defaults (all under project root) ----
+
 WORK_DIR="${NIGHTLY_WORK_DIR:-$NIGHTLY_ROOT/data/tmp}"
-PROJECT_ROOT="${NIGHTLY_PROJECT_ROOT:-${NIGHTLY_ROOT%/.nightly}}"
-SYNC_BACK_ROOT="${NIGHTLY_SYNC_BACK_ROOT:-$PROJECT_ROOT}"
 WORK_DIR="$(to_abs_path "$WORK_DIR")"
-PROJECT_ROOT="$(to_abs_path "$PROJECT_ROOT")"
-SYNC_BACK_ROOT="$(to_abs_path "$SYNC_BACK_ROOT")"
 mkdir -p "$WORK_DIR"
+
 STAMP="$(date +%Y%m%d_%H%M%S)"
 LOG_FILE="$WORK_DIR/nightly_train_v26_${STAMP}.log"
 SUMMARY_FILE="$WORK_DIR/nightly_round_summary_${STAMP}.txt"
@@ -108,6 +89,8 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
 fi
 PYTHON_BIN="$(to_abs_path "$PYTHON_BIN")"
 
+# ---- tunable knobs ----
+
 DRY_RUN="${NIGHTLY_DRY_RUN:-0}"
 ENFORCE_FREE_SPACE_CHECK="${NIGHTLY_ENFORCE_FREE_SPACE_CHECK:-1}"
 MIN_FREE_GB="${NIGHTLY_MIN_FREE_GB:-24}"
@@ -115,11 +98,18 @@ PUZZLES_JSON="${SEM_PUZZLES_JSON:-$ROOT_DIR/assets/puzzles.json}"
 MANUAL_OVERRIDES_JSON="${SEM_MANUAL_OVERRIDES:-$ROOT_DIR/data/manual_similarity_overrides.json}"
 SCORED_CSV="${SEM_SCORED_CSV:-$ROOT_DIR/data/semantic_scoring_user_input_template.csv}"
 
-BASE_MODEL="${SEM_BASE_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-v27-semreal-anchor}"
+# Project model (the source of truth in models/)
+PROJECT_MODEL_NAME="${NIGHTLY_PROJECT_MODEL_NAME:-bge-m3-finetuned-v27-semreal-anchor}"
+PROJECT_MODEL_DIR="$ROOT_DIR/models/$PROJECT_MODEL_NAME"
+PROJECT_CALIB_NAME="${NIGHTLY_PROJECT_CALIB_NAME:-semantic_calibration_v27_semreal_anchor.json}"
+PROJECT_CALIB_PATH="$ROOT_DIR/data/$PROJECT_CALIB_NAME"
+
+# Nightly work paths (inside .nightly/)
+BASE_MODEL="${SEM_BASE_MODEL:-$NIGHTLY_ROOT/data/models/$PROJECT_MODEL_NAME}"
 OUTPUT_MODEL="${SEM_OUTPUT_MODEL:-$NIGHTLY_ROOT/data/models/bge-m3-finetuned-local-candidate}"
 ANCHOR_MODEL="${SEM_ANCHOR_MODEL:-${OUTPUT_MODEL}-anchor}"
-OUTPUT_CALIB="${SEM_OUTPUT_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_local_candidate.json}"
-BASE_CALIB="${SEM_BASE_CALIB:-$NIGHTLY_ROOT/data/calib/semantic_calibration_v27_semreal_anchor.json}"
+OUTPUT_CALIB="${SEM_OUTPUT_CALIB:-$NIGHTLY_ROOT/data/tmp/semantic_calibration_local_candidate.json}"
+BASE_CALIB="${SEM_BASE_CALIB:-$NIGHTLY_ROOT/data/calib/$PROJECT_CALIB_NAME}"
 ANCHOR_TRAIN_CSV="${SEM_ANCHOR_TRAIN_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_manual_anchor.csv}"
 ENABLE_ANCHOR_FINETUNE="${NIGHTLY_ENABLE_ANCHOR_FINETUNE:-1}"
 ANCHOR_BATCH_SIZE="${NIGHTLY_ANCHOR_BATCH_SIZE:-4}"
@@ -127,13 +117,13 @@ ANCHOR_EPOCHS="${NIGHTLY_ANCHOR_EPOCHS:-1}"
 ANCHOR_WARMUP_STEPS="${NIGHTLY_ANCHOR_WARMUP_STEPS:-10}"
 ANCHOR_LEARNING_RATE="${NIGHTLY_ANCHOR_LEARNING_RATE:-1.5e-6}"
 AUTO_PROMOTE="${NIGHTLY_AUTO_PROMOTE:-1}"
-DELETE_OLD_ON_PROMOTE="${NIGHTLY_DELETE_OLD_ON_PROMOTE:-1}"
 DELETE_REJECTED_CANDIDATE="${NIGHTLY_DELETE_REJECTED_CANDIDATE:-1}"
+DELETE_OLD_ON_PROMOTE="${NIGHTLY_DELETE_OLD_ON_PROMOTE:-1}"
 MIN_MAE_IMPROVEMENT="${NIGHTLY_MIN_MAE_IMPROVEMENT:-0.0}"
 MIN_ACC_IMPROVEMENT="${NIGHTLY_MIN_ACC_IMPROVEMENT:-0.0}"
 REQUIRE_NO_DEGRADE_ALL="${NIGHTLY_REQUIRE_NO_DEGRADE_ALL:-0}"
 REQUIRE_STRICT_IMPROVEMENT="${NIGHTLY_REQUIRE_STRICT_IMPROVEMENT:-1}"
-TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-1}"
+TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-3}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
 MAX_PAIRS="${SEM_MAX_PAIRS:-1600}"
@@ -142,6 +132,7 @@ EPOCHS="${SEM_EPOCHS:-1}"
 WARMUP_STEPS="${SEM_WARMUP_STEPS:-50}"
 LEARNING_RATE="${SEM_LEARNING_RATE:-1.8e-6}"
 UNSUP_PAIRS_JSONL="${SEM_UNSUP_PAIRS_JSONL:-$NIGHTLY_ROOT/data/gold/unsupervised_pairs_v26.jsonl}"
+GOLD_POOL_CSV="${SEM_GOLD_POOL_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_pool.csv}"
 GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_calib.csv}"
 GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_eval.csv}"
 BUILD_TIMEOUT_SEC="${NIGHTLY_BUILD_TIMEOUT_SEC:-1200}"
@@ -150,6 +141,7 @@ ANCHOR_TIMEOUT_SEC="${NIGHTLY_ANCHOR_TIMEOUT_SEC:-7200}"
 EVAL_TIMEOUT_SEC="${NIGHTLY_EVAL_TIMEOUT_SEC:-1800}"
 REGRESSION_TIMEOUT_SEC="${NIGHTLY_REGRESSION_TIMEOUT_SEC:-1200}"
 
+# Resolve to absolute
 BASE_MODEL="$(to_abs_path "$BASE_MODEL")"
 OUTPUT_MODEL="$(to_abs_path "$OUTPUT_MODEL")"
 ANCHOR_MODEL="$(to_abs_path "$ANCHOR_MODEL")"
@@ -157,6 +149,7 @@ OUTPUT_CALIB="$(to_abs_path "$OUTPUT_CALIB")"
 BASE_CALIB="$(to_abs_path "$BASE_CALIB")"
 ANCHOR_TRAIN_CSV="$(to_abs_path "$ANCHOR_TRAIN_CSV")"
 UNSUP_PAIRS_JSONL="$(to_abs_path "$UNSUP_PAIRS_JSONL")"
+GOLD_POOL_CSV="$(to_abs_path "$GOLD_POOL_CSV")"
 GOLD_CALIB_CSV="$(to_abs_path "$GOLD_CALIB_CSV")"
 GOLD_EVAL_CSV="$(to_abs_path "$GOLD_EVAL_CSV")"
 PUZZLES_JSON="$(to_abs_path "$PUZZLES_JSON")"
@@ -164,10 +157,11 @@ MANUAL_OVERRIDES_JSON="$(to_abs_path "$MANUAL_OVERRIDES_JSON")"
 SCORED_CSV="$(to_abs_path "$SCORED_CSV")"
 
 echo "[nightly][paths] PYTHON_BIN=$PYTHON_BIN"
+echo "[nightly][paths] ROOT_DIR=$ROOT_DIR"
 echo "[nightly][paths] NIGHTLY_ROOT=$NIGHTLY_ROOT"
-echo "[nightly][paths] PROJECT_ROOT=$PROJECT_ROOT"
 echo "[nightly][paths] WORK_DIR=$WORK_DIR"
-echo "[nightly][paths] SYNC_BACK_ROOT=$SYNC_BACK_ROOT"
+echo "[nightly][paths] PROJECT_MODEL_DIR=$PROJECT_MODEL_DIR"
+echo "[nightly][paths] PROJECT_CALIB_PATH=$PROJECT_CALIB_PATH"
 echo "[nightly][paths] BASE_MODEL=$BASE_MODEL"
 echo "[nightly][paths] OUTPUT_MODEL=$OUTPUT_MODEL"
 echo "[nightly][paths] ANCHOR_MODEL=$ANCHOR_MODEL"
@@ -181,41 +175,20 @@ echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
 
-ensure_under_nightly "$WORK_DIR"
-ensure_under_nightly "$BASE_MODEL"
-ensure_under_nightly "$OUTPUT_MODEL"
-ensure_under_nightly "$ANCHOR_MODEL"
-ensure_under_nightly "$BASE_CALIB"
-ensure_under_nightly "$OUTPUT_CALIB"
-ensure_under_nightly "$ANCHOR_TRAIN_CSV"
-ensure_under_nightly "$UNSUP_PAIRS_JSONL"
-ensure_under_nightly "$GOLD_CALIB_CSV"
-ensure_under_nightly "$GOLD_EVAL_CSV"
+# Validate inputs
 assert_readable_file "$PUZZLES_JSON"
 assert_readable_file "$MANUAL_OVERRIDES_JSON"
 assert_readable_file "$SCORED_CSV"
+assert_readable_file "$PROJECT_MODEL_DIR/config_sentence_transformers.json"
+assert_readable_file "$PROJECT_CALIB_PATH"
 
 assert_writable_dir "$NIGHTLY_ROOT"
 assert_writable_dir "$WORK_DIR"
+assert_writable_dir "$(dirname "$BASE_MODEL")"
 assert_writable_dir "$(dirname "$OUTPUT_MODEL")"
 assert_writable_dir "$(dirname "$ANCHOR_MODEL")"
+assert_writable_dir "$(dirname "$BASE_CALIB")"
 assert_writable_dir "$(dirname "$OUTPUT_CALIB")"
-assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/models")"
-assert_writable_dir "$(dirname "$SYNC_BACK_ROOT/data")"
-
-if [[ "$SYNC_BACK_ROOT" != "$PROJECT_ROOT" && "$SYNC_BACK_ROOT" != "$NIGHTLY_ROOT/sync_back" ]]; then
-  echo "[nightly] unsupported NIGHTLY_SYNC_BACK_ROOT=$SYNC_BACK_ROOT (allowed: PROJECT_ROOT or $NIGHTLY_ROOT/sync_back)" >&2
-  exit 1
-fi
-
-assert_readable_file "$BASE_CALIB"
-assert_readable_file "$BASE_MODEL/config_sentence_transformers.json"
-assert_readable_file "$PROJECT_ROOT/models/$(basename "$BASE_MODEL")/config_sentence_transformers.json"
-assert_readable_file "$PROJECT_ROOT/data/$(basename "$BASE_CALIB")"
-
-if [[ "$DRY_RUN" != "1" ]]; then
-  assert_readable_file "$ANCHOR_TRAIN_CSV"
-fi
 
 if [[ "$ENFORCE_FREE_SPACE_CHECK" == "1" ]]; then
   check_free_space "$NIGHTLY_ROOT" "$MIN_FREE_GB"
@@ -224,33 +197,11 @@ fi
 echo "[nightly][df]"
 df -h "$NIGHTLY_ROOT"
 
-echo "[nightly] sync base artifacts from project to nightly root"
-rsync -a --delete "$PROJECT_ROOT/models/$(basename "$BASE_MODEL")/" "$BASE_MODEL/"
-rsync -a "$PROJECT_ROOT/data/$(basename "$BASE_CALIB")" "$BASE_CALIB"
+# sync project calib into nightly once
+mkdir -p "$(dirname "$BASE_CALIB")"
+cp "$PROJECT_CALIB_PATH" "$BASE_CALIB"
 
-CURRENT_ROUND=""
-CURRENT_ROUND_OUTPUT_MODEL=""
-CURRENT_ROUND_ANCHOR_MODEL=""
-CURRENT_ROUND_OUTPUT_CALIB=""
-
-cleanup_current_round_artifacts() {
-  local reason="$1"
-  if [[ "$DELETE_REJECTED_CANDIDATE" != "1" ]]; then
-    return
-  fi
-  if [[ -n "$CURRENT_ROUND_OUTPUT_MODEL" && -d "$CURRENT_ROUND_OUTPUT_MODEL" && "$CURRENT_ROUND_OUTPUT_MODEL" != "$BASE_MODEL" ]]; then
-    echo "[nightly] cleanup($reason): remove round${CURRENT_ROUND} candidate=$CURRENT_ROUND_OUTPUT_MODEL"
-    rm -rf "$CURRENT_ROUND_OUTPUT_MODEL"
-  fi
-  if [[ -n "$CURRENT_ROUND_ANCHOR_MODEL" && -d "$CURRENT_ROUND_ANCHOR_MODEL" && "$CURRENT_ROUND_ANCHOR_MODEL" != "$BASE_MODEL" ]]; then
-    echo "[nightly] cleanup($reason): remove round${CURRENT_ROUND} anchor=$CURRENT_ROUND_ANCHOR_MODEL"
-    rm -rf "$CURRENT_ROUND_ANCHOR_MODEL"
-  fi
-  if [[ -n "$CURRENT_ROUND_OUTPUT_CALIB" && -f "$CURRENT_ROUND_OUTPUT_CALIB" && "$CURRENT_ROUND_OUTPUT_CALIB" != "$BASE_CALIB" ]]; then
-    echo "[nightly] cleanup($reason): remove round${CURRENT_ROUND} calib=$CURRENT_ROUND_OUTPUT_CALIB"
-    rm -f "$CURRENT_ROUND_OUTPUT_CALIB"
-  fi
-}
+# ---- helpers ----
 
 run_with_timeout() {
   local cmd="$1"
@@ -316,55 +267,74 @@ echo "[nightly] guard: hint/answer char overlap"
 "$PYTHON_BIN" scripts/guard_hint_answer_overlap_v1.py --input "$PUZZLES_JSON" --max-print 200
 
 printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\tpromoted\n" > "$SUMMARY_FILE"
-PROMOTED_ANY=0
+
+# Per-round results for best-round selection
+declare -a ROUND_RESULTS  # "round|stage|model|calib|mae|acc|raw_mae|raw_acc|accepted"
+
+# ---- run single round ----
 
 run_single_round() {
   local round="$1"
   local round_stamp="${STAMP}_r${round}"
   local round_seed="$((BASE_SEED + round - 1))"
-  local round_output_model="$OUTPUT_MODEL"
-  local round_anchor_model="$ANCHOR_MODEL"
-  local round_output_calib="$OUTPUT_CALIB"
+
+  # Per-round model paths (suffixed with _r<N>)
+  local round_output_model="${OUTPUT_MODEL}_r${round}"
+  local round_anchor_model="${ANCHOR_MODEL}_r${round}"
+  local round_output_calib="${WORK_DIR}/semantic_calibration_local_candidate_${round_stamp}.json"
+  local round_base_model="${BASE_MODEL}_r${round}"
+  local round_base_calib="${WORK_DIR}/semantic_calibration_base_${round_stamp}.json"
+
   local pretrain_metrics_json="$WORK_DIR/nightly_pretrain_metrics_${round_stamp}.json"
   local anchor_metrics_json="$WORK_DIR/nightly_anchor_metrics_${round_stamp}.json"
   local base_metrics_json="$WORK_DIR/nightly_base_metrics_${round_stamp}.json"
   local nightly_metrics_json="$WORK_DIR/nightly_candidate_metrics_${round_stamp}.json"
   local regression_out="$WORK_DIR/nightly_regression_${round_stamp}.txt"
+
   local candidate_model="$round_output_model"
   local candidate_stage="pretrain"
-
-  CURRENT_ROUND="$round"
-  CURRENT_ROUND_OUTPUT_MODEL="$round_output_model"
-  CURRENT_ROUND_ANCHOR_MODEL="$round_anchor_model"
-  CURRENT_ROUND_OUTPUT_CALIB="$round_output_calib"
-
-  # Defensive cleanup in case previous interrupted runs left stale artifacts.
-  cleanup_current_round_artifacts "round-start"
 
   echo "[nightly] ===== round ${round}/${TOTAL_RUNS} ====="
   echo "[nightly] round_seed=${round_seed}"
 
+  # Copy base model from project models/ for this round
+  echo "[nightly] copy round base model from project: $PROJECT_MODEL_DIR -> $round_base_model"
+  rm -rf "$round_base_model"
+  if command -v rsync >/dev/null 2>&1; then
+    rsync -a --delete "$PROJECT_MODEL_DIR/" "$round_base_model/"
+  else
+    cp -R "$PROJECT_MODEL_DIR/" "$round_base_model/"
+  fi
+
+  # Build gold data for this round (different seed = different split)
   run_cmd "SEM_SEED=$round_seed \
     SEM_PUZZLES_JSON=$PUZZLES_JSON \
     SEM_MANUAL_OVERRIDES=$MANUAL_OVERRIDES_JSON \
     SEM_SCORED_CSV=$SCORED_CSV \
     SEM_GOLD_MANUAL_ANCHOR_CSV=$ANCHOR_TRAIN_CSV \
+    SEM_GOLD_POOL_CSV=$GOLD_POOL_CSV \
+    SEM_GOLD_CALIB_CSV=$GOLD_CALIB_CSV \
+    SEM_GOLD_EVAL_CSV=$GOLD_EVAL_CSV \
+    SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
     $PYTHON_BIN scripts/build_v26_gold_and_unsup.py" "$BUILD_TIMEOUT_SEC" || return $?
 
+  # Train candidate from this round's base model
   run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
     SEM_SEED=$round_seed \
     SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
-    SEM_BASE_MODEL=$BASE_MODEL \
+    SEM_BASE_MODEL=$round_base_model \
     SEM_OUTPUT_MODEL=$round_output_model \
     SEM_MAX_PAIRS=$MAX_PAIRS SEM_BATCH_SIZE=$BATCH_SIZE SEM_EPOCHS=$EPOCHS SEM_WARMUP_STEPS=$WARMUP_STEPS SEM_LEARNING_RATE=$LEARNING_RATE \
     $PYTHON_BIN scripts/pretrain_v26_unsupervised.py" "$PRETRAIN_TIMEOUT_SEC" || return $?
 
+  # Evaluate candidate + build calibration
   run_cmd "SEM_MODEL_PATH=$round_output_model \
     SEM_CALIB_CSV=$GOLD_CALIB_CSV \
     SEM_EVAL_CSV=$GOLD_EVAL_CSV \
     SEM_CALIB_JSON=$round_output_calib \
     $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
 
+  # Anchor finetune
   if [[ "$ENABLE_ANCHOR_FINETUNE" == "1" ]]; then
     run_cmd "SEM_TRAIN_CSV=$ANCHOR_TRAIN_CSV \
       SEM_BASE_MODEL=$round_output_model \
@@ -385,31 +355,18 @@ run_single_round() {
 
     if [[ "$DRY_RUN" != "1" ]]; then
       selection_output="$(PRETRAIN_METRICS_JSON="$pretrain_metrics_json" ANCHOR_METRICS_JSON="$anchor_metrics_json" $PYTHON_BIN - <<'PY'
-import json
-import os
+import json, os
 from pathlib import Path
-
 pre = json.loads(Path(os.environ['PRETRAIN_METRICS_JSON']).read_text(encoding='utf-8'))
 anc = json.loads(Path(os.environ['ANCHOR_METRICS_JSON']).read_text(encoding='utf-8'))
-pre_mae = float(pre['cal_mae'])
-pre_acc = float(pre['cal_bucket_acc'])
-anc_mae = float(anc['cal_mae'])
-anc_acc = float(anc['cal_bucket_acc'])
-pre_raw_mae = float(pre['raw_mae'])
-pre_raw_acc = float(pre['raw_bucket_acc'])
-anc_raw_mae = float(anc['raw_mae'])
-anc_raw_acc = float(anc['raw_bucket_acc'])
+pre_mae = float(pre['cal_mae']); pre_acc = float(pre['cal_bucket_acc'])
+anc_mae = float(anc['cal_mae']); anc_acc = float(anc['cal_bucket_acc'])
+pre_raw_mae = float(pre['raw_mae']); pre_raw_acc = float(pre['raw_bucket_acc'])
+anc_raw_mae = float(anc['raw_mae']); anc_raw_acc = float(anc['raw_bucket_acc'])
 use_anchor = (
-  anc_mae <= pre_mae
-  and anc_acc >= pre_acc
-  and anc_raw_mae <= pre_raw_mae
-  and anc_raw_acc >= pre_raw_acc
-  and (
-    anc_mae < pre_mae
-    or anc_acc > pre_acc
-    or anc_raw_mae < pre_raw_mae
-    or anc_raw_acc > pre_raw_acc
-  )
+  anc_mae <= pre_mae and anc_acc >= pre_acc
+  and anc_raw_mae <= pre_raw_mae and anc_raw_acc >= pre_raw_acc
+  and (anc_mae < pre_mae or anc_acc > pre_acc or anc_raw_mae < pre_raw_mae or anc_raw_acc > pre_raw_acc)
 )
 print(f'use_anchor={use_anchor}')
 PY
@@ -434,62 +391,54 @@ PY
     echo "[nightly] (dry-run) skip metric gating and promotion for round $round"
     run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py | tail -n 12" "$REGRESSION_TIMEOUT_SEC" || return $?
     printf "%s\t%s\t-\t-\t-\t-\t-\tDRY_RUN\t-\n" "$round" "$candidate_stage" >> "$SUMMARY_FILE"
+    # Still record for best-round selection in dry-run
+    ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|-|-|-|-|DRY_RUN")
     return 0
   fi
 
-  echo "[nightly] evaluate base metrics"
-  SEM_MODEL_PATH="$BASE_MODEL" \
+  # Gate: candidate vs base model for this round
+  echo "[nightly] evaluate base metrics for round $round"
+  SEM_MODEL_PATH="$round_base_model" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
-  SEM_CALIB_JSON="$BASE_CALIB" \
+  SEM_CALIB_JSON="$round_base_calib" \
   "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$base_metrics_json" || return $?
 
-  echo "[nightly] evaluate nightly metrics"
+  echo "[nightly] evaluate nightly metrics for round $round"
   SEM_MODEL_PATH="$candidate_model" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$round_output_calib" \
   "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$nightly_metrics_json" || return $?
 
-  echo "[nightly] run nightly regression"
+  echo "[nightly] run nightly regression for round $round"
   run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py > $regression_out" "$REGRESSION_TIMEOUT_SEC" || return $?
   tail -n 12 "$regression_out"
 
   python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
-import json
+import json, os, re
 from pathlib import Path
-import os
-import re
-
-base_json = Path(os.environ['BASE_METRICS_JSON'])
-cand_json = Path(os.environ['NIGHTLY_METRICS_JSON'])
-reg_txt = Path(os.environ['REGRESSION_OUT'])
+base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
+cand = json.loads(Path(os.environ['NIGHTLY_METRICS_JSON']).read_text(encoding='utf-8'))
+reg = Path(os.environ['REGRESSION_OUT']).read_text(encoding='utf-8')
 min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
 min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
 require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
 require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
 
-base = json.loads(base_json.read_text(encoding='utf-8'))
-cand = json.loads(cand_json.read_text(encoding='utf-8'))
-reg = reg_txt.read_text(encoding='utf-8')
+b_mae = float(base['cal_mae']); b_acc = float(base['cal_bucket_acc'])
+c_mae = float(cand['cal_mae']); c_acc = float(cand['cal_bucket_acc'])
+b_raw_mae = float(base['raw_mae']); b_raw_acc = float(base['raw_bucket_acc'])
+c_raw_mae = float(cand['raw_mae']); c_raw_acc = float(cand['raw_bucket_acc'])
 
-base_mae = float(base['cal_mae'])
-base_acc = float(base['cal_bucket_acc'])
-cand_mae = float(cand['cal_mae'])
-cand_acc = float(cand['cal_bucket_acc'])
-base_raw_mae = float(base['raw_mae'])
-base_raw_acc = float(base['raw_bucket_acc'])
-cand_raw_mae = float(cand['raw_mae'])
-cand_raw_acc = float(cand['raw_bucket_acc'])
-
-mae_ok = cand_mae <= (base_mae - min_mae)
-acc_ok = cand_acc >= (base_acc + min_acc)
-raw_mae_no_degrade = cand_raw_mae <= base_raw_mae
-raw_acc_no_degrade = cand_raw_acc >= base_raw_acc
-cal_mae_no_degrade = cand_mae <= base_mae
-cal_acc_no_degrade = cand_acc >= base_acc
+mae_ok = c_mae <= (b_mae - min_mae)
+acc_ok = c_acc >= (b_acc + min_acc)
+raw_mae_no_degrade = c_raw_mae <= b_raw_mae
+raw_acc_no_degrade = c_raw_acc >= b_raw_acc
+cal_mae_no_degrade = c_mae <= b_mae
+cal_acc_no_degrade = c_acc >= b_acc
 no_degrade_all = raw_mae_no_degrade and raw_acc_no_degrade and cal_mae_no_degrade and cal_acc_no_degrade
-strict_improve = (cand_mae < base_mae or cand_acc > base_acc or cand_raw_mae < base_raw_mae or cand_raw_acc > base_raw_acc)
+strict_improve = (c_mae < b_mae or c_acc > b_acc or c_raw_mae < b_raw_mae or c_raw_acc > b_raw_acc)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
@@ -501,14 +450,14 @@ if require_no_degrade_all:
 if require_strict_improvement:
   accepted = accepted and strict_improve
 
-print(f'base_cal_mae={base_mae:.4f}')
-print(f'base_cal_bucket_acc={base_acc:.2f}')
-print(f'cand_cal_mae={cand_mae:.4f}')
-print(f'cand_cal_bucket_acc={cand_acc:.2f}')
-print(f'base_raw_mae={base_raw_mae:.4f}')
-print(f'base_raw_bucket_acc={base_raw_acc:.2f}')
-print(f'cand_raw_mae={cand_raw_mae:.4f}')
-print(f'cand_raw_bucket_acc={cand_raw_acc:.2f}')
+print(f'base_cal_mae={b_mae:.4f}')
+print(f'base_cal_bucket_acc={b_acc:.2f}')
+print(f'cand_cal_mae={c_mae:.4f}')
+print(f'cand_cal_bucket_acc={c_acc:.2f}')
+print(f'base_raw_mae={b_raw_mae:.4f}')
+print(f'base_raw_bucket_acc={b_raw_acc:.2f}')
+print(f'cand_raw_mae={c_raw_mae:.4f}')
+print(f'cand_raw_bucket_acc={c_raw_acc:.2f}')
 print(f'mae_ok={mae_ok}')
 print(f'acc_ok={acc_ok}')
 print(f'raw_mae_no_degrade={raw_mae_no_degrade}')
@@ -530,104 +479,265 @@ PY
   cand_mae_val="$(echo "$python_gate_output" | awk -F= '/^cand_cal_mae=/{print $2}')"
   cand_acc_val="$(echo "$python_gate_output" | awk -F= '/^cand_cal_bucket_acc=/{print $2}')"
   reg_ok_val="$(echo "$python_gate_output" | awk -F= '/^regression_ok=/{print $2}')"
-  promoted="False"
-
-  if [[ "$accepted" == "True" || "$accepted" == "true" ]]; then
-    echo "[nightly] round ${round}: candidate accepted"
-    if [[ "$AUTO_PROMOTE" == "1" ]]; then
-      echo "[nightly] round ${round}: auto promote enabled"
-      if [[ "$candidate_model" != "$BASE_MODEL" ]]; then
-        echo "[nightly] round ${round}: delete old default model and switch to latest"
-        rm -rf "$BASE_MODEL"
-        mv "$candidate_model" "$BASE_MODEL"
-      fi
-
-      if [[ "$round_output_calib" != "$BASE_CALIB" ]]; then
-        rm -f "$BASE_CALIB"
-        mv "$round_output_calib" "$BASE_CALIB"
-      fi
-
-      echo "[nightly] round ${round}: promoted default model=$BASE_MODEL"
-      echo "[nightly] round ${round}: promoted default calib=$BASE_CALIB"
-      promoted="True"
-      PROMOTED_ANY=1
-    else
-      echo "[nightly] round ${round}: auto promote disabled, keep as candidate only"
-    fi
-  else
-    echo "[nightly] round ${round}: candidate rejected, keep current default"
-    if [[ "$DELETE_REJECTED_CANDIDATE" == "1" ]]; then
-      if [[ "$candidate_model" != "$BASE_MODEL" && -d "$candidate_model" ]]; then
-        echo "[nightly] delete rejected candidate model=$candidate_model"
-        rm -rf "$candidate_model"
-      fi
-      if [[ "$round_output_model" != "$BASE_MODEL" && "$round_output_model" != "$candidate_model" && -d "$round_output_model" ]]; then
-        echo "[nightly] delete intermediate candidate model=$round_output_model"
-        rm -rf "$round_output_model"
-      fi
-      if [[ "$round_anchor_model" != "$BASE_MODEL" && "$round_anchor_model" != "$candidate_model" && -d "$round_anchor_model" ]]; then
-        echo "[nightly] delete intermediate anchor model=$round_anchor_model"
-        rm -rf "$round_anchor_model"
-      fi
-      if [[ "$round_output_calib" != "$BASE_CALIB" && -f "$round_output_calib" ]]; then
-        echo "[nightly] delete rejected candidate calib=$round_output_calib"
-        rm -f "$round_output_calib"
-      fi
-    fi
-  fi
-
-  if [[ "$AUTO_PROMOTE" == "1" && ( "$accepted" == "True" || "$accepted" == "true" ) ]]; then
-    if [[ -d "$round_output_model" && "$round_output_model" != "$BASE_MODEL" ]]; then
-      rm -rf "$round_output_model"
-    fi
-    if [[ -d "$round_anchor_model" && "$round_anchor_model" != "$BASE_MODEL" ]]; then
-      rm -rf "$round_anchor_model"
-    fi
-  fi
 
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
-    "$round" "$candidate_stage" "$base_mae_val" "$cand_mae_val" "$base_acc_val" "$cand_acc_val" "$reg_ok_val" "$accepted" "$promoted" >> "$SUMMARY_FILE"
+    "$round" "$candidate_stage" "$base_mae_val" "$cand_mae_val" "$base_acc_val" "$cand_acc_val" "$reg_ok_val" "$accepted" "deferred" >> "$SUMMARY_FILE"
 
-  CURRENT_ROUND=""
-  CURRENT_ROUND_OUTPUT_MODEL=""
-  CURRENT_ROUND_ANCHOR_MODEL=""
-  CURRENT_ROUND_OUTPUT_CALIB=""
+  # Record for best-round selection
+  ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|${cand_mae_val}|${cand_acc_val}|${cand_mae_val}|${cand_acc_val}|${accepted}")
+
+  # Clean up round base model (candidate kept for now)
+  if [[ -d "$round_base_model" ]]; then
+    rm -rf "$round_base_model"
+  fi
 }
+
+# ---- run all rounds ----
 
 for ((round=1; round<=TOTAL_RUNS; round++)); do
   if ! run_single_round "$round"; then
     echo "[nightly] round ${round} failed"
-    cleanup_current_round_artifacts "round-error"
     printf "%s\tround_error\t-\t-\t-\t-\tFalse\tERROR\tFalse\n" "$round" >> "$SUMMARY_FILE"
-    CURRENT_ROUND=""
-    CURRENT_ROUND_OUTPUT_MODEL=""
-    CURRENT_ROUND_ANCHOR_MODEL=""
-    CURRENT_ROUND_OUTPUT_CALIB=""
     if [[ "$CONTINUE_ON_ROUND_ERROR" != "1" ]]; then
-      echo "[nightly] stop on round error because NIGHTLY_CONTINUE_ON_ROUND_ERROR=$CONTINUE_ON_ROUND_ERROR"
+      echo "[nightly] stop on round error"
       exit 1
     fi
     echo "[nightly] continue to next round"
   fi
 done
 
-echo "[nightly] done at $(date '+%F %T')"
-echo "[nightly] final_base_model=$BASE_MODEL"
-echo "[nightly] final_base_calib=$BASE_CALIB"
+echo "[nightly] all rounds finished at $(date '+%F %T')"
 echo "[nightly] round_summary=$SUMMARY_FILE"
+echo "=== Round Summary ==="
 cat "$SUMMARY_FILE"
 
-# 自动同步晋升产物到开发仓库（仅当本次运行发生晋升）
-if [[ "$PROMOTED_ANY" == "1" && -d "$BASE_MODEL" && -f "$BASE_CALIB" ]]; then
-  if [[ -n "$SYNC_BACK_ROOT" && -d "$SYNC_BACK_ROOT" ]]; then
-    echo "[nightly] rsync晋升模型到目标目录: $SYNC_BACK_ROOT"
-    mkdir -p "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")" "$SYNC_BACK_ROOT/data"
-    rsync -a --delete "$BASE_MODEL/" "$SYNC_BACK_ROOT/models/$(basename "$BASE_MODEL")/"
-    rsync -a "$BASE_CALIB" "$SYNC_BACK_ROOT/data/$(basename "$BASE_CALIB")"
-    echo "[nightly] rsync完成"
-  else
-    echo "[nightly] skip sync-back: NIGHTLY_SYNC_BACK_ROOT is empty or missing"
+# ---- best-round selection & promotion ----
+
+REPORTS_DIR="$NIGHTLY_ROOT/reports"
+mkdir -p "$REPORTS_DIR"
+PROMOTION_REPORT="$REPORTS_DIR/nightly_promotion_${STAMP}.md"
+
+# Find the best accepted round by lowest cal_mae
+BEST_ROUND=""
+BEST_STAGE=""
+BEST_MODEL=""
+BEST_CALIB=""
+BEST_MAE="999"
+BEST_ACC=""
+BEST_RAW_MAE=""
+BEST_RAW_ACC=""
+ANY_ACCEPTED=0
+
+for entry in "${ROUND_RESULTS[@]}"; do
+  IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
+  if [[ "$accepted" == "True" || "$accepted" == "true" ]]; then
+    ANY_ACCEPTED=1
+    if (( $(echo "$mae < $BEST_MAE" | bc -l) )); then
+      BEST_ROUND="$r"
+      BEST_STAGE="$stage"
+      BEST_MODEL="$model"
+      BEST_CALIB="$calib"
+      BEST_MAE="$mae"
+      BEST_ACC="$acc"
+      BEST_RAW_MAE="$raw_mae"
+      BEST_RAW_ACC="$raw_acc"
+    fi
   fi
+done
+
+# Build promotion report content
+{
+  echo "# Nightly Promotion Report - ${STAMP}"
+  echo ""
+  echo "**时间**: $(date '+%F %T') CST"
+  echo "**模型**: $PROJECT_MODEL_NAME"
+  echo "**总轮次**: $TOTAL_RUNS"
+  echo ""
+  echo "## 各轮结果"
+  echo ""
+  echo "| 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |"
+  echo "|------|-------|----------|----------|----------|----------|--------|----------|"
+  for entry in "${ROUND_RESULTS[@]}"; do
+    IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
+    printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$r" "$stage" "-" "$mae" "-" "$acc" "-" "$accepted"
+  done
+} > "$PROMOTION_REPORT"
+
+if [[ "$DRY_RUN" == "1" ]]; then
+  echo "" >> "$PROMOTION_REPORT"
+  echo "**结果**: DRY_RUN - 未实际晋升" >> "$PROMOTION_REPORT"
+  echo "[nightly] dry-run complete, no promotion"
+elif [[ "$ANY_ACCEPTED" == "0" ]]; then
+  echo "" >> "$PROMOTION_REPORT"
+  echo "**结果**: 无轮次通过门控，未晋升" >> "$PROMOTION_REPORT"
+  echo "[nightly] no accepted rounds, no promotion"
+
+  # Delete all nightly artifacts (models, calibs, gold) except logs
+  echo "[nightly] cleaning up nightly artifacts (no promotion)"
+  for entry in "${ROUND_RESULTS[@]}"; do
+    IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
+    if [[ -n "$model" && -d "$model" ]]; then
+      rm -rf "$model"
+    fi
+    if [[ -n "$calib" && -f "$calib" ]]; then
+      rm -f "$calib"
+    fi
+  done
+  # Also clean up any stray anchor models
+  for ((r=1; r<=TOTAL_RUNS; r++)); do
+    rm -rf "${OUTPUT_MODEL}_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
+  done
 else
-  echo "[nightly] skip sync-back: no promotion in this run"
+  echo "" >> "$PROMOTION_REPORT"
+  echo "**最佳轮次**: $BEST_ROUND ($BEST_STAGE)" >> "$PROMOTION_REPORT"
+  echo "**最佳 MAE**: $BEST_MAE" >> "$PROMOTION_REPORT"
+  echo "**最佳 Acc**: $BEST_ACC" >> "$PROMOTION_REPORT"
+
+  # Evaluate best candidate against the project model
+  echo "[nightly] evaluating best round $BEST_ROUND candidate against project model"
+  PROJECT_EVAL_CALIB="$WORK_DIR/semantic_calibration_project_${STAMP}.json"
+  PROJECT_BASE_METRICS="$WORK_DIR/nightly_project_base_metrics_${STAMP}.json"
+  BEST_CAND_METRICS="$WORK_DIR/nightly_best_cand_metrics_${STAMP}.json"
+
+  SEM_MODEL_PATH="$PROJECT_MODEL_DIR" \
+  SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
+  SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
+  SEM_CALIB_JSON="$PROJECT_EVAL_CALIB" \
+  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$PROJECT_BASE_METRICS" || true
+
+  # Candidate metrics (already have them from round result, but re-evaluate for consistency)
+  SEM_MODEL_PATH="$BEST_MODEL" \
+  SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
+  SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
+  SEM_CALIB_JSON="$BEST_CALIB" \
+  "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$BEST_CAND_METRICS" || true
+
+  # Run regression on best candidate
+  echo "[nightly] run regression on best candidate"
+  BEST_REGRESSION="$WORK_DIR/nightly_best_regression_${STAMP}.txt"
+  SEM_MODEL_PATH="$BEST_MODEL" SEM_CALIB_PATH="$BEST_CALIB" \
+    "$PYTHON_BIN" scripts/run_regression_pairs_v23.py > "$BEST_REGRESSION" 2>&1 || true
+  tail -n 12 "$BEST_REGRESSION"
+
+  # Gate against project model
+  best_gate_output="$(BASE_METRICS_JSON="$PROJECT_BASE_METRICS" NIGHTLY_METRICS_JSON="$BEST_CAND_METRICS" REGRESSION_OUT="$BEST_REGRESSION" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
+import json, os, re
+from pathlib import Path
+base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
+cand = json.loads(Path(os.environ['NIGHTLY_METRICS_JSON']).read_text(encoding='utf-8'))
+reg = Path(os.environ['REGRESSION_OUT']).read_text(encoding='utf-8')
+min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
+min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
+require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
+require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
+
+b_mae = float(base['cal_mae']); b_acc = float(base['cal_bucket_acc'])
+c_mae = float(cand['cal_mae']); c_acc = float(cand['cal_bucket_acc'])
+b_raw_mae = float(base['raw_mae']); b_raw_acc = float(base['raw_bucket_acc'])
+c_raw_mae = float(cand['raw_mae']); c_raw_acc = float(cand['raw_bucket_acc'])
+
+mae_ok = c_mae <= (b_mae - min_mae)
+acc_ok = c_acc >= (b_acc + min_acc)
+raw_mae_no_degrade = c_raw_mae <= b_raw_mae
+raw_acc_no_degrade = c_raw_acc >= b_raw_acc
+cal_mae_no_degrade = c_mae <= b_mae
+cal_acc_no_degrade = c_acc >= b_acc
+no_degrade_all = raw_mae_no_degrade and raw_acc_no_degrade and cal_mae_no_degrade and cal_acc_no_degrade
+strict_improve = (c_mae < b_mae or c_acc > b_acc or c_raw_mae < b_raw_mae or c_raw_acc > b_raw_acc)
+
+match = re.search(r'passed=(\d+)', reg)
+passed = int(match.group(1)) if match else -1
+reg_ok = passed == 30
+
+accepted = mae_ok and acc_ok and reg_ok
+if require_no_degrade_all:
+  accepted = accepted and no_degrade_all
+if require_strict_improvement:
+  accepted = accepted and strict_improve
+
+print(f'project_cal_mae={b_mae:.4f}')
+print(f'project_cal_bucket_acc={b_acc:.2f}')
+print(f'best_cal_mae={c_mae:.4f}')
+print(f'best_cal_bucket_acc={c_acc:.2f}')
+print(f'project_raw_mae={b_raw_mae:.4f}')
+print(f'project_raw_bucket_acc={b_raw_acc:.2f}')
+print(f'best_raw_mae={c_raw_mae:.4f}')
+print(f'best_raw_bucket_acc={c_raw_acc:.2f}')
+print(f'regression_ok={reg_ok}')
+print(f'accepted={accepted}')
+print(f'mae_ok={mae_ok}')
+print(f'acc_ok={acc_ok}')
+PY
+)"
+
+  echo "$best_gate_output"
+  best_accepted="$(echo "$best_gate_output" | awk -F= '/^accepted=/{print $2}')"
+  proj_mae="$(echo "$best_gate_output" | awk -F= '/^project_cal_mae=/{print $2}')"
+  proj_acc="$(echo "$best_gate_output" | awk -F= '/^project_cal_bucket_acc=/{print $2}')"
+  best_mae_val="$(echo "$best_gate_output" | awk -F= '/^best_cal_mae=/{print $2}')"
+  best_acc_val="$(echo "$best_gate_output" | awk -F= '/^best_cal_bucket_acc=/{print $2}')"
+
+  {
+    echo ""
+    echo "## 项目模型对比"
+    echo ""
+    echo "| 指标 | 项目模型 (models/) | 最佳候选 (轮次 $BEST_ROUND) |"
+    echo "|------|---------------------|------------------------------|"
+    echo "| cal_mae | $proj_mae | $best_mae_val |"
+    echo "| cal_acc | $proj_acc | $best_acc_val |"
+    echo ""
+  } >> "$PROMOTION_REPORT"
+
+  if [[ "$best_accepted" == "True" || "$best_accepted" == "true" ]]; then
+    if [[ "$AUTO_PROMOTE" == "1" ]]; then
+      echo "[nightly] PROMOTING: best round $BEST_ROUND -> models/$PROJECT_MODEL_NAME"
+      echo "**结果**: 已晋升轮次 $BEST_ROUND" >> "$PROMOTION_REPORT"
+      echo "" >> "$PROMOTION_REPORT"
+      echo "**提升**: cal_mae $proj_mae → $best_mae_val, cal_acc $proj_acc → $best_acc_val" >> "$PROMOTION_REPORT"
+
+      # Replace project model
+      if [[ -d "$PROJECT_MODEL_DIR" ]]; then
+        rm -rf "$PROJECT_MODEL_DIR"
+      fi
+      if command -v rsync >/dev/null 2>&1; then
+        rsync -a "$BEST_MODEL/" "$PROJECT_MODEL_DIR/"
+      else
+        cp -R "$BEST_MODEL/" "$PROJECT_MODEL_DIR/"
+      fi
+
+      # Replace project calibration
+      if [[ -f "$BEST_CALIB" ]]; then
+        cp "$BEST_CALIB" "$PROJECT_CALIB_PATH"
+      fi
+
+      echo "[nightly] promoted: model=$PROJECT_MODEL_DIR calib=$PROJECT_CALIB_PATH"
+    else
+      echo "**结果**: AUTO_PROMOTE=off, 未晋升" >> "$PROMOTION_REPORT"
+      echo "[nightly] auto promote disabled, best candidate kept at $BEST_MODEL"
+    fi
+  else
+    echo "**结果**: 最佳轮次未通过项目模型门控，未晋升" >> "$PROMOTION_REPORT"
+    echo "[nightly] best candidate rejected vs project model, no promotion"
+  fi
+
+  # Clean up all nightly artifacts except logs
+  echo "[nightly] cleaning up nightly artifacts"
+  for entry in "${ROUND_RESULTS[@]}"; do
+    IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
+    if [[ -n "$model" && -d "$model" ]]; then
+      rm -rf "$model"
+    fi
+    if [[ -n "$calib" && -f "$calib" ]]; then
+      rm -f "$calib"
+    fi
+  done
+  for ((r=1; r<=TOTAL_RUNS; r++)); do
+    rm -rf "${OUTPUT_MODEL}_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
+  done
+  rm -f "$PROJECT_EVAL_CALIB" "$PROJECT_BASE_METRICS" "$BEST_CAND_METRICS" "$BEST_REGRESSION"
 fi
+
+echo "[nightly] promotion report: $PROMOTION_REPORT"
+cat "$PROMOTION_REPORT"
+
+echo "[nightly] done at $(date '+%F %T')"

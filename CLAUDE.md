@@ -103,7 +103,7 @@ SEM_MODEL_PATH=models/bge-m3-finetuned-v26-unsup \
 #### Nightly Training (Automated)
 
 ```bash
-# Install nightly training (runs at 23:00 daily)
+# Install nightly training (runs at 23:00 daily, 3 rounds)
 bash scripts/install_nightly_10pm_launchd.sh
 
 # Check status
@@ -120,13 +120,19 @@ bash scripts/uninstall_nightly_10pm_launchd.sh
 ```
 
 **Key nightly parameters**:
-- `NIGHTLY_AUTO_PROMOTE=1`: Auto-promote if passing thresholds (default: on)
+- `NIGHTLY_TOTAL_RUNS=3`: Run 3 independent rounds per night (default)
+- `NIGHTLY_AUTO_PROMOTE=1`: Auto-promote best accepted round to `models/` (default: on)
 - `NIGHTLY_DELETE_OLD_ON_PROMOTE=1`: Delete old model on promotion (default: on)
-- `NIGHTLY_MIN_MAE_IMPROVEMENT=0.0`: Minimum MAE improvement required
-- `NIGHTLY_MIN_ACC_IMPROVEMENT=0.0`: Minimum accuracy improvement required
-- `NIGHTLY_PROMOTE_WEEKDAYS=6,7`: Only promote on weekends
+- `NIGHTLY_MIN_MAE_IMPROVEMENT=0.005`: Minimum MAE improvement required for gate
+- `NIGHTLY_MIN_ACC_IMPROVEMENT=0.0`: Minimum accuracy improvement required for gate
+- `NIGHTLY_REQUIRE_STRICT_IMPROVEMENT=1`: Require at least one metric improving
+- Per-round base model copied from `models/` to avoid same-model training
+- All paths under project root (no workspace copy)
+- GPU: auto-detects CUDA > MPS > CPU via `scripts/semantic_common.py:resolve_device()`
 
-Logs: `tmp/nightly_train_v26_*.log`, `tmp/launchd_nightly_v26.{out,err}.log`
+Logs: `.nightly/logs/launchd_nightly_v26.{out,err}.log`
+Reports: `.nightly/reports/nightly_promotion_*.md` (generated on promotion)
+Training logs: `.nightly/data/tmp/nightly_train_v26_*.log`
 
 ### Regression Testing
 

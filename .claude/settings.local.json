@@ -72,7 +72,14 @@
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 喜悦)",
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 羞涩)",
       "Bash(python /Volumes/新/work/flutter/guess/xuanheng_check_answer.py 坦诚)",
-      "Bash(launchctl list *)"
+      "Bash(launchctl list *)",
+      "Bash(bash *)",
+      "Bash(plutil -lint /Users/fengye/Library/LaunchAgents/com.guess.nightly-train-v26.plist)",
+      "Bash(rm -rf /Users/fengye/.guess_nightly)",
+      "Bash(NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 NIGHTLY_SCRIPT_ROOT=\"/Volumes/新/work/flutter/guess\" bash /Volumes/新/work/flutter/guess/scripts/nightly_train_v26.sh)",
+      "Bash(rm -rf /Volumes/新/work/flutter/guess/.nightly/data/models/bge-m3-finetuned-v27-semreal-anchor_r*)",
+      "Bash(rm -rf /Volumes/新/work/flutter/guess/.nightly/data/models/bge-m3-finetuned-local-candidate*)",
+      "Bash(rm -rf /Volumes/新/work/flutter/guess/.nightly/data/tmp/nightly_*_20260529_*.json /Volumes/新/work/flutter/guess/.nightly/data/tmp/nightly_*_20260529_*.txt)"
     ],
     "additionalDirectories": [
       "/Volumes/新/work/flutter/guess/docs/superpowers"
