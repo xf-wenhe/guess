@@ -12,10 +12,21 @@
       "Bash(flutter pub *)",
       "Bash(flutter analyze *)",
       "Bash(printf '%s\\\\n' 'import re,textwrap' > /tmp/ui_fix.py && echo \"wrote script header\")",
-      "Bash(git push *)"
+      "Bash(git push *)",
+      "Bash(log show *)",
+      "Bash(set +e)",
+      "Bash(env -i HOME=\"/Users/fengye\" PATH=\"/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:/usr/sbin:/sbin\" NIGHTLY_ROOT=\"/Volumes/新/work/flutter/guess/.nightly\" NIGHTLY_WORK_DIR=\"/Volumes/新/work/flutter/guess/.nightly/data/tmp\" /bin/bash \"/Volumes/新/work/flutter/guess/.nightly/nightly_launcher.sh\")",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(mkdir -p ~/.guess_nightly/logs; echo \"created\")",
+      "Bash(sed -i '' 's|/Volumes/新/work/flutter/guess/.nightly/logs/launchd_nightly_v26.out.log|/Users/fengye/.guess_nightly/logs/launchd_nightly_v26.out.log|g; s|/Volumes/新/work/flutter/guess/.nightly/logs/launchd_nightly_v26.err.log|/Users/fengye/.guess_nightly/logs/launchd_nightly_v26.err.log|g' ~/Library/LaunchAgents/com.guess.nightly-train-v26.plist; echo \"sed done\"; grep \"StandardOutPath\\\\|StandardErrorPath\" ~/Library/LaunchAgents/com.guess.nightly-train-v26.plist)",
+      "Bash(kill 20418 20417 20410 20408)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)"
     ],
     "additionalDirectories": [
-      "/tmp"
+      "/tmp",
+      "/Users/fengye/.guess_nightly",
+      "/Users/fengye/Library/LaunchAgents"
     ]
   }
 }
