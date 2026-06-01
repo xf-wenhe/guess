@@ -72,7 +72,13 @@ def main():
         device=resolve_device(),
         local_files_only=True,
     )
-    train_loader = DataLoader(examples, shuffle=True, batch_size=BATCH_SIZE)
+    device = resolve_device()
+    is_mps = device == 'mps'
+    train_loader = DataLoader(
+        examples, shuffle=True, batch_size=BATCH_SIZE,
+        num_workers=0 if is_mps else 4,
+        pin_memory=not is_mps,
+    )
     train_loss = losses.MultipleNegativesRankingLoss(model)
 
     model.fit(

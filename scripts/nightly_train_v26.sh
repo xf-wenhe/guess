@@ -126,8 +126,8 @@ REQUIRE_STRICT_IMPROVEMENT="${NIGHTLY_REQUIRE_STRICT_IMPROVEMENT:-1}"
 TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-3}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
-MAX_PAIRS="${SEM_MAX_PAIRS:-1600}"
-BATCH_SIZE="${SEM_BATCH_SIZE:-8}"
+MAX_PAIRS="${SEM_MAX_PAIRS:-8000}"
+BATCH_SIZE="${SEM_BATCH_SIZE:-16}"
 EPOCHS="${SEM_EPOCHS:-1}"
 WARMUP_STEPS="${SEM_WARMUP_STEPS:-50}"
 LEARNING_RATE="${SEM_LEARNING_RATE:-1.8e-6}"
@@ -528,7 +528,7 @@ BEST_RAW_MAE=""
 BEST_RAW_ACC=""
 ANY_ACCEPTED=0
 
-for entry in "${ROUND_RESULTS[@]}"; do
+for entry in ${ROUND_RESULTS[@]+"${ROUND_RESULTS[@]}"}; do
   IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
   if [[ "$accepted" == "True" || "$accepted" == "true" ]]; then
     ANY_ACCEPTED=1
@@ -557,7 +557,7 @@ done
   echo ""
   echo "| 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |"
   echo "|------|-------|----------|----------|----------|----------|--------|----------|"
-  for entry in "${ROUND_RESULTS[@]}"; do
+  for entry in ${ROUND_RESULTS[@]+"${ROUND_RESULTS[@]}"}; do
     IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
     printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$r" "$stage" "-" "$mae" "-" "$acc" "-" "$accepted"
   done
@@ -574,7 +574,7 @@ elif [[ "$ANY_ACCEPTED" == "0" ]]; then
 
   # Delete all nightly artifacts (models, calibs, gold) except logs
   echo "[nightly] cleaning up nightly artifacts (no promotion)"
-  for entry in "${ROUND_RESULTS[@]}"; do
+  for entry in ${ROUND_RESULTS[@]+"${ROUND_RESULTS[@]}"}; do
     IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
     if [[ -n "$model" && -d "$model" ]]; then
       rm -rf "$model"
@@ -722,7 +722,7 @@ PY
 
   # Clean up all nightly artifacts except logs
   echo "[nightly] cleaning up nightly artifacts"
-  for entry in "${ROUND_RESULTS[@]}"; do
+  for entry in ${ROUND_RESULTS[@]+"${ROUND_RESULTS[@]}"}; do
     IFS='|' read -r r stage model calib mae acc raw_mae raw_acc accepted <<< "$entry"
     if [[ -n "$model" && -d "$model" ]]; then
       rm -rf "$model"
