@@ -54,7 +54,7 @@ calib CSV 中 35% 是 100 分（self-anchor），score 70-89 区间仅 5 行。
 - **ContrastiveLoss**：以 margin 强制推开低分组词对的 embedding 距离
   margin=0.5 时，score<0.2 的词对 embedding 距离会被强制拉开。
 
-实现方式：`scripts/train_v28c_mse_contrastive.py`（已设计，未创建）
+实现方式：`scripts/train_v28c_mse_contrastive.py`
 - 损失 = 0.5 * MSE(cosine_sim, label) + 0.5 * Contrastive(margin=0.5)
 - 对 score < 0.2 的 pair 额外加权 3x
 
@@ -98,11 +98,11 @@ python3 scripts/build_v28_subset_pairs.py
 python3 scripts/build_v28_synonym_expansion.py
 python3 scripts/build_v28_phoenix_train_csv.py
 
-# Phase 2: 训练（使用 MSE+Contrastive 损失）
-SEM_TRAIN_CSV=data/train_v28_phoenix.csv \
+# Phase 2: 训练（当前使用 CoSENTLoss 监督排序训练）
+SEM_TRAIN_CSV=data/train_v28c_balanced.csv \
 SEM_BASE_MODEL=models/bge-m3-finetuned-v27-semreal-anchor \
 SEM_OUTPUT_MODEL=models/bge-m3-finetuned-v28-phoenix \
-SEM_EPOCHS=3 SEM_BATCH_SIZE=8 SEM_LR=2e-5 \
+SEM_EPOCHS=2 SEM_BATCH_SIZE=8 SEM_LR=8e-6 \
 python3 scripts/train_v28c_mse_contrastive.py
 
 # Phase 3: 校准 + 评估
@@ -129,13 +129,8 @@ fi
 
 ## 五、需要你做的事
 
-1. **确认方案选择**：是否采用 MSE+Contrastive 混合损失？
-   还是只用 MSE？或你有其他想法？
-
-2. **我需要创建的文件**（你确认后我立即创建）：
-   - `scripts/train_v28c_mse_contrastive.py` — 新训练脚本
-   - `scripts/build_v28_gold_calib_supplement.py` — 校准数据补充脚本
-   - 更新 `scripts/nightly_train_v26.sh`（当前仅保留单一夜训管线）
+1. 当前主训练入口已统一到 `scripts/train_v28c_mse_contrastive.py`。
+2. 夜训入口已统一到 `scripts/nightly_train_v26.sh`，详见 `docs/SEMANTIC_NIGHTLY_TRAINING.md`。
 
 3. **不需要你提供额外数据**，所有训练数据已就绪（16,034 条）。
 

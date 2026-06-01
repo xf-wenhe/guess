@@ -194,7 +194,7 @@ TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
 
 ### Step 2.2: Stage B — 有监督精调（核心）
 
-> 新创建训练脚本 `scripts/train_v28_phoenix_finetune.py`
+> 当前入口：`scripts/train_v28c_mse_contrastive.py`
 
 **训练策略**：
 - 基座：Stage A 的输出模型
@@ -208,15 +208,15 @@ TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
   - seed: 20260515
 
 ```bash
-SEM_TRAIN_CSV=data/train_v28_phoenix.csv \
+SEM_TRAIN_CSV=data/train_v28c_balanced.csv \
   SEM_BASE_MODEL=models/bge-m3-finetuned-v28-phoenix-stageA \
   SEM_OUTPUT_MODEL=models/bge-m3-finetuned-v28-phoenix-stageB \
-  SEM_EPOCHS=3 SEM_BATCH_SIZE=16 SEM_LR=2e-5 \
+  SEM_EPOCHS=2 SEM_BATCH_SIZE=8 SEM_LR=8e-6 \
   SEM_WARMUP_RATIO=0.1 \
-  python3 scripts/train_v28_phoenix_finetune.py
+  python3 scripts/train_v28c_mse_contrastive.py
 ```
 
-**需要你提供**：训练设备是 MPS (Mac) 还是 CUDA (GPU)？这影响 batch_size 和训练时间。
+设备默认自动选择 CUDA/MPS；需要稳定排查时可用 `SEM_DEVICE=cpu` 覆盖。
 
 ### Step 2.3: Stage C — 校准曲线重建
 
@@ -344,7 +344,7 @@ scripts/
   build_v28_subset_pairs.py           # Step 1.4
   build_v28_synonym_expansion.py      # Step 1.5
   build_v28_phoenix_train_csv.py      # Step 1.6
-  train_v28_phoenix_finetune.py       # Step 2.2
+  train_v28c_mse_contrastive.py       # Step 2.2
 
 data/
   antonym_pairs_v28.csv               # Step 1.1

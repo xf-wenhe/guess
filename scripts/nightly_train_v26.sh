@@ -111,7 +111,7 @@ ANCHOR_MODEL="${SEM_ANCHOR_MODEL:-${OUTPUT_MODEL}-anchor}"
 OUTPUT_CALIB="${SEM_OUTPUT_CALIB:-$NIGHTLY_ROOT/data/tmp/semantic_calibration_local_candidate.json}"
 BASE_CALIB="${SEM_BASE_CALIB:-$NIGHTLY_ROOT/data/calib/$PROJECT_CALIB_NAME}"
 ANCHOR_TRAIN_CSV="${SEM_ANCHOR_TRAIN_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_manual_anchor.csv}"
-ENABLE_ANCHOR_FINETUNE="${NIGHTLY_ENABLE_ANCHOR_FINETUNE:-1}"
+ENABLE_ANCHOR_FINETUNE="${NIGHTLY_ENABLE_ANCHOR_FINETUNE:-0}"
 ANCHOR_BATCH_SIZE="${NIGHTLY_ANCHOR_BATCH_SIZE:-4}"
 ANCHOR_EPOCHS="${NIGHTLY_ANCHOR_EPOCHS:-1}"
 ANCHOR_WARMUP_STEPS="${NIGHTLY_ANCHOR_WARMUP_STEPS:-10}"
@@ -119,10 +119,24 @@ ANCHOR_LEARNING_RATE="${NIGHTLY_ANCHOR_LEARNING_RATE:-1.5e-6}"
 AUTO_PROMOTE="${NIGHTLY_AUTO_PROMOTE:-1}"
 DELETE_REJECTED_CANDIDATE="${NIGHTLY_DELETE_REJECTED_CANDIDATE:-1}"
 DELETE_OLD_ON_PROMOTE="${NIGHTLY_DELETE_OLD_ON_PROMOTE:-1}"
-MIN_MAE_IMPROVEMENT="${NIGHTLY_MIN_MAE_IMPROVEMENT:-0.0}"
-MIN_ACC_IMPROVEMENT="${NIGHTLY_MIN_ACC_IMPROVEMENT:-0.0}"
-REQUIRE_NO_DEGRADE_ALL="${NIGHTLY_REQUIRE_NO_DEGRADE_ALL:-0}"
+MIN_MAE_IMPROVEMENT="${NIGHTLY_MIN_MAE_IMPROVEMENT:-0.3}"
+MIN_ACC_IMPROVEMENT="${NIGHTLY_MIN_ACC_IMPROVEMENT:-2.0}"
+REQUIRE_NO_DEGRADE_ALL="${NIGHTLY_REQUIRE_NO_DEGRADE_ALL:-1}"
 REQUIRE_STRICT_IMPROVEMENT="${NIGHTLY_REQUIRE_STRICT_IMPROVEMENT:-1}"
+TRAIN_DEVICE="${SEM_DEVICE:-${NIGHTLY_SEM_DEVICE:-auto}}"
+ENABLE_SUPERVISED_FINETUNE="${NIGHTLY_ENABLE_SUPERVISED_FINETUNE:-1}"
+ENABLE_UNSUP_PRETRAIN="${NIGHTLY_ENABLE_UNSUP_PRETRAIN:-0}"
+SUPERVISED_TRAIN_SCRIPT="${NIGHTLY_SUPERVISED_TRAIN_SCRIPT:-scripts/train_v28c_mse_contrastive.py}"
+BASE_TRAIN_CSV="${SEM_BASE_TRAIN_CSV:-$ROOT_DIR/data/train_v28c_balanced.csv}"
+NIGHTLY_TRAIN_CSV="${SEM_NIGHTLY_TRAIN_CSV:-$NIGHTLY_ROOT/data/gold/train_v28c_nightly.csv}"
+SUP_BATCH_SIZE="${NIGHTLY_SUP_BATCH_SIZE:-8}"
+SUP_EPOCHS="${NIGHTLY_SUP_EPOCHS:-2}"
+SUP_WARMUP_RATIO="${NIGHTLY_SUP_WARMUP_RATIO:-0.1}"
+SUP_LEARNING_RATE="${NIGHTLY_SUP_LEARNING_RATE:-8e-6}"
+SUP_MAX_TRAIN_ROWS="${NIGHTLY_SUP_MAX_TRAIN_ROWS:-0}"
+SUP_HARD_NEG_BOOST="${NIGHTLY_SUP_HARD_NEG_BOOST:-2.0}"
+MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
+MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
 TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-3}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
@@ -137,6 +151,7 @@ GOLD_CALIB_CSV="${SEM_GOLD_CALIB_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_calib.csv
 GOLD_EVAL_CSV="${SEM_GOLD_EVAL_CSV:-$NIGHTLY_ROOT/data/gold/gold_v26_eval.csv}"
 BUILD_TIMEOUT_SEC="${NIGHTLY_BUILD_TIMEOUT_SEC:-1200}"
 PRETRAIN_TIMEOUT_SEC="${NIGHTLY_PRETRAIN_TIMEOUT_SEC:-10800}"
+SUPERVISED_TIMEOUT_SEC="${NIGHTLY_SUPERVISED_TIMEOUT_SEC:-21600}"
 ANCHOR_TIMEOUT_SEC="${NIGHTLY_ANCHOR_TIMEOUT_SEC:-7200}"
 EVAL_TIMEOUT_SEC="${NIGHTLY_EVAL_TIMEOUT_SEC:-1800}"
 REGRESSION_TIMEOUT_SEC="${NIGHTLY_REGRESSION_TIMEOUT_SEC:-1200}"
@@ -152,6 +167,8 @@ UNSUP_PAIRS_JSONL="$(to_abs_path "$UNSUP_PAIRS_JSONL")"
 GOLD_POOL_CSV="$(to_abs_path "$GOLD_POOL_CSV")"
 GOLD_CALIB_CSV="$(to_abs_path "$GOLD_CALIB_CSV")"
 GOLD_EVAL_CSV="$(to_abs_path "$GOLD_EVAL_CSV")"
+BASE_TRAIN_CSV="$(to_abs_path "$BASE_TRAIN_CSV")"
+NIGHTLY_TRAIN_CSV="$(to_abs_path "$NIGHTLY_TRAIN_CSV")"
 PUZZLES_JSON="$(to_abs_path "$PUZZLES_JSON")"
 MANUAL_OVERRIDES_JSON="$(to_abs_path "$MANUAL_OVERRIDES_JSON")"
 SCORED_CSV="$(to_abs_path "$SCORED_CSV")"
@@ -171,14 +188,26 @@ echo "[nightly][paths] ANCHOR_TRAIN_CSV=$ANCHOR_TRAIN_CSV"
 echo "[nightly][paths] UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL"
 echo "[nightly][paths] GOLD_CALIB_CSV=$GOLD_CALIB_CSV"
 echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
+echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
+echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
+echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
+
+device_prefix() {
+  if [[ "$TRAIN_DEVICE" == "auto" || -z "$TRAIN_DEVICE" ]]; then
+    printf ''
+  else
+    printf 'SEM_DEVICE=%q ' "$TRAIN_DEVICE"
+  fi
+}
 
 # Validate inputs
 assert_readable_file "$PUZZLES_JSON"
 assert_readable_file "$MANUAL_OVERRIDES_JSON"
 assert_readable_file "$SCORED_CSV"
+assert_readable_file "$BASE_TRAIN_CSV"
 assert_readable_file "$PROJECT_MODEL_DIR/config_sentence_transformers.json"
 assert_readable_file "$PROJECT_CALIB_PATH"
 
@@ -270,6 +299,7 @@ printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\t
 
 # Per-round results for best-round selection
 declare -a ROUND_RESULTS  # "round|stage|model|calib|mae|acc|raw_mae|raw_acc|accepted"
+declare -a ROUND_DIAGNOSTICS  # "round|stage|base_metrics_json|candidate_metrics_json|regression_out"
 
 # ---- run single round ----
 
@@ -280,6 +310,7 @@ run_single_round() {
 
   # Per-round model paths (suffixed with _r<N>)
   local round_output_model="${OUTPUT_MODEL}_r${round}"
+  local round_unsup_model="${OUTPUT_MODEL}-unsup_r${round}"
   local round_anchor_model="${ANCHOR_MODEL}_r${round}"
   local round_output_calib="${WORK_DIR}/semantic_calibration_local_candidate_${round_stamp}.json"
   local round_base_model="${BASE_MODEL}_r${round}"
@@ -291,53 +322,90 @@ run_single_round() {
   local nightly_metrics_json="$WORK_DIR/nightly_candidate_metrics_${round_stamp}.json"
   local regression_out="$WORK_DIR/nightly_regression_${round_stamp}.txt"
 
-  local candidate_model="$round_output_model"
-  local candidate_stage="pretrain"
+  local candidate_model="$round_base_model"
+  local candidate_stage="base"
 
   echo "[nightly] ===== round ${round}/${TOTAL_RUNS} ====="
   echo "[nightly] round_seed=${round_seed}"
 
   # Copy base model from project models/ for this round
   echo "[nightly] copy round base model from project: $PROJECT_MODEL_DIR -> $round_base_model"
-  rm -rf "$round_base_model"
-  if command -v rsync >/dev/null 2>&1; then
-    rsync -a --delete "$PROJECT_MODEL_DIR/" "$round_base_model/"
+  if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[nightly] (dry-run) skip base model copy"
   else
-    cp -R "$PROJECT_MODEL_DIR/" "$round_base_model/"
+    rm -rf "$round_base_model"
+    if command -v rsync >/dev/null 2>&1; then
+      rsync -a --delete "$PROJECT_MODEL_DIR/" "$round_base_model/"
+    else
+      cp -R "$PROJECT_MODEL_DIR/" "$round_base_model/"
+    fi
   fi
 
-  # Build gold data for this round (different seed = different split)
+  # Build supervised nightly data, fixed calib/eval split, and optional unsup pairs.
   run_cmd "SEM_SEED=$round_seed \
     SEM_PUZZLES_JSON=$PUZZLES_JSON \
     SEM_MANUAL_OVERRIDES=$MANUAL_OVERRIDES_JSON \
     SEM_SCORED_CSV=$SCORED_CSV \
-    SEM_GOLD_MANUAL_ANCHOR_CSV=$ANCHOR_TRAIN_CSV \
+    SEM_BASE_TRAIN_CSV=$BASE_TRAIN_CSV \
+    SEM_OUTPUT_TRAIN_CSV=$NIGHTLY_TRAIN_CSV \
     SEM_GOLD_POOL_CSV=$GOLD_POOL_CSV \
     SEM_GOLD_CALIB_CSV=$GOLD_CALIB_CSV \
     SEM_GOLD_EVAL_CSV=$GOLD_EVAL_CSV \
     SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
-    $PYTHON_BIN scripts/build_v26_gold_and_unsup.py" "$BUILD_TIMEOUT_SEC" || return $?
+    $PYTHON_BIN scripts/build_nightly_semantic_sets.py" "$BUILD_TIMEOUT_SEC" || return $?
 
-  # Train candidate from this round's base model
-  run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
-    SEM_SEED=$round_seed \
-    SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
-    SEM_BASE_MODEL=$round_base_model \
-    SEM_OUTPUT_MODEL=$round_output_model \
-    SEM_MAX_PAIRS=$MAX_PAIRS SEM_BATCH_SIZE=$BATCH_SIZE SEM_EPOCHS=$EPOCHS SEM_WARMUP_STEPS=$WARMUP_STEPS SEM_LEARNING_RATE=$LEARNING_RATE \
-    $PYTHON_BIN scripts/pretrain_v26_unsupervised.py" "$PRETRAIN_TIMEOUT_SEC" || return $?
+  if [[ "$ENABLE_UNSUP_PRETRAIN" == "1" ]]; then
+    run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
+      $(device_prefix) \
+      SEM_SEED=$round_seed \
+      SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
+      SEM_BASE_MODEL=$candidate_model \
+      SEM_OUTPUT_MODEL=$round_unsup_model \
+      SEM_MAX_PAIRS=$MAX_PAIRS SEM_BATCH_SIZE=$BATCH_SIZE SEM_EPOCHS=$EPOCHS SEM_WARMUP_STEPS=$WARMUP_STEPS SEM_LEARNING_RATE=$LEARNING_RATE \
+      $PYTHON_BIN scripts/pretrain_v26_unsupervised.py" "$PRETRAIN_TIMEOUT_SEC" || return $?
+    candidate_model="$round_unsup_model"
+    candidate_stage="unsup"
 
-  # Evaluate candidate + build calibration
-  run_cmd "SEM_MODEL_PATH=$round_output_model \
-    SEM_CALIB_CSV=$GOLD_CALIB_CSV \
-    SEM_EVAL_CSV=$GOLD_EVAL_CSV \
-    SEM_CALIB_JSON=$round_output_calib \
-    $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
+    run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
+      SEM_CALIB_CSV=$GOLD_CALIB_CSV \
+      SEM_EVAL_CSV=$GOLD_EVAL_CSV \
+      SEM_CALIB_JSON=$round_output_calib \
+      $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
+  fi
+
+  if [[ "$ENABLE_SUPERVISED_FINETUNE" == "1" ]]; then
+    run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
+      $(device_prefix) \
+      SEM_SEED=$round_seed \
+      SEM_TRAIN_CSV=$NIGHTLY_TRAIN_CSV \
+      SEM_BASE_MODEL=$candidate_model \
+      SEM_OUTPUT_MODEL=$round_output_model \
+      SEM_BATCH_SIZE=$SUP_BATCH_SIZE \
+      SEM_EPOCHS=$SUP_EPOCHS \
+      SEM_WARMUP_RATIO=$SUP_WARMUP_RATIO \
+      SEM_LR=$SUP_LEARNING_RATE \
+      SEM_MAX_TRAIN_ROWS=$SUP_MAX_TRAIN_ROWS \
+      SEM_HARD_NEG_BOOST=$SUP_HARD_NEG_BOOST \
+      $PYTHON_BIN $SUPERVISED_TRAIN_SCRIPT" "$SUPERVISED_TIMEOUT_SEC" || return $?
+    candidate_model="$round_output_model"
+    if [[ "$candidate_stage" == "unsup" ]]; then
+      candidate_stage="unsup+supervised"
+    else
+      candidate_stage="supervised"
+    fi
+
+    run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
+      SEM_CALIB_CSV=$GOLD_CALIB_CSV \
+      SEM_EVAL_CSV=$GOLD_EVAL_CSV \
+      SEM_CALIB_JSON=$round_output_calib \
+      $PYTHON_BIN scripts/eval_v26_gold.py --json-out $pretrain_metrics_json" "$EVAL_TIMEOUT_SEC" || return $?
+  fi
 
   # Anchor finetune
   if [[ "$ENABLE_ANCHOR_FINETUNE" == "1" ]]; then
     run_cmd "SEM_TRAIN_CSV=$ANCHOR_TRAIN_CSV \
-      SEM_BASE_MODEL=$round_output_model \
+      $(device_prefix) \
+      SEM_BASE_MODEL=$candidate_model \
       SEM_OUTPUT_MODEL=$round_anchor_model \
       SEM_BATCH_SIZE=$ANCHOR_BATCH_SIZE \
       SEM_EPOCHS=$ANCHOR_EPOCHS \
@@ -347,7 +415,7 @@ run_single_round() {
 
     candidate_model="$round_anchor_model"
     candidate_stage="anchor"
-    run_cmd "SEM_MODEL_PATH=$candidate_model \
+    run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -398,6 +466,7 @@ PY
 
   # Gate: candidate vs base model for this round
   echo "[nightly] evaluate base metrics for round $round"
+  env $(device_prefix) \
   SEM_MODEL_PATH="$round_base_model" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
@@ -405,6 +474,7 @@ PY
   "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$base_metrics_json" || return $?
 
   echo "[nightly] evaluate nightly metrics for round $round"
+  env $(device_prefix) \
   SEM_MODEL_PATH="$candidate_model" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
@@ -415,7 +485,7 @@ PY
   run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py > $regression_out" "$REGRESSION_TIMEOUT_SEC" || return $?
   tail -n 12 "$regression_out"
 
-  python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
+  python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
 import json, os, re
 from pathlib import Path
 base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
@@ -423,6 +493,8 @@ cand = json.loads(Path(os.environ['NIGHTLY_METRICS_JSON']).read_text(encoding='u
 reg = Path(os.environ['REGRESSION_OUT']).read_text(encoding='utf-8')
 min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
 min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
+min_hard_mae = float(os.environ['MIN_HARD_NEG_MAE_IMPROVEMENT'])
+min_syn_recall = float(os.environ['MIN_SYNONYM_RECALL_IMPROVEMENT'])
 require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
 require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
 
@@ -440,11 +512,29 @@ cal_acc_no_degrade = c_acc >= b_acc
 no_degrade_all = raw_mae_no_degrade and raw_acc_no_degrade and cal_mae_no_degrade and cal_acc_no_degrade
 strict_improve = (c_mae < b_mae or c_acc > b_acc or c_raw_mae < b_raw_mae or c_raw_acc > b_raw_acc)
 
+base_groups = base.get('group_metrics') or {}
+cand_groups = cand.get('group_metrics') or {}
+base_hard = base_groups.get('hard_negative') or {}
+cand_hard = cand_groups.get('hard_negative') or {}
+base_syn = base_groups.get('synonym_alias') or {}
+cand_syn = cand_groups.get('synonym_alias') or {}
+
+b_hard_mae = float(base_hard.get('cal_mae', 0.0))
+c_hard_mae = float(cand_hard.get('cal_mae', 0.0))
+b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
+c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
+hard_negative_ok = True
+if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
+  hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
+synonym_recall_ok = True
+if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
+  synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
+
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
 reg_ok = passed == 30
 
-accepted = mae_ok and acc_ok and reg_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -466,6 +556,12 @@ print(f'cal_mae_no_degrade={cal_mae_no_degrade}')
 print(f'cal_acc_no_degrade={cal_acc_no_degrade}')
 print(f'no_degrade_all={no_degrade_all}')
 print(f'strict_improve={strict_improve}')
+print(f'base_hard_negative_cal_mae={b_hard_mae:.4f}')
+print(f'cand_hard_negative_cal_mae={c_hard_mae:.4f}')
+print(f'hard_negative_ok={hard_negative_ok}')
+print(f'base_synonym_recall_at70={b_syn_recall:.2f}')
+print(f'cand_synonym_recall_at70={c_syn_recall:.2f}')
+print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'regression_ok={reg_ok}')
 print(f'accepted={accepted}')
 PY
@@ -485,6 +581,7 @@ PY
 
   # Record for best-round selection
   ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|${cand_mae_val}|${cand_acc_val}|${cand_mae_val}|${cand_acc_val}|${accepted}")
+  ROUND_DIAGNOSTICS+=("${round}|${candidate_stage}|${base_metrics_json}|${nightly_metrics_json}|${regression_out}")
 
   # Clean up round base model (candidate kept for now)
   if [[ -d "$round_base_model" ]]; then
@@ -516,6 +613,62 @@ cat "$SUMMARY_FILE"
 REPORTS_DIR="$NIGHTLY_ROOT/reports"
 mkdir -p "$REPORTS_DIR"
 PROMOTION_REPORT="$REPORTS_DIR/nightly_promotion_${STAMP}.md"
+
+append_metrics_diagnostics() {
+  local title="$1"
+  local base_metrics="$2"
+  local cand_metrics="$3"
+  local out="$4"
+  if [[ ! -f "$base_metrics" || ! -f "$cand_metrics" ]]; then
+    return 0
+  fi
+  DIAG_TITLE="$title" BASE_METRICS_JSON="$base_metrics" CAND_METRICS_JSON="$cand_metrics" METRICS_REPORT_OUT="$out" $PYTHON_BIN - <<'PY'
+import json, os
+from pathlib import Path
+
+title = os.environ['DIAG_TITLE']
+out = Path(os.environ['METRICS_REPORT_OUT'])
+base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
+cand = json.loads(Path(os.environ['CAND_METRICS_JSON']).read_text(encoding='utf-8'))
+
+groups = sorted(set((base.get('group_metrics') or {}) | (cand.get('group_metrics') or {})))
+lines = [
+    "",
+    f"## {title}",
+    "",
+    "| group | base_mae | cand_mae | base_acc | cand_acc | extra |",
+    "|-------|----------|----------|----------|----------|-------|",
+]
+for group in groups:
+    b = (base.get('group_metrics') or {}).get(group, {})
+    c = (cand.get('group_metrics') or {}).get(group, {})
+    extra = ""
+    if group == "synonym_alias":
+        extra = f"recall@70 {b.get('recall_at_70', '-')} -> {c.get('recall_at_70', '-')}"
+    elif group == "hard_negative":
+        extra = f"low@30 {b.get('low_score_precision_at_30', '-')} -> {c.get('low_score_precision_at_30', '-')}"
+    lines.append(
+        f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
+        f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
+    )
+
+lines.extend([
+    "",
+    "### 候选最差样本",
+    "",
+    "| answer | input | target | candidate | error | group | tag |",
+    "|--------|-------|--------|-----------|-------|-------|-----|",
+])
+for case in (cand.get('worst_cases') or [])[:10]:
+    lines.append(
+        f"| {case.get('answer', '')} | {case.get('user_input', '')} | {case.get('target', '')} | "
+        f"{case.get('cal_pred', '')} | {case.get('abs_error', '')} | {case.get('group', '')} | {case.get('relation_tag', '')} |"
+    )
+
+with out.open('a', encoding='utf-8') as file:
+    file.write("\n".join(lines) + "\n")
+PY
+}
 
 # Find the best accepted round by lowest cal_mae
 BEST_ROUND=""
@@ -572,6 +725,11 @@ elif [[ "$ANY_ACCEPTED" == "0" ]]; then
   echo "**结果**: 无轮次通过门控，未晋升" >> "$PROMOTION_REPORT"
   echo "[nightly] no accepted rounds, no promotion"
 
+  for entry in ${ROUND_DIAGNOSTICS[@]+"${ROUND_DIAGNOSTICS[@]}"}; do
+    IFS='|' read -r r stage base_metrics cand_metrics regression_out <<< "$entry"
+    append_metrics_diagnostics "拒绝诊断 Round $r ($stage)" "$base_metrics" "$cand_metrics" "$PROMOTION_REPORT"
+  done
+
   # Delete all nightly artifacts (models, calibs, gold) except logs
   echo "[nightly] cleaning up nightly artifacts (no promotion)"
   for entry in ${ROUND_RESULTS[@]+"${ROUND_RESULTS[@]}"}; do
@@ -585,7 +743,7 @@ elif [[ "$ANY_ACCEPTED" == "0" ]]; then
   done
   # Also clean up any stray anchor models
   for ((r=1; r<=TOTAL_RUNS; r++)); do
-    rm -rf "${OUTPUT_MODEL}_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
+    rm -rf "${OUTPUT_MODEL}_r${r}" "${OUTPUT_MODEL}-unsup_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
   done
 else
   echo "" >> "$PROMOTION_REPORT"
@@ -599,6 +757,7 @@ else
   PROJECT_BASE_METRICS="$WORK_DIR/nightly_project_base_metrics_${STAMP}.json"
   BEST_CAND_METRICS="$WORK_DIR/nightly_best_cand_metrics_${STAMP}.json"
 
+  env $(device_prefix) \
   SEM_MODEL_PATH="$PROJECT_MODEL_DIR" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
@@ -606,6 +765,7 @@ else
   "$PYTHON_BIN" scripts/eval_v26_gold.py --json-out "$PROJECT_BASE_METRICS" || true
 
   # Candidate metrics (already have them from round result, but re-evaluate for consistency)
+  env $(device_prefix) \
   SEM_MODEL_PATH="$BEST_MODEL" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
@@ -620,7 +780,7 @@ else
   tail -n 12 "$BEST_REGRESSION"
 
   # Gate against project model
-  best_gate_output="$(BASE_METRICS_JSON="$PROJECT_BASE_METRICS" NIGHTLY_METRICS_JSON="$BEST_CAND_METRICS" REGRESSION_OUT="$BEST_REGRESSION" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
+  best_gate_output="$(BASE_METRICS_JSON="$PROJECT_BASE_METRICS" NIGHTLY_METRICS_JSON="$BEST_CAND_METRICS" REGRESSION_OUT="$BEST_REGRESSION" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
 import json, os, re
 from pathlib import Path
 base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
@@ -628,6 +788,8 @@ cand = json.loads(Path(os.environ['NIGHTLY_METRICS_JSON']).read_text(encoding='u
 reg = Path(os.environ['REGRESSION_OUT']).read_text(encoding='utf-8')
 min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
 min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
+min_hard_mae = float(os.environ['MIN_HARD_NEG_MAE_IMPROVEMENT'])
+min_syn_recall = float(os.environ['MIN_SYNONYM_RECALL_IMPROVEMENT'])
 require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
 require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
 
@@ -645,11 +807,29 @@ cal_acc_no_degrade = c_acc >= b_acc
 no_degrade_all = raw_mae_no_degrade and raw_acc_no_degrade and cal_mae_no_degrade and cal_acc_no_degrade
 strict_improve = (c_mae < b_mae or c_acc > b_acc or c_raw_mae < b_raw_mae or c_raw_acc > b_raw_acc)
 
+base_groups = base.get('group_metrics') or {}
+cand_groups = cand.get('group_metrics') or {}
+base_hard = base_groups.get('hard_negative') or {}
+cand_hard = cand_groups.get('hard_negative') or {}
+base_syn = base_groups.get('synonym_alias') or {}
+cand_syn = cand_groups.get('synonym_alias') or {}
+
+b_hard_mae = float(base_hard.get('cal_mae', 0.0))
+c_hard_mae = float(cand_hard.get('cal_mae', 0.0))
+b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
+c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
+hard_negative_ok = True
+if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
+  hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
+synonym_recall_ok = True
+if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
+  synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
+
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
 reg_ok = passed == 30
 
-accepted = mae_ok and acc_ok and reg_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -663,6 +843,12 @@ print(f'project_raw_mae={b_raw_mae:.4f}')
 print(f'project_raw_bucket_acc={b_raw_acc:.2f}')
 print(f'best_raw_mae={c_raw_mae:.4f}')
 print(f'best_raw_bucket_acc={c_raw_acc:.2f}')
+print(f'project_hard_negative_cal_mae={b_hard_mae:.4f}')
+print(f'best_hard_negative_cal_mae={c_hard_mae:.4f}')
+print(f'hard_negative_ok={hard_negative_ok}')
+print(f'project_synonym_recall_at70={b_syn_recall:.2f}')
+print(f'best_synonym_recall_at70={c_syn_recall:.2f}')
+print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'regression_ok={reg_ok}')
 print(f'accepted={accepted}')
 print(f'mae_ok={mae_ok}')
@@ -687,6 +873,8 @@ PY
     echo "| cal_acc | $proj_acc | $best_acc_val |"
     echo ""
   } >> "$PROMOTION_REPORT"
+
+  append_metrics_diagnostics "分组指标" "$PROJECT_BASE_METRICS" "$BEST_CAND_METRICS" "$PROMOTION_REPORT"
 
   if [[ "$best_accepted" == "True" || "$best_accepted" == "true" ]]; then
     if [[ "$AUTO_PROMOTE" == "1" ]]; then
@@ -732,7 +920,7 @@ PY
     fi
   done
   for ((r=1; r<=TOTAL_RUNS; r++)); do
-    rm -rf "${OUTPUT_MODEL}_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
+    rm -rf "${OUTPUT_MODEL}_r${r}" "${OUTPUT_MODEL}-unsup_r${r}" "${ANCHOR_MODEL}_r${r}" "${BASE_MODEL}_r${r}" || true
   done
   rm -f "$PROJECT_EVAL_CALIB" "$PROJECT_BASE_METRICS" "$BEST_CAND_METRICS" "$BEST_REGRESSION"
 fi

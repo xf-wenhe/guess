@@ -225,7 +225,7 @@ sudo bash scripts/uninstall_nightly_10pm_daemon.sh
 兼容方案（LaunchAgent，依赖用户会话）：
 
 已提供脚本：
-- `scripts/nightly_train_v26.sh`：执行一轮夜间训练（无标注预训练 + 手工锚点回灌 + 金标校准验收 + 回归检查 + 达标才晋升默认）
+- `scripts/nightly_train_v26.sh`：执行一轮夜间训练（v28c 监督训练 + 大 holdout 校准验收 + 分组门控 + 回归检查 + 达标才晋升默认）。详见 `docs/SEMANTIC_NIGHTLY_TRAINING.md`。
 - `scripts/install_nightly_10pm_launchd.sh`：安装 `launchd` 定时任务（每天 23:00）
 - `scripts/uninstall_nightly_10pm_launchd.sh`：卸载定时任务
 - `scripts/verify_nightly_outcome_v26.sh`：一键验收夜训结果（晋升、模型回写、校准回写、候选清理）

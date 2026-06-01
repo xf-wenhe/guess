@@ -152,6 +152,44 @@ class NightlyScriptsTest(unittest.TestCase):
             remaining = list(output_model_base.parent.glob("bge-m3-finetuned-local-candidate*"))
             self.assertEqual(remaining, [], msg=f"nightly artifacts not cleaned: {remaining}\n{output}")
 
+    def test_nightly_rejected_candidate_report_includes_diagnostics(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            self._prepare_fake_repo(root)
+            self._write_round_aware_python(root / ".venv" / "bin" / "python")
+
+            nightly_script_copy = root / "scripts" / "nightly_train_v26.sh"
+            nightly_script_copy.write_text(NIGHTLY_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+            nightly_script_copy.chmod(nightly_script_copy.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env["NIGHTLY_ROOT"] = str(root / ".nightly")
+            env["NIGHTLY_ENFORCE_FREE_SPACE_CHECK"] = "0"
+            env["NIGHTLY_TOTAL_RUNS"] = "1"
+            env["NIGHTLY_SCRIPT_ROOT"] = str(root)
+            env["NIGHTLY_ENABLE_ANCHOR_FINETUNE"] = "0"
+            env["NIGHTLY_MIN_MAE_IMPROVEMENT"] = "999.0"
+            env["NIGHTLY_REQUIRE_NO_DEGRADE_ALL"] = "0"
+
+            result = subprocess.run(
+                ["bash", str(nightly_script_copy)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            reports_dir = root / ".nightly" / "reports"
+            promotion_records = sorted(reports_dir.glob("nightly_promotion_*.md"))
+            self.assertTrue(promotion_records, msg=result.stdout + result.stderr)
+            promotion_text = promotion_records[-1].read_text(encoding="utf-8")
+            self.assertIn("无轮次通过门控", promotion_text)
+            self.assertIn("拒绝诊断 Round 1", promotion_text)
+            self.assertIn("hard_negative", promotion_text)
+            self.assertIn("synonym_alias", promotion_text)
+
     def _prepare_fake_repo(self, root: Path) -> None:
         (root / "scripts").mkdir(parents=True)
         (root / "assets").mkdir(parents=True)
@@ -167,6 +205,10 @@ class NightlyScriptsTest(unittest.TestCase):
         (root / "data" / "manual_similarity_overrides.json").write_text("{}\n", encoding="utf-8")
         (root / "data" / "semantic_scoring_user_input_template.csv").write_text(
             "answer,user_input,score_0_100\n猫,猫咪,95\n",
+            encoding="utf-8",
+        )
+        (root / "data" / "train_v28c_balanced.csv").write_text(
+            "id,answer,user_input,relation_tag,score_0_100,sample_weight\n1,猫,猫咪,alias_synonym_high,95,1.0\n",
             encoding="utf-8",
         )
         (root / "data" / "semantic_calibration_v27_semreal_anchor.json").write_text(
@@ -225,17 +267,20 @@ if script.endswith('guard_hint_answer_overlap_v1.py'):
     print('{"input":"assets/puzzles.json","violations":0}')
     sys.exit(0)
 
-if script.endswith('build_v26_gold_and_unsup.py'):
+if script.endswith('build_v26_gold_and_unsup.py') or script.endswith('build_nightly_semantic_sets.py'):
     gold_dir = pathlib.Path(env['SEM_UNSUP_PAIRS_JSONL']).parent
     gold_dir.mkdir(parents=True, exist_ok=True)
-    (gold_dir / 'gold_v26_calib.csv').write_text('answer,user_input,score_0_100\\n猫,猫咪,95\\n', encoding='utf-8')
-    (gold_dir / 'gold_v26_eval.csv').write_text('answer,user_input,score_0_100\\n猫,猫咪,95\\n', encoding='utf-8')
+    pathlib.Path(env.get('SEM_GOLD_CALIB_CSV', gold_dir / 'gold_v26_calib.csv')).write_text('answer,user_input,relation_tag,score_0_100\\n猫,猫咪,alias_synonym_high,95\\n', encoding='utf-8')
+    pathlib.Path(env.get('SEM_GOLD_EVAL_CSV', gold_dir / 'gold_v26_eval.csv')).write_text('answer,user_input,relation_tag,score_0_100\\n猫,猫咪,alias_synonym_high,95\\n', encoding='utf-8')
+    pathlib.Path(env.get('SEM_GOLD_POOL_CSV', gold_dir / 'gold_v26_pool.csv')).write_text('answer,user_input,relation_tag,score_0_100\\n猫,猫咪,alias_synonym_high,95\\n', encoding='utf-8')
+    if 'SEM_OUTPUT_TRAIN_CSV' in env:
+        pathlib.Path(env['SEM_OUTPUT_TRAIN_CSV']).write_text('answer,user_input,relation_tag,score_0_100,sample_weight\\n猫,猫咪,alias_synonym_high,95,1.0\\n', encoding='utf-8')
     (gold_dir / 'gold_v26_manual_anchor.csv').write_text('text_a,text_b,label\\n猫,猫咪,0.95\\n', encoding='utf-8')
     pathlib.Path(env['SEM_UNSUP_PAIRS_JSONL']).write_text('{"text_a":"猫","text_b":"猫咪"}\\n', encoding='utf-8')
     print('written=' + str(gold_dir))
     sys.exit(0)
 
-if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_v19_split.py'):
+if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_v19_split.py') or script.endswith('train_v28c_mse_contrastive.py'):
     out_dir = pathlib.Path(env['SEM_OUTPUT_MODEL'])
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / 'config_sentence_transformers.json').write_text('{}\\n', encoding='utf-8')
@@ -258,9 +303,20 @@ if script.endswith('eval_v26_gold.py'):
         '0': {'raw_mae': 4.8, 'raw_bucket_acc': 81.0, 'cal_mae': 3.5, 'cal_bucket_acc': 84.0},
     }
     payload = metrics_by_round.get(round_num, metrics_by_round['0']).copy()
+    model_path = env.get('SEM_MODEL_PATH', '')
+    if 'bge-m3-finetuned-v27-semreal-anchor' in model_path:
+        payload['raw_mae'] += 0.5
+        payload['cal_mae'] += 0.5
+        payload['raw_bucket_acc'] -= 2.0
+        payload['cal_bucket_acc'] -= 2.0
     payload.update({
         'eval_rows': 1,
-        'model_path': env.get('SEM_MODEL_PATH', ''),
+        'group_metrics': {
+            'hard_negative': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'low_score_precision_at_30': 100.0},
+            'synonym_alias': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'recall_at_70': 100.0},
+        },
+        'worst_cases': [],
+        'model_path': model_path,
         'calib_csv': env.get('SEM_CALIB_CSV', ''),
         'eval_csv': env.get('SEM_EVAL_CSV', ''),
         'calib_json': env.get('SEM_CALIB_JSON', ''),
@@ -284,6 +340,15 @@ if script.endswith('run_regression_pairs_v23.py'):
 
 # Handle stdin gate evaluation (script == '-')
 if script == '-' or script == '':
+    if 'DIAG_TITLE' in env:
+        out = pathlib.Path(env['METRICS_REPORT_OUT'])
+        with out.open('a', encoding='utf-8') as f:
+            f.write('\\n## ' + env['DIAG_TITLE'] + '\\n')
+            f.write('| group | base_mae | cand_mae | base_acc | cand_acc | extra |\\n')
+            f.write('| hard_negative | 2.0 | 2.0 | 100.0 | 100.0 | low@30 100.0 -> 100.0 |\\n')
+            f.write('| synonym_alias | 2.0 | 2.0 | 100.0 | 100.0 | recall@70 100.0 -> 100.0 |\\n')
+        sys.exit(0)
+
     # Determine round number from env vars (check various paths)
     round_num = '0'
     for key in ('SEM_OUTPUT_MODEL', 'SEM_MODEL_PATH', 'SEM_OUTPUT_CALIB',
@@ -322,8 +387,10 @@ cand_raw_mae = m['raw_mae']
 base_raw_acc = m['raw_bucket_acc'] - 2.0
 cand_raw_acc = m['raw_bucket_acc']
 
-mae_ok = cand_mae <= base_mae
-acc_ok = cand_acc >= base_acc
+min_mae = float(env.get('MIN_MAE_IMPROVEMENT', '0.0'))
+min_acc = float(env.get('MIN_ACC_IMPROVEMENT', '0.0'))
+mae_ok = cand_mae <= (base_mae - min_mae)
+acc_ok = cand_acc >= (base_acc + min_acc)
 raw_mae_no_degrade = cand_raw_mae <= base_raw_mae
 raw_acc_no_degrade = cand_raw_acc >= base_raw_acc
 cal_mae_no_degrade = cand_mae <= base_mae
