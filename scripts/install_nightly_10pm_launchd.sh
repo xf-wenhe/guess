@@ -11,7 +11,7 @@ fi
 
 AGENT_ID="com.guess.nightly-train-v26"
 PLIST_PATH="$HOME/Library/LaunchAgents/${AGENT_ID}.plist"
-LOGS_DIR="${NIGHTLY_LOGS_DIR:-$NIGHTLY_ROOT/logs}"
+LOGS_DIR="${NIGHTLY_LOGS_DIR:-$HOME/.guess_nightly/logs}"
 STDOUT_LOG="$LOGS_DIR/launchd_nightly_v26.out.log"
 STDERR_LOG="$LOGS_DIR/launchd_nightly_v26.err.log"
 REPORTS_DIR="$NIGHTLY_ROOT/reports"
