@@ -129,15 +129,45 @@ ENABLE_UNSUP_PRETRAIN="${NIGHTLY_ENABLE_UNSUP_PRETRAIN:-0}"
 SUPERVISED_TRAIN_SCRIPT="${NIGHTLY_SUPERVISED_TRAIN_SCRIPT:-scripts/train_v28c_mse_contrastive.py}"
 BASE_TRAIN_CSV="${SEM_BASE_TRAIN_CSV:-$ROOT_DIR/data/train_v28c_balanced.csv}"
 NIGHTLY_TRAIN_CSV="${SEM_NIGHTLY_TRAIN_CSV:-$NIGHTLY_ROOT/data/gold/train_v28c_nightly.csv}"
-SUP_BATCH_SIZE="${NIGHTLY_SUP_BATCH_SIZE:-8}"
-SUP_EPOCHS="${NIGHTLY_SUP_EPOCHS:-2}"
+TRAIN_PROFILE="${NIGHTLY_TRAIN_PROFILE:-daily}"
+if [[ "$TRAIN_PROFILE" == "full" ]]; then
+  DEFAULT_SUP_BATCH_SIZE="8"
+  DEFAULT_SUP_EPOCHS="2"
+  DEFAULT_SUP_MAX_TRAIN_ROWS="0"
+  DEFAULT_SUP_MAX_REPEAT="5"
+  DEFAULT_SUP_LEARNING_RATE="2e-6"
+  DEFAULT_TOTAL_RUNS="3"
+elif [[ "$TRAIN_PROFILE" == "smoke" ]]; then
+  DEFAULT_SUP_BATCH_SIZE="8"
+  DEFAULT_SUP_EPOCHS="1"
+  DEFAULT_SUP_MAX_TRAIN_ROWS="300"
+  DEFAULT_SUP_MAX_REPEAT="3"
+  DEFAULT_SUP_LEARNING_RATE="2e-6"
+  DEFAULT_TOTAL_RUNS="1"
+else
+  DEFAULT_SUP_BATCH_SIZE="16"
+  DEFAULT_SUP_EPOCHS="1"
+  DEFAULT_SUP_MAX_TRAIN_ROWS="2500"
+  DEFAULT_SUP_MAX_REPEAT="3"
+  DEFAULT_SUP_LEARNING_RATE="2e-6"
+  DEFAULT_TOTAL_RUNS="1"
+fi
+SUP_BATCH_SIZE="${NIGHTLY_SUP_BATCH_SIZE:-$DEFAULT_SUP_BATCH_SIZE}"
+SUP_EPOCHS="${NIGHTLY_SUP_EPOCHS:-$DEFAULT_SUP_EPOCHS}"
 SUP_WARMUP_RATIO="${NIGHTLY_SUP_WARMUP_RATIO:-0.1}"
-SUP_LEARNING_RATE="${NIGHTLY_SUP_LEARNING_RATE:-8e-6}"
-SUP_MAX_TRAIN_ROWS="${NIGHTLY_SUP_MAX_TRAIN_ROWS:-0}"
+SUP_LEARNING_RATE="${NIGHTLY_SUP_LEARNING_RATE:-$DEFAULT_SUP_LEARNING_RATE}"
+SUP_MAX_TRAIN_ROWS="${NIGHTLY_SUP_MAX_TRAIN_ROWS:-$DEFAULT_SUP_MAX_TRAIN_ROWS}"
 SUP_HARD_NEG_BOOST="${NIGHTLY_SUP_HARD_NEG_BOOST:-2.0}"
+SUP_MAX_REPEAT="${NIGHTLY_SUP_MAX_REPEAT:-$DEFAULT_SUP_MAX_REPEAT}"
+SUP_ANGLE_MODE="${NIGHTLY_SUP_ANGLE_MODE:-cycle}"
+SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
+SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
+SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
+SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
+SUP_CONTRASTIVE_NEG_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD:-0.3}"
 MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
 MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
-TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-3}"
+TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-$DEFAULT_TOTAL_RUNS}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
 MAX_PAIRS="${SEM_MAX_PAIRS:-8000}"
@@ -190,7 +220,8 @@ echo "[nightly][paths] GOLD_CALIB_CSV=$GOLD_CALIB_CSV"
 echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
-echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
+echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -198,6 +229,8 @@ echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
 device_prefix() {
   if [[ "$TRAIN_DEVICE" == "auto" || -z "$TRAIN_DEVICE" ]]; then
     printf ''
+  elif [[ "$TRAIN_DEVICE" == "cpu" ]]; then
+    printf 'SEM_DEVICE=cpu ACCELERATE_USE_CPU=true '
   else
     printf 'SEM_DEVICE=%q ' "$TRAIN_DEVICE"
   fi
@@ -288,8 +321,8 @@ run_cmd() {
 }
 
 if ! [[ "$TOTAL_RUNS" =~ ^[1-9][0-9]*$ ]]; then
-  echo "[nightly] invalid NIGHTLY_TOTAL_RUNS=$TOTAL_RUNS, fallback to 3"
-  TOTAL_RUNS="3"
+  echo "[nightly] invalid NIGHTLY_TOTAL_RUNS=$TOTAL_RUNS, fallback to $DEFAULT_TOTAL_RUNS"
+  TOTAL_RUNS="$DEFAULT_TOTAL_RUNS"
 fi
 
 echo "[nightly] guard: hint/answer char overlap"
@@ -300,6 +333,7 @@ printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\t
 # Per-round results for best-round selection
 declare -a ROUND_RESULTS  # "round|stage|model|calib|mae|acc|raw_mae|raw_acc|accepted"
 declare -a ROUND_DIAGNOSTICS  # "round|stage|base_metrics_json|candidate_metrics_json|regression_out"
+declare -a ROUND_BUILD_STATS  # "round|build_stats_json"
 
 # ---- run single round ----
 
@@ -321,6 +355,7 @@ run_single_round() {
   local base_metrics_json="$WORK_DIR/nightly_base_metrics_${round_stamp}.json"
   local nightly_metrics_json="$WORK_DIR/nightly_candidate_metrics_${round_stamp}.json"
   local regression_out="$WORK_DIR/nightly_regression_${round_stamp}.txt"
+  local build_stats_json="$WORK_DIR/nightly_build_stats_${round_stamp}.json"
 
   local candidate_model="$round_base_model"
   local candidate_stage="base"
@@ -352,7 +387,9 @@ run_single_round() {
     SEM_GOLD_CALIB_CSV=$GOLD_CALIB_CSV \
     SEM_GOLD_EVAL_CSV=$GOLD_EVAL_CSV \
     SEM_UNSUP_PAIRS_JSONL=$UNSUP_PAIRS_JSONL \
+    SEM_BUILD_STATS_JSON=$build_stats_json \
     $PYTHON_BIN scripts/build_nightly_semantic_sets.py" "$BUILD_TIMEOUT_SEC" || return $?
+  ROUND_BUILD_STATS+=("${round}|${build_stats_json}")
 
   if [[ "$ENABLE_UNSUP_PRETRAIN" == "1" ]]; then
     run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
@@ -374,7 +411,7 @@ run_single_round() {
   fi
 
   if [[ "$ENABLE_SUPERVISED_FINETUNE" == "1" ]]; then
-    run_cmd "TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
+    supervised_cmd="TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
       $(device_prefix) \
       SEM_SEED=$round_seed \
       SEM_TRAIN_CSV=$NIGHTLY_TRAIN_CSV \
@@ -386,7 +423,44 @@ run_single_round() {
       SEM_LR=$SUP_LEARNING_RATE \
       SEM_MAX_TRAIN_ROWS=$SUP_MAX_TRAIN_ROWS \
       SEM_HARD_NEG_BOOST=$SUP_HARD_NEG_BOOST \
-      $PYTHON_BIN $SUPERVISED_TRAIN_SCRIPT" "$SUPERVISED_TIMEOUT_SEC" || return $?
+      SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
+      SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
+      SEM_LOSS_MODE=$SUP_LOSS_MODE \
+      SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
+      SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
+      SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
+      SEM_CONTRASTIVE_NEG_THRESHOLD=$SUP_CONTRASTIVE_NEG_THRESHOLD \
+      $PYTHON_BIN $SUPERVISED_TRAIN_SCRIPT"
+    if ! run_cmd "$supervised_cmd" "$SUPERVISED_TIMEOUT_SEC"; then
+      if [[ "$TRAIN_DEVICE" == "auto" || -z "$TRAIN_DEVICE" ]]; then
+        echo "[nightly] supervised training failed on auto device, retry with SEM_DEVICE=cpu"
+        rm -rf "$round_output_model"
+        supervised_cpu_cmd="TOKENIZERS_PARALLELISM=false PYTORCH_MPS_HIGH_WATERMARK_RATIO=0.0 \
+          SEM_DEVICE=cpu \
+          ACCELERATE_USE_CPU=true \
+          SEM_SEED=$round_seed \
+          SEM_TRAIN_CSV=$NIGHTLY_TRAIN_CSV \
+          SEM_BASE_MODEL=$candidate_model \
+          SEM_OUTPUT_MODEL=$round_output_model \
+          SEM_BATCH_SIZE=$SUP_BATCH_SIZE \
+          SEM_EPOCHS=$SUP_EPOCHS \
+          SEM_WARMUP_RATIO=$SUP_WARMUP_RATIO \
+          SEM_LR=$SUP_LEARNING_RATE \
+          SEM_MAX_TRAIN_ROWS=$SUP_MAX_TRAIN_ROWS \
+          SEM_HARD_NEG_BOOST=$SUP_HARD_NEG_BOOST \
+          SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
+          SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
+          SEM_LOSS_MODE=$SUP_LOSS_MODE \
+          SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
+          SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
+          SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
+          SEM_CONTRASTIVE_NEG_THRESHOLD=$SUP_CONTRASTIVE_NEG_THRESHOLD \
+          $PYTHON_BIN $SUPERVISED_TRAIN_SCRIPT"
+        run_cmd "$supervised_cpu_cmd" "$SUPERVISED_TIMEOUT_SEC" || return $?
+      else
+        return 1
+      fi
+    fi
     candidate_model="$round_output_model"
     if [[ "$candidate_stage" == "unsup" ]]; then
       candidate_stage="unsup+supervised"
@@ -670,6 +744,56 @@ with out.open('a', encoding='utf-8') as file:
 PY
 }
 
+append_build_stats() {
+  local title="$1"
+  local stats_json="$2"
+  local out="$3"
+  if [[ ! -f "$stats_json" ]]; then
+    return 0
+  fi
+  BUILD_STATS_TITLE="$title" BUILD_STATS_JSON="$stats_json" BUILD_STATS_REPORT_OUT="$out" "$PYTHON_BIN" - <<'PY'
+import json, os
+from pathlib import Path
+
+title = os.environ["BUILD_STATS_TITLE"]
+stats = json.loads(Path(os.environ["BUILD_STATS_JSON"]).read_text(encoding="utf-8"))
+out = Path(os.environ["BUILD_STATS_REPORT_OUT"])
+
+lines = [
+    "",
+    f"## {title}",
+    "",
+    "| item | value |",
+    "|------|-------|",
+]
+for key in ("train_rows", "gold_pool", "train_gold", "train_patch", "calib", "eval", "fixed_holdout", "unsup_pairs"):
+    lines.append(f"| {key} | {stats.get(key, '-')} |")
+
+lines.extend([
+    "",
+    "### Gold Buckets",
+    "",
+    "| bucket | count |",
+    "|--------|-------|",
+])
+for bucket, count in (stats.get("gold_buckets") or {}).items():
+    lines.append(f"| {bucket} | {count} |")
+
+lines.extend([
+    "",
+    "### Top Train Tags",
+    "",
+    "| tag | count |",
+    "|-----|-------|",
+])
+for tag, count in (stats.get("top_train_tags") or {}).items():
+    lines.append(f"| {tag} | {count} |")
+
+with out.open("a", encoding="utf-8") as file:
+    file.write("\n".join(lines) + "\n")
+PY
+}
+
 # Find the best accepted round by lowest cal_mae
 BEST_ROUND=""
 BEST_STAGE=""
@@ -715,6 +839,14 @@ done
     printf "| %s | %s | %s | %s | %s | %s | %s | %s |\n" "$r" "$stage" "-" "$mae" "-" "$acc" "-" "$accepted"
   done
 } > "$PROMOTION_REPORT"
+
+for build_stats_json in "$WORK_DIR"/nightly_build_stats_"${STAMP}"_r*.json; do
+  [[ -f "$build_stats_json" ]] || continue
+  stats_base="$(basename "$build_stats_json")"
+  stats_round="${stats_base##*_r}"
+  stats_round="${stats_round%.json}"
+  append_build_stats "训练数据分布 Round $stats_round" "$build_stats_json" "$PROMOTION_REPORT"
+done
 
 if [[ "$DRY_RUN" == "1" ]]; then
   echo "" >> "$PROMOTION_REPORT"

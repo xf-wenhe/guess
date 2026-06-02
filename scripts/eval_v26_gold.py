@@ -16,6 +16,7 @@ from semantic_common import (
     predict_scored_rows,
     read_scored_rows,
     resolve_device,
+    score_bucket,
 )
 
 MODEL_PATH = os.getenv('SEM_MODEL_PATH', 'models/bge-m3-finetuned-v27-semreal-anchor')
@@ -122,6 +123,34 @@ def worst_cases(rows: list[dict], raw_pred: list[float], cal_pred: list[float], 
     return cases[:limit]
 
 
+def bucket_misses(rows: list[dict], raw_pred: list[float], cal_pred: list[float], limit: int) -> list[dict]:
+    misses = []
+    for row, raw, cal in zip(rows, raw_pred, cal_pred):
+        target = float(row['_score'])
+        target_bucket = score_bucket(target)
+        raw_bucket = score_bucket(raw)
+        cal_bucket = score_bucket(cal)
+        if raw_bucket == target_bucket and cal_bucket == target_bucket:
+            continue
+        misses.append({
+            'answer': row['_answer'],
+            'user_input': row['_user_input'],
+            'target': round(target, 3),
+            'target_bucket': target_bucket,
+            'raw_pred': round(raw, 3),
+            'raw_bucket': raw_bucket,
+            'raw_hit': raw_bucket == target_bucket,
+            'cal_pred': round(cal, 3),
+            'cal_bucket': cal_bucket,
+            'cal_hit': cal_bucket == target_bucket,
+            'relation_tag': (row.get('relation_tag') or row.get('error_type') or '').strip(),
+            'group': eval_group(row),
+            'cal_abs_error': round(abs(cal - target), 3),
+        })
+    misses.sort(key=lambda item: (item['cal_hit'], -item['cal_abs_error']))
+    return misses[:limit]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--json-out', default='')
@@ -168,15 +197,18 @@ def main():
         'cal_bucket_acc': round(cal_acc, 6),
         'group_metrics': grouped_metrics(eval_dict_rows, eval_raw, eval_cal),
         'worst_cases': worst_cases(eval_dict_rows, eval_raw, eval_cal, args.top_errors),
+        'bucket_misses': bucket_misses(eval_dict_rows, eval_raw, eval_cal, args.top_errors),
         'model_path': MODEL_PATH,
         'calib_csv': str(CALIB_CSV),
         'eval_csv': str(EVAL_CSV),
         'calib_json': str(CALIB_JSON),
+        'calibration_method': calib.get('method', 'unknown'),
     }
 
     print(f'eval_rows={len(eval_rows)}')
     print(f'raw_mae={raw_mae:.3f} raw_bucket_acc={raw_acc:.2f}%')
     print(f'cal_mae={cal_mae:.3f} cal_bucket_acc={cal_acc:.2f}%')
+    print(f"calibration_method={calib.get('method', 'unknown')}")
     print(f'written={CALIB_JSON}')
 
     if args.json_out:

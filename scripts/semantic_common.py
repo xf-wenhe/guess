@@ -66,6 +66,15 @@ def load_calibration(path: Path) -> tuple[list[float], list[float]]:
 
 
 def build_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
+    method = os.getenv("SEM_CALIBRATION_METHOD", "isotonic").strip().lower()
+    if method in {"legacy", "bucket_mean", "quantile_mean"}:
+        return build_quantile_mean_calibration(pred, target)
+    if method != "isotonic":
+        raise ValueError(f"unsupported SEM_CALIBRATION_METHOD={method!r}")
+    return build_isotonic_calibration(pred, target)
+
+
+def build_quantile_mean_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
     pred_arr = np.array(pred, dtype=np.float32)
     target_arr = np.array(target, dtype=np.float32)
     order = np.argsort(pred_arr)
@@ -86,7 +95,70 @@ def build_calibration(pred: list[float], target: list[float]) -> dict[str, list[
     if not x:
         x = [0.0, 100.0]
         y = [0.0, 100.0]
-    return {"x_pred": x, "y_calibrated": y}
+    return {"x_pred": x, "y_calibrated": y, "method": "quantile_mean"}
+
+
+def build_isotonic_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
+    pred_arr = np.array(pred, dtype=np.float64)
+    target_arr = np.clip(np.array(target, dtype=np.float64), 0.0, 100.0)
+    if len(pred_arr) == 0:
+        return {"x_pred": [0.0, 100.0], "y_calibrated": [0.0, 100.0], "method": "isotonic"}
+
+    order = np.argsort(pred_arr, kind="mergesort")
+    pred_arr = pred_arr[order]
+    target_arr = target_arr[order]
+
+    # Pool adjacent violators algorithm. It gives the monotonic least-squares
+    # calibration curve without depending on sklearn at runtime.
+    blocks: list[dict[str, float]] = []
+    for x_value, y_value in zip(pred_arr, target_arr):
+        blocks.append({
+            "x_sum": float(x_value),
+            "y_sum": float(y_value),
+            "weight": 1.0,
+            "x_min": float(x_value),
+            "x_max": float(x_value),
+        })
+        while len(blocks) >= 2:
+            left = blocks[-2]
+            right = blocks[-1]
+            left_mean = left["y_sum"] / left["weight"]
+            right_mean = right["y_sum"] / right["weight"]
+            if left_mean <= right_mean:
+                break
+            merged = {
+                "x_sum": left["x_sum"] + right["x_sum"],
+                "y_sum": left["y_sum"] + right["y_sum"],
+                "weight": left["weight"] + right["weight"],
+                "x_min": left["x_min"],
+                "x_max": right["x_max"],
+            }
+            blocks[-2:] = [merged]
+
+    x: list[float] = []
+    y: list[float] = []
+    for block in blocks:
+        mean_y = float(np.clip(block["y_sum"] / block["weight"], 0.0, 100.0))
+        x_left = float(block["x_min"])
+        x_right = float(block["x_max"])
+        if x and x_left <= x[-1]:
+            x_left = x[-1] + 1e-6
+        x.append(x_left)
+        y.append(mean_y)
+        if x_right > x_left:
+            x.append(x_right)
+            y.append(mean_y)
+
+    if not x:
+        x = [0.0, 100.0]
+        y = [0.0, 100.0]
+    elif len(x) == 1:
+        only_x = x[0]
+        only_y = y[0]
+        x = [max(0.0, only_x - 1e-6), min(100.0, only_x + 1e-6)]
+        y = [only_y, only_y]
+
+    return {"x_pred": x, "y_calibrated": y, "method": "isotonic"}
 
 
 def semantic_multi_angle(model, left: str, right: str) -> float:

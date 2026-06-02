@@ -1,3 +1,4 @@
+import csv
 import json
 import os
 import stat
@@ -11,10 +12,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_nightly_10pm_launchd.sh"
 NIGHTLY_SCRIPT = REPO_ROOT / "scripts" / "nightly_train_v26.sh"
+TRACE_EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_score_trace_review_candidates.py"
+BUILD_NIGHTLY_SETS_SCRIPT = REPO_ROOT / "scripts" / "build_nightly_semantic_sets.py"
 
 
 class NightlyScriptsTest(unittest.TestCase):
-    def test_install_script_generates_project_local_three_round_launchd_job(self):
+    def test_install_script_generates_project_local_daily_launchd_job(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             home_dir = tmp_path / "home"
@@ -61,7 +64,17 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<key>Minute</key>", plist)
             self.assertIn("<integer>0</integer>", plist)
             self.assertIn("<key>NIGHTLY_TOTAL_RUNS</key>", plist)
-            self.assertIn("<string>3</string>", plist)
+            self.assertIn("<key>NIGHTLY_TRAIN_PROFILE</key>", plist)
+            self.assertIn("<string>daily</string>", plist)
+            self.assertIn("<string>1</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_LOSS_MODE</key>", plist)
+            self.assertIn("<string>mixed</string>", plist)
+            self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
+            self.assertIn("<key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>", plist)
+            self.assertIn("<string>0.3</string>", plist)
+            self.assertIn("<key>NIGHTLY_MIN_ACC_IMPROVEMENT</key>", plist)
+            self.assertIn("<string>2.0</string>", plist)
+            self.assertIn("<key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>", plist)
             self.assertNotIn("workspaces/guess_runtime", plist)
             self.assertIn(f"<string>{REPO_ROOT}/.nightly</string>", plist)
 
@@ -186,9 +199,208 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertTrue(promotion_records, msg=result.stdout + result.stderr)
             promotion_text = promotion_records[-1].read_text(encoding="utf-8")
             self.assertIn("无轮次通过门控", promotion_text)
+            self.assertIn("训练数据分布 Round 1", promotion_text)
+            self.assertIn("Top Train Tags", promotion_text)
             self.assertIn("拒绝诊断 Round 1", promotion_text)
             self.assertIn("hard_negative", promotion_text)
             self.assertIn("synonym_alias", promotion_text)
+
+    def test_nightly_auto_device_retries_supervised_training_on_cpu(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            self._prepare_fake_repo(root)
+            self._write_round_aware_python(root / ".venv" / "bin" / "python")
+
+            nightly_script_copy = root / "scripts" / "nightly_train_v26.sh"
+            nightly_script_copy.write_text(NIGHTLY_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+            nightly_script_copy.chmod(nightly_script_copy.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env["NIGHTLY_ROOT"] = str(root / ".nightly")
+            env["NIGHTLY_ENFORCE_FREE_SPACE_CHECK"] = "0"
+            env["NIGHTLY_TOTAL_RUNS"] = "1"
+            env["NIGHTLY_SCRIPT_ROOT"] = str(root)
+            env["NIGHTLY_ENABLE_ANCHOR_FINETUNE"] = "0"
+            env["NIGHTLY_REQUIRE_NO_DEGRADE_ALL"] = "0"
+            env["NIGHTLY_MIN_MAE_IMPROVEMENT"] = "0.0"
+            env["NIGHTLY_MIN_ACC_IMPROVEMENT"] = "0.0"
+            env["FAKE_FAIL_SUPERVISED_UNLESS_CPU"] = "1"
+
+            result = subprocess.run(
+                ["bash", str(nightly_script_copy)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            output = result.stdout + result.stderr
+            self.assertIn("retry with SEM_DEVICE=cpu", output)
+            self.assertIn("ACCELERATE_USE_CPU=true", output)
+            self.assertIn("saved=", output)
+
+    def test_extract_score_trace_review_candidates_writes_pending_review_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            log_path = tmp_path / "score_trace.log"
+            out_path = tmp_path / "score_trace_review_candidates.csv"
+            log_path.write_text(
+                "\n".join(
+                    [
+                        '[score_trace] {"event":"semantic_mix","guess":"刘备","answer":"猫咪","final":86,"notes":["cap"]}',
+                        '[score_trace] {"event":"semantic_mix","guess":"大夫","answer":"医生","final":18,"notes":[]}',
+                        '[score_trace] {"event":"exact_match","guess":"猫","answer":"猫","final":100}',
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(TRACE_EXTRACT_SCRIPT),
+                    str(log_path),
+                    "--output",
+                    str(out_path),
+                    "--created-at",
+                    "2026-06-01",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with out_path.open("r", encoding="utf-8") as file:
+                rows = list(csv.DictReader(file))
+            self.assertEqual(len(rows), 2)
+            self.assertEqual(rows[0]["review_status"], "pending")
+            self.assertEqual(rows[0]["source"], "score_trace")
+            self.assertIn(rows[0]["error_type"], {"possible_false_positive_high_score", "possible_false_negative_low_score"})
+
+    def test_build_nightly_semantic_sets_keeps_fixed_holdout_out_of_train_and_calib(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            holdout_path = tmp_path / "holdout.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "香蕉,苹果,same_category_mid,55,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "香蕉,苹果,same_category_but_far,25,4.0\n"
+                "开心,伤心,antonym_low,10,4.0\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n",
+                encoding="utf-8",
+            )
+            holdout_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,status\n"
+                "猫咪,刘备,hard_negative_low,10,frozen\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": str(holdout_path),
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            def read_pairs(path: Path) -> set[tuple[str, str]]:
+                with path.open("r", encoding="utf-8") as file:
+                    return {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+
+            holdout_pair = ("猫咪", "刘备")
+            self.assertNotIn(holdout_pair, read_pairs(train_out))
+            self.assertNotIn(holdout_pair, read_pairs(calib_out))
+            self.assertIn(holdout_pair, read_pairs(eval_out))
+            self.assertIn(("香蕉", "苹果"), read_pairs(train_out))
+            self.assertIn(("开心", "伤心"), read_pairs(train_out))
+            with train_out.open("r", encoding="utf-8") as file:
+                train_rows = list(csv.DictReader(file))
+            banana_row = next(row for row in train_rows if (row["answer"], row["user_input"]) == ("香蕉", "苹果"))
+            self.assertEqual(banana_row["reviewer"], "train_patch")
+            self.assertEqual(banana_row["relation_tag"], "same_category_but_far")
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["fixed_holdout"], 1)
+            self.assertEqual(stats["train_patch"], 2)
+            self.assertGreaterEqual(stats["train_gold"], 1)
+
+    def test_supervised_trainer_boosts_real_failure_hard_negative_tags(self):
+        source = (REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py").read_text(encoding="utf-8")
+
+        for tag in (
+            "antonym_or_conflict",
+            "collocation_not_equivalent",
+            "same_category_but_far",
+        ):
+            self.assertIn(f'"{tag}"', source)
+        self.assertIn("PIN_HIGH_VALUE_ROWS", source)
+        self.assertIn("PIN_WEIGHT_THRESHOLD", source)
+        self.assertIn("pinned_high_value_rows", source)
+        self.assertIn("TAG_REPEAT_BOOSTS", source)
+        self.assertIn("protected_positive_rows", source)
+        self.assertIn("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", source)
+        self.assertIn("full_angle_coverage_rows", source)
+        self.assertIn("SEM_LOSS_MODE", source)
+        self.assertIn("CosineSimilarityLoss", source)
+        self.assertIn("OnlineContrastiveLoss", source)
+        self.assertIn("mixed_contrastive", source)
+        self.assertIn("SEM_CONTRASTIVE_MARGIN", source)
+        self.assertIn("SEM_CONTRASTIVE_SCOPE", source)
+        self.assertIn("CONTRASTIVE_POSITIVE_TAGS", source)
+        self.assertIn("contrastive_label_counts", source)
 
     def _prepare_fake_repo(self, root: Path) -> None:
         (root / "scripts").mkdir(parents=True)
@@ -277,10 +489,25 @@ if script.endswith('build_v26_gold_and_unsup.py') or script.endswith('build_nigh
         pathlib.Path(env['SEM_OUTPUT_TRAIN_CSV']).write_text('answer,user_input,relation_tag,score_0_100,sample_weight\\n猫,猫咪,alias_synonym_high,95,1.0\\n', encoding='utf-8')
     (gold_dir / 'gold_v26_manual_anchor.csv').write_text('text_a,text_b,label\\n猫,猫咪,0.95\\n', encoding='utf-8')
     pathlib.Path(env['SEM_UNSUP_PAIRS_JSONL']).write_text('{"text_a":"猫","text_b":"猫咪"}\\n', encoding='utf-8')
+    if env.get('SEM_BUILD_STATS_JSON'):
+        pathlib.Path(env['SEM_BUILD_STATS_JSON']).write_text(json.dumps({
+            'train_rows': 1,
+            'gold_pool': 1,
+            'train_gold': 1,
+            'calib': 1,
+            'eval': 1,
+            'fixed_holdout': 0,
+            'unsup_pairs': 1,
+            'gold_buckets': {'80-100': 1},
+            'top_train_tags': {'alias_synonym_high': 1},
+        }), encoding='utf-8')
     print('written=' + str(gold_dir))
     sys.exit(0)
 
 if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_v19_split.py') or script.endswith('train_v28c_mse_contrastive.py'):
+    if script.endswith('train_v28c_mse_contrastive.py') and env.get('FAKE_FAIL_SUPERVISED_UNLESS_CPU') == '1' and env.get('SEM_DEVICE') != 'cpu':
+        print('simulated MPS failure', file=sys.stderr)
+        sys.exit(42)
     out_dir = pathlib.Path(env['SEM_OUTPUT_MODEL'])
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / 'config_sentence_transformers.json').write_text('{}\\n', encoding='utf-8')
@@ -340,6 +567,17 @@ if script.endswith('run_regression_pairs_v23.py'):
 
 # Handle stdin gate evaluation (script == '-')
 if script == '-' or script == '':
+    if 'BUILD_STATS_TITLE' in env:
+        out = pathlib.Path(env['BUILD_STATS_REPORT_OUT'])
+        with out.open('a', encoding='utf-8') as f:
+            f.write('\\n## ' + env['BUILD_STATS_TITLE'] + '\\n')
+            f.write('| item | value |\\n')
+            f.write('| train_rows | 1 |\\n')
+            f.write('\\n### Top Train Tags\\n')
+            f.write('| tag | count |\\n')
+            f.write('| alias_synonym_high | 1 |\\n')
+        sys.exit(0)
+
     if 'DIAG_TITLE' in env:
         out = pathlib.Path(env['METRICS_REPORT_OUT'])
         with out.open('a', encoding='utf-8') as f:

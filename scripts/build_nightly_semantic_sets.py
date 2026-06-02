@@ -22,19 +22,37 @@ OUTPUT_CALIB_CSV = Path(os.getenv("SEM_GOLD_CALIB_CSV", ".nightly/data/gold/gold
 OUTPUT_EVAL_CSV = Path(os.getenv("SEM_GOLD_EVAL_CSV", ".nightly/data/gold/gold_nightly_eval.csv"))
 OUTPUT_POOL_CSV = Path(os.getenv("SEM_GOLD_POOL_CSV", ".nightly/data/gold/gold_nightly_pool.csv"))
 OUTPUT_UNSUP_JSONL = Path(os.getenv("SEM_UNSUP_PAIRS_JSONL", ".nightly/data/gold/unsupervised_pairs_v26.jsonl"))
+OUTPUT_BUILD_STATS_JSON = os.getenv("SEM_BUILD_STATS_JSON", "").strip()
 
 TARGET_GOLD_TOTAL = int(os.getenv("SEM_GOLD_TARGET_TOTAL", "1200"))
 CALIB_RATIO = float(os.getenv("SEM_GOLD_CALIB_RATIO", "0.35"))
+EVAL_RATIO = float(os.getenv("SEM_GOLD_EVAL_RATIO", "0.25"))
 
 DEFAULT_EXTRA_GOLD = [
-    "data/semantic_holdout_v1.csv",
     "data/semantic_error_review_template_v1.csv",
+    "data/score_trace_review_candidates.csv",
     "data/hard_negatives_relabel_applied_ab_v1.csv",
     "data/semantic_scoring_user_input_template_with_relabels_ab_applied_v1_rangefixed_weighted.csv",
+]
+DEFAULT_HOLDOUT = [
+    "data/semantic_holdout_v1.csv",
+]
+DEFAULT_TRAIN_PATCH = [
+    "data/semantic_train_patch_v1.csv",
 ]
 EXTRA_GOLD_CSVS = [
     Path(p.strip())
     for p in os.getenv("SEM_EXTRA_GOLD_CSVS", ",".join(DEFAULT_EXTRA_GOLD)).split(",")
+    if p.strip()
+]
+HOLDOUT_CSVS = [
+    Path(p.strip())
+    for p in os.getenv("SEM_HOLDOUT_CSVS", ",".join(DEFAULT_HOLDOUT)).split(",")
+    if p.strip()
+]
+TRAIN_PATCH_CSVS = [
+    Path(p.strip())
+    for p in os.getenv("SEM_TRAIN_PATCH_CSVS", ",".join(DEFAULT_TRAIN_PATCH)).split(",")
     if p.strip()
 ]
 
@@ -163,6 +181,16 @@ def dedupe(rows: list[dict]) -> list[dict]:
     return out
 
 
+def pair_keys(rows: list[dict]) -> set[tuple[str, str]]:
+    return {(row["answer"], row["user_input"]) for row in rows}
+
+
+def exclude_pairs(rows: list[dict], excluded: set[tuple[str, str]]) -> list[dict]:
+    if not excluded:
+        return list(rows)
+    return [row for row in rows if (row["answer"], row["user_input"]) not in excluded]
+
+
 def stratified_trim(rows: list[dict], limit: int, seed: int) -> list[dict]:
     if limit <= 0 or len(rows) <= limit:
         return list(rows)
@@ -183,8 +211,9 @@ def stratified_trim(rows: list[dict], limit: int, seed: int) -> list[dict]:
     return out
 
 
-def split_calib_eval(rows: list[dict], seed: int) -> tuple[list[dict], list[dict]]:
+def split_train_calib_eval(rows: list[dict], seed: int) -> tuple[list[dict], list[dict], list[dict]]:
     rng = random.Random(seed)
+    train = []
     calib = []
     eval_rows = []
     buckets = defaultdict(list)
@@ -193,14 +222,28 @@ def split_calib_eval(rows: list[dict], seed: int) -> tuple[list[dict], list[dict
     for bucket_rows in buckets.values():
         rng.shuffle(bucket_rows)
         n = len(bucket_rows)
-        n_calib = int(round(n * CALIB_RATIO))
-        if n >= 2:
-            n_calib = max(1, min(n - 1, n_calib))
+        if n == 1:
+            train.extend(bucket_rows)
+            continue
+        if n == 2:
+            train.extend(bucket_rows[:1])
+            calib.extend(bucket_rows[1:])
+            continue
+        n_calib = max(1, int(round(n * CALIB_RATIO)))
+        n_eval = max(1, int(round(n * EVAL_RATIO)))
+        if n_calib + n_eval >= n:
+            overflow = n_calib + n_eval - (n - 1)
+            reduce_eval = min(overflow, max(0, n_eval - 1))
+            n_eval -= reduce_eval
+            overflow -= reduce_eval
+            n_calib = max(1, n_calib - overflow)
         calib.extend(bucket_rows[:n_calib])
-        eval_rows.extend(bucket_rows[n_calib:])
+        eval_rows.extend(bucket_rows[n_calib:n_calib + n_eval])
+        train.extend(bucket_rows[n_calib + n_eval:])
+    rng.shuffle(train)
     rng.shuffle(calib)
     rng.shuffle(eval_rows)
-    return dedupe(calib), dedupe(eval_rows)
+    return dedupe(train), dedupe(calib), dedupe(eval_rows)
 
 
 def write_csv(path: Path, rows: list[dict]) -> None:
@@ -234,30 +277,69 @@ def main() -> None:
     for row in manual_rows:
         row.setdefault("sample_weight", "2.0000")
 
-    gold_rows = []
-    gold_rows.extend(normalize_row(row, "manual_gold") for row in manual_rows)
-    gold_rows.extend(read_csv_rows(SCORED_CSV, "scored_user_input"))
+    supervised_gold_rows = []
+    supervised_gold_rows.extend(normalize_row(row, "manual_gold") for row in manual_rows)
+    supervised_gold_rows.extend(read_csv_rows(SCORED_CSV, "scored_user_input"))
     for path in EXTRA_GOLD_CSVS:
-        gold_rows.extend(read_csv_rows(path, path.stem))
-    gold_rows = dedupe([row for row in gold_rows if row is not None])
-    gold_rows = stratified_trim(gold_rows, TARGET_GOLD_TOTAL, SEED)
+        supervised_gold_rows.extend(read_csv_rows(path, path.stem))
+    supervised_gold_rows = dedupe([row for row in supervised_gold_rows if row is not None])
+    supervised_gold_rows = stratified_trim(supervised_gold_rows, TARGET_GOLD_TOTAL, SEED)
+
+    holdout_rows = []
+    for path in HOLDOUT_CSVS:
+        holdout_rows.extend(read_csv_rows(path, path.stem))
+    holdout_rows = dedupe(holdout_rows)
+    holdout_keys = pair_keys(holdout_rows)
+    supervised_gold_rows = dedupe(exclude_pairs(supervised_gold_rows, holdout_keys))
 
     base_train_rows = read_csv_rows(BASE_TRAIN_CSV, "base_train")
-    train_rows = dedupe([*base_train_rows, *gold_rows])
-    calib_rows, eval_rows = split_calib_eval([dict(row) for row in gold_rows], SEED)
+    train_patch_rows = []
+    for path in TRAIN_PATCH_CSVS:
+        train_patch_rows.extend(read_csv_rows(path, path.stem))
+    train_patch_rows = dedupe(exclude_pairs(train_patch_rows, holdout_keys))
+    supervised_gold_rows = dedupe(exclude_pairs(supervised_gold_rows, pair_keys(train_patch_rows)))
+    train_gold_rows, calib_rows, eval_candidate_rows = split_train_calib_eval([dict(row) for row in supervised_gold_rows], SEED)
+    eval_rows = dedupe([*holdout_rows, *eval_candidate_rows])
+    train_excluded = pair_keys([*holdout_rows, *calib_rows, *eval_candidate_rows])
+    train_rows = dedupe(exclude_pairs([*train_patch_rows, *base_train_rows, *train_gold_rows], train_excluded))
 
     unsup_pairs = build_unsup_pairs_from_puzzles(PUZZLES_JSON)
 
     write_csv(OUTPUT_TRAIN_CSV, train_rows)
-    write_csv(OUTPUT_POOL_CSV, dedupe(gold_rows))
+    write_csv(OUTPUT_POOL_CSV, dedupe([*supervised_gold_rows, *holdout_rows]))
     write_csv(OUTPUT_CALIB_CSV, calib_rows)
     write_csv(OUTPUT_EVAL_CSV, eval_rows)
     write_jsonl(OUTPUT_UNSUP_JSONL, unsup_pairs)
 
     tag_counts = Counter(row["relation_tag"] for row in train_rows)
-    bucket_counts = Counter(score_bin(float(row["score_0_100"])) for row in gold_rows)
+    bucket_counts = Counter(score_bin(float(row["score_0_100"])) for row in [*supervised_gold_rows, *holdout_rows])
+    build_stats = {
+        "train_rows": len(train_rows),
+        "gold_pool": len(supervised_gold_rows) + len(holdout_rows),
+        "train_gold": len(train_gold_rows),
+        "train_patch": len(train_patch_rows),
+        "calib": len(calib_rows),
+        "eval": len(eval_rows),
+        "fixed_holdout": len(holdout_rows),
+        "unsup_pairs": len(unsup_pairs),
+        "gold_buckets": dict(sorted(bucket_counts.items())),
+        "top_train_tags": dict(tag_counts.most_common(20)),
+        "output_train_csv": str(OUTPUT_TRAIN_CSV),
+        "output_pool_csv": str(OUTPUT_POOL_CSV),
+        "output_calib_csv": str(OUTPUT_CALIB_CSV),
+        "output_eval_csv": str(OUTPUT_EVAL_CSV),
+        "output_unsup_jsonl": str(OUTPUT_UNSUP_JSONL),
+    }
+    if OUTPUT_BUILD_STATS_JSON:
+        stats_path = Path(OUTPUT_BUILD_STATS_JSON)
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(build_stats, ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"train_rows={len(train_rows)}")
-    print(f"gold_pool={len(gold_rows)} calib={len(calib_rows)} eval={len(eval_rows)}")
+    print(
+        f"gold_pool={len(supervised_gold_rows) + len(holdout_rows)} "
+        f"train_gold={len(train_gold_rows)} train_patch={len(train_patch_rows)} calib={len(calib_rows)} "
+        f"eval={len(eval_rows)} fixed_holdout={len(holdout_rows)}"
+    )
     print(f"unsup_pairs={len(unsup_pairs)}")
     print("gold_buckets=" + json.dumps(dict(sorted(bucket_counts.items())), ensure_ascii=False))
     print("top_train_tags=" + json.dumps(dict(tag_counts.most_common(12)), ensure_ascii=False))

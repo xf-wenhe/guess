@@ -21,7 +21,9 @@
       "Bash(sed -i '' 's|/Volumes/新/work/flutter/guess/.nightly/logs/launchd_nightly_v26.out.log|/Users/fengye/.guess_nightly/logs/launchd_nightly_v26.out.log|g; s|/Volumes/新/work/flutter/guess/.nightly/logs/launchd_nightly_v26.err.log|/Users/fengye/.guess_nightly/logs/launchd_nightly_v26.err.log|g' ~/Library/LaunchAgents/com.guess.nightly-train-v26.plist; echo \"sed done\"; grep \"StandardOutPath\\\\|StandardErrorPath\" ~/Library/LaunchAgents/com.guess.nightly-train-v26.plist)",
       "Bash(kill 20418 20417 20410 20408)",
       "Bash(git add *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git checkout *)",
+      "Bash(git merge *)"
     ],
     "additionalDirectories": [
       "/tmp",

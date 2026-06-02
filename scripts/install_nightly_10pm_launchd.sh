@@ -83,17 +83,21 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_DELETE_REJECTED_CANDIDATE</key>
     <string>1</string>
     <key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>
-    <string>0.005</string>
+    <string>0.3</string>
     <key>NIGHTLY_MIN_ACC_IMPROVEMENT</key>
-    <string>0.0</string>
+    <string>2.0</string>
     <key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>
-    <string>0</string>
+    <string>1</string>
     <key>NIGHTLY_REQUIRE_STRICT_IMPROVEMENT</key>
     <string>1</string>
+    <key>NIGHTLY_TRAIN_PROFILE</key>
+    <string>daily</string>
+    <key>NIGHTLY_SUP_LOSS_MODE</key>
+    <string>mixed</string>
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>
-    <string>3</string>
+    <string>1</string>
     <key>NIGHTLY_CONTINUE_ON_ROUND_ERROR</key>
     <string>1</string>
     <key>NIGHTLY_BUILD_TIMEOUT_SEC</key>
@@ -107,7 +111,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_REGRESSION_TIMEOUT_SEC</key>
     <string>1200</string>
     <key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>
-    <string>1</string>
+    <string>0</string>
     <key>NIGHTLY_ANCHOR_LEARNING_RATE</key>
     <string>1.5e-6</string>
     <key>SEM_MAX_PAIRS</key>
@@ -173,7 +177,8 @@ echo "nightly_root: $NIGHTLY_ROOT"
 echo "wrapper_script: $WRAPPER_SCRIPT"
 echo "logs: $STDOUT_LOG / $STDERR_LOG"
 echo "reports: $REPORTS_DIR"
-echo "total_runs: 3"
+echo "train_profile: daily"
+echo "total_runs: 1"
 echo "model: $PROJECT_MODEL_NAME"
 echo "calib: $PROJECT_CALIB_NAME"
 echo "auto_promote: 1"
