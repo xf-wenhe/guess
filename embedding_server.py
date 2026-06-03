@@ -18,6 +18,7 @@ LOCAL_DIR = os.getenv("EMBED_MODEL_DIR") or "models/bge-m3-finetuned-v27-semreal
 PRELOAD_ON_START = os.getenv("EMBED_PRELOAD_ON_START", "0") == "1"
 WARMUP_ON_HEALTH = os.getenv("EMBED_WARMUP_ON_HEALTH", "1") == "1"
 WARMUP_TEXT = os.getenv("EMBED_WARMUP_TEXT", "语义预热")
+PUZZLES_PATH = os.getenv("PUZZLES_PATH", "assets/puzzles.json")
 
 _model: Optional[SentenceTransformer] = None
 _model_lock = Lock()
@@ -172,6 +173,22 @@ def embed_batch(req: EmbedBatchRequest):
         return {"embeddings": []}
     embeddings = get_model().encode(req.texts, normalize_embeddings=True)
     return {"embeddings": embeddings.tolist()}
+
+
+@app.get("/puzzles")
+def get_puzzles():
+    """返回词库 JSON 数据"""
+    import json
+    if not os.path.exists(PUZZLES_PATH):
+        return {"error": "puzzles.json not found", "path": PUZZLES_PATH}, 404
+    try:
+        with open(PUZZLES_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data
+    except json.JSONDecodeError as e:
+        return {"error": f"Invalid JSON: {e}"}, 500
+    except Exception as e:
+        return {"error": str(e)}, 500
 
 
 if __name__ == "__main__":

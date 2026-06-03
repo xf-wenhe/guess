@@ -15,7 +15,62 @@
 flutter run
 ```
 
-可在支持的任意平台（移动、Web、桌面）直接运行。若需重新开局，在游戏界面点击“再来一局”或“再试一次”。
+可在支持的任意平台（移动、Web、桌面）直接运行。若需重新开局，在游戏界面点击”再来一局”或”再试一次”。
+
+---
+
+## 多平台发布
+
+一键构建 Android、macOS 发布包并上传到 GitHub Release。
+
+### 前置条件
+
+| 依赖 | 安装方式 | 用途 |
+|:-----|:---------|:-----|
+| Flutter SDK | [官网](https://flutter.dev) | 构建应用 |
+| GitHub CLI | `brew install gh` | 创建 Release |
+| Java JDK 17 | `brew install openjdk@17` | Android 构建 |
+| gh 登录 | `gh auth login` | 访问 GitHub |
+
+### 执行发布
+
+```bash
+# 设置 Java 路径
+export PATH=”/opt/homebrew/opt/openjdk@17/bin:$PATH”
+
+# 执行发布脚本
+bash scripts/release_build.sh
+```
+
+脚本自动执行以下步骤：
+
+1. 从 `pubspec.yaml` 读取版本号
+2. 运行 `flutter analyze` 检查代码
+3. 构建 Android APK、macOS ZIP
+4. 创建 GitHub Release 并上传附件
+
+### 输出产物
+
+| 平台 | 文件名 | 安装方式 |
+|:-----|:-------|:---------|
+| Android | `guess-{version}-android.apk` | 直接安装 |
+| macOS | `guess-{version}-macos.zip` | 解压打开 `guess.app` |
+
+### 平台限制
+
+| 平台 | 构建要求 |
+|:-----|:---------|
+| Android | 需要 Java JDK 17+ |
+| macOS | 仅限 macOS 主机 |
+| Windows | 仅限 Windows 主机（当前脚本跳过） |
+
+### 注意事项
+
+- macOS 首次运行需在「系统偏好设置 → 安全性与隐私」中允许
+- 游戏需运行 embedding server 才能正常游玩
+- 发布新版本前需更新 `pubspec.yaml` 中的版本号
+
+---
 
 ### 资源包要求（首次拉代码必看）
 
