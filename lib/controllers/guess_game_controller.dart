@@ -4,7 +4,9 @@ import 'dart:math';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
+import 'package:guess/config/server_config.dart';
 import 'package:guess/resources/resources.dart';
+import 'package:guess/services/connection_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/guess_models.dart';
@@ -30,8 +32,10 @@ class GuessGameController extends ChangeNotifier {
   GuessGameController({
     required PuzzleRepository puzzleRepository,
     required EmbeddingService embeddingService,
+    required ConnectionService connectionService,
   })  : _puzzleRepository = puzzleRepository,
-        _embeddingService = embeddingService {
+        _embeddingService = embeddingService,
+        _connectionService = connectionService {
     _semanticScorer = SemanticScorer(
       embeddingService: _embeddingService,
       onTrace: _traceScore,
@@ -40,9 +44,11 @@ class GuessGameController extends ChangeNotifier {
 
   static const String onlineEmbeddingKey = 'online_embedding_url';
   static const String localEmbeddingDirKey = 'local_embedding_dir';
+  static const String puzzlePathKey = 'puzzle_path';
 
   final PuzzleRepository _puzzleRepository;
   final EmbeddingService _embeddingService;
+  final ConnectionService _connectionService;
   late final SemanticScorer _semanticScorer;
 
   List<GuessPuzzle> _puzzles = [];
@@ -59,8 +65,10 @@ class GuessGameController extends ChangeNotifier {
   String _embeddingSourceLabel = AppStrings.localSourceLabel;
   String _onlineEmbeddingUrl = '';
   String _localEmbeddingDir = '';
+  String _puzzlePath = '';
   String _lastGuess = '';
   bool _winBySemantic = false;
+  String? _puzzleLoadError;
   static const bool _scoreTraceEnabled =
       bool.fromEnvironment('SCORE_TRACE', defaultValue: false);
 
@@ -75,8 +83,10 @@ class GuessGameController extends ChangeNotifier {
   String get embeddingSourceLabel => _embeddingSourceLabel;
   String get onlineEmbeddingUrl => _onlineEmbeddingUrl;
   String get localEmbeddingDir => _localEmbeddingDir;
+  String get puzzlePath => _puzzlePath;
   String get lastGuess => _lastGuess;
   bool get winBySemantic => _winBySemantic;
+  String? get puzzleLoadError => _puzzleLoadError;
 
   bool get categoryUnlocked => _hintIndex >= 2;
   bool get lengthUnlocked => _hintIndex >= 4;
@@ -91,6 +101,8 @@ class GuessGameController extends ChangeNotifier {
   }
 
   Future<void> reloadPuzzles() async {
+    // 重新探测端点，按优先级顺序重试
+    await _refreshConnectionStatus();
     await _loadPuzzles();
     if (hasPuzzles) {
       _startNewPuzzle();
@@ -162,6 +174,20 @@ class GuessGameController extends ChangeNotifier {
     notifyListeners();
   }
 
+  Future<void> updatePuzzlePath(String next) async {
+    final prefs = await SharedPreferences.getInstance();
+    if (next.isEmpty) {
+      await prefs.remove(puzzlePathKey);
+    } else {
+      await prefs.setString(puzzlePathKey, next);
+    }
+    _puzzlePath = next;
+    _puzzleRepository.setLocalPuzzlePath(next);
+    _puzzleLoadError = null;
+    await reloadPuzzles();
+    notifyListeners();
+  }
+
   Future<void> refreshEmbeddingSourceLabel() async {
     final onlineUrl = _onlineEmbeddingUrl.isNotEmpty
         ? _onlineEmbeddingUrl.trim()
@@ -196,9 +222,15 @@ class GuessGameController extends ChangeNotifier {
     try {
       _puzzles = await _puzzleRepository.loadPuzzles();
       _usedAnswers.clear();
+      _puzzleLoadError = null;
+    } on PuzzleLoadException catch (err) {
+      _puzzles = [];
+      _puzzleLoadError = err.message;
+      ConnectionLog.error('Game', '加载词库失败', err);
     } catch (err) {
       _puzzles = [];
-      debugPrint('Load puzzles failed: $err');
+      _puzzleLoadError = '加载词库失败: $err';
+      ConnectionLog.error('Game', '加载词库失败', err);
     } finally {
       _loading = false;
       notifyListeners();
@@ -303,13 +335,57 @@ class GuessGameController extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     final saved = prefs.getString(onlineEmbeddingKey);
     final savedLocal = prefs.getString(localEmbeddingDirKey);
+    final savedPuzzlePath = prefs.getString(puzzlePathKey);
     final fallback = _embeddingService.onlineEndpoint.trim();
     final next = (saved ?? fallback).trim();
     _onlineEmbeddingUrl = next;
     _localEmbeddingDir = (savedLocal ?? '').trim();
+    _puzzlePath = (savedPuzzlePath ?? '').trim();
     _embeddingService.onlineUrl = next;
+
+    // 设置本地词库路径
+    if (_puzzlePath.isNotEmpty) {
+      _puzzleRepository.setLocalPuzzlePath(_puzzlePath);
+    }
+
+    // 探测网络端点
+    await _refreshConnectionStatus();
+
     unawaited(refreshEmbeddingSourceLabel());
     notifyListeners();
+  }
+
+  /// 刷新连接状态，探测网络端点
+  Future<void> _refreshConnectionStatus() async {
+    ConnectionLog.info('Connection', '开始刷新连接状态');
+
+    // 探测模型端点
+    final embedResult = await _connectionService.probeEmbedEndpoints(
+      lanEndpoints: ServerConfig.lanEmbedEndpoints,
+      publicEndpoint: ServerConfig.publicEmbedEndpoint,
+    );
+
+    if (embedResult.status == ConnectionStatus.connected &&
+        _connectionService.connectedEmbedEndpoint != null) {
+      _embeddingService.onlineUrl = _connectionService.connectedEmbedEndpoint!;
+      ConnectionLog.info('Connection', '模型端点连接成功', {
+        'endpoint': _connectionService.connectedEmbedEndpoint!,
+      });
+    }
+
+    // 探测词库端点
+    final puzzleResult = await _connectionService.probePuzzleEndpoints(
+      lanEndpoints: ServerConfig.lanPuzzleEndpoints,
+      publicEndpoint: ServerConfig.publicPuzzleEndpoint,
+    );
+
+    if (puzzleResult.status == ConnectionStatus.connected &&
+        _connectionService.connectedPuzzleEndpoint != null) {
+      _puzzleRepository.setActiveEndpoint(_connectionService.connectedPuzzleEndpoint!);
+      ConnectionLog.info('Connection', '词库端点连接成功', {
+        'endpoint': _connectionService.connectedPuzzleEndpoint!,
+      });
+    }
   }
 
   void _notifyEmbeddingUnavailable() {

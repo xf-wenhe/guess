@@ -65,7 +65,6 @@ flutter:
   uses-material-design: true
 
   assets:
-    - assets/puzzles.json
     - assets/images/
     - data/manual_similarity_overrides.json
     - data/semantic_calibration_v27_semreal_anchor.json

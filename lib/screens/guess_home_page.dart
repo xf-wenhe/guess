@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:guess/resources/resources.dart';
+import 'package:guess/services/connection_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../controllers/guess_game_controller.dart';
@@ -71,13 +72,14 @@ class _GuessHomePageState extends State<GuessHomePage>
     );
 
     _controller = GuessGameController(
-      puzzleRepository: const PuzzleRepository(),
+      puzzleRepository: PuzzleRepository(),
       embeddingService: EmbeddingService(
         localEndpoint: 'http://127.0.0.1:8000/embed',
         onlineEndpoint: const String.fromEnvironment('ONLINE_EMBEDDING_URL',
             defaultValue: ''),
         embeddingPrefix: '',
       ),
+      connectionService: ConnectionService(),
     )..addListener(_onControllerChanged);
 
     _controller.initialize();

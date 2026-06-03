@@ -46,19 +46,29 @@ PY
 
 ### Embedding Server
 
+本地服务必须在应用启动前运行：
+
 ```bash
-# Start embedding server (must be running for gameplay)
+# 启动 embedding server（监听 0.0.0.0，允许局域网访问）
 python embedding_server.py
 
-# Health check
-curl -sS http://127.0.0.1:8000/health
+# 后台运行（推荐）
+nohup python embedding_server.py > /tmp/embedding_server.log 2>&1 &
+
+# Health check（通过局域网 IP）
+curl -sS http://192.168.11.29:8000/health
 
 # Check if model is ready (after warmup)
-curl -sS http://127.0.0.1:8000/ready
+curl -sS http://192.168.11.29:8000/ready
 
-# Custom model path (optional; calibration is read by Flutter from data/)
+# Custom model path (optional)
 EMBED_MODEL_DIR=/path/to/model python embedding_server.py
 ```
+
+**启动顺序**：
+1. 先启动本地 embedding server（在本机 macOS 上）
+2. 再启动 Flutter 应用
+3. 应用通过局域网 IP `192.168.11.29:8000` 访问服务和词库
 
 ### Pre-flight Checks
 
@@ -159,11 +169,12 @@ python tmp/puzzle_naturalness_diff_report.py
 #### Game Controller (`lib/controllers/guess_game_controller.dart`)
 
 Central state manager coordinating:
-- Puzzle lifecycle (loading from `assets/puzzles.json`)
+- Puzzle lifecycle (loading from local path or network endpoint)
 - User input validation and scoring
 - Semantic + lexical similarity fusion
 - Calibration curve application
 - Manual override lookups
+- Connection status management (via `ConnectionService`)
 
 **Scoring Pipeline**:
 1. Check exact match → 100%
@@ -193,11 +204,34 @@ HTTP client managing:
 
 #### Puzzle Repository (`lib/services/puzzle_repository.dart`)
 
-Loads and validates puzzles:
+Loads and validates puzzles from multiple sources (按优先级):
+1. **本地词库路径**（用户通过设置页面配置的 `puzzle_path`）
+2. **局域网端点**（`ServerConfig.lanPuzzleEndpoints`）
+3. **公网端点**（`ServerConfig.publicPuzzleEndpoint`）
+
+全部失败时显示错误提示，引导用户配置词库源。
+
+处理逻辑:
 - Filters by length (2-5 chars)
 - Normalizes hints (removes duplicates, filters unusable)
 - Pads to 7 hints with generic fallbacks
 - Applies hint rewrites (currently empty, preserved for future use)
+
+#### Connection Service (`lib/services/connection_service.dart`)
+
+网络端点探测服务:
+- 探测模型端点可用性（局域网 → 公网）
+- 探测词库端点可用性（局域网 → 公网）
+- 记录已连接的端点供 PuzzleRepository 和 EmbeddingService 使用
+
+#### Server Config (`lib/config/server_config.dart`)
+
+网络服务配置:
+- `lanHosts`: 局域网 IP 列表
+- `publicHost`: 公网域名
+- `port`: 服务端口 (8000)
+- `lanEmbedEndpoints` / `publicEmbedEndpoint`: 模型端点
+- `lanPuzzleEndpoints` / `publicPuzzleEndpoint`: 词库端点
 
 #### Embedding Server (`embedding_server.py`)
 
@@ -207,15 +241,27 @@ FastAPI server:
 - `/ready`: Returns warmup completion status
 - `/embed`: Returns normalized embeddings
 - `/embed_batch`: Returns normalized embeddings for multiple texts in one request
+- `/puzzles`: Returns puzzle JSON data (for network loading)
 - Warmup: `EMBED_WARMUP_ON_HEALTH=1` (default) triggers lazy warmup on first health check
 
 ### Data Files
 
-- `assets/puzzles.json` - ~890 word puzzles with hints, category, POS
+- `assets/puzzles.json` - ~890 word puzzles with hints, category, POS (**不打包进应用，由网络端点提供**)
 - `data/semantic_calibration_v27_semreal_anchor.json` - Isotonic regression curve (x_pred → y_calibrated)
 - `data/manual_similarity_overrides.json` - Hardcoded similarity overrides
 - `data/gold_v26_*.csv` - Human-labeled gold standard for calibration/eval
 - `data/semantic_scoring_user_input_template.csv` - User input samples for augmentation
+
+### 词库加载
+
+词库按以下优先级加载（无 fallback）：
+1. 用户设置的本地词库路径（设置页面配置）
+2. 局域网端点（`ServerConfig.lanPuzzleEndpoints`）
+3. 公网端点（`ServerConfig.publicPuzzleEndpoint`）
+
+全部失败时显示错误提示，引导用户配置词库源。
+
+网络端点配置位于 `lib/config/server_config.dart`。
 
 ### Model Versioning
 

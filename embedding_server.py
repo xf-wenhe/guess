@@ -192,4 +192,5 @@ def get_puzzles():
 
 
 if __name__ == "__main__":
-    uvicorn.run(app, host="127.0.0.1", port=8000, log_level="info")
+    # 监听 0.0.0.0 允许通过局域网 IP 访问
+    uvicorn.run(app, host="0.0.0.0", port=8000, log_level="info")

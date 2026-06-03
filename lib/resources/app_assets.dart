@@ -1,7 +1,9 @@
 class AppAssets {
   const AppAssets._();
 
-  static const puzzles = 'assets/puzzles.json';
+  // puzzles.json 不再打包，由网络端点或本地路径提供
+  // static const puzzles = 'assets/puzzles.json';
+
   static const successAnimation = 'assets/images/feedback/success.gif';
   static const failureAnimation = 'assets/images/feedback/fail.gif';
 
