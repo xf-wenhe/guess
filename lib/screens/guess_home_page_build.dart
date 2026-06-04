@@ -245,9 +245,32 @@ extension _GuessHomePageBuild on _GuessHomePageState {
     );
   }
 
-  // ... existing error/buildNotice methods ...
-
   Widget _buildError() {
+    final puzzleError = _controller.puzzleLoadError;
+    if (puzzleError != null && puzzleError.isNotEmpty) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: PuzzleErrorBanner(
+            error: puzzleError,
+            onRetry: () => _controller.reloadPuzzles(),
+            onConnectServer: () async {
+              final success = await _accountController.connectToServerPuzzles();
+              if (success && _accountController.user == null) {
+                if (!mounted) return;
+                AccountCreationDialog.show(
+                  context,
+                  onSubmit: _accountController.createAccount,
+                );
+              }
+              if (success) {
+                await _controller.reloadPuzzles();
+              }
+            },
+          ),
+        ),
+      );
+    }
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,

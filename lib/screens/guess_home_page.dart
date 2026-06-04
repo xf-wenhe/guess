@@ -8,6 +8,9 @@ import 'package:guess/resources/resources.dart';
 import 'package:guess/services/account_service.dart';
 import 'package:guess/services/connection_service.dart';
 import 'package:guess/services/statistics_service.dart';
+import 'package:guess/widgets/account_creation_dialog.dart';
+import 'package:guess/widgets/puzzle_error_banner.dart';
+import 'package:guess/widgets/user_profile_menu.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../controllers/guess_game_controller.dart';
@@ -371,8 +374,26 @@ class _GuessHomePageState extends State<GuessHomePage>
               )
             : null,
         centerTitle: true,
-        title: const Text(AppStrings.homeTitle),
+        title: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text(AppStrings.homeTitle),
+            if (_accountController.puzzleMode == PuzzleMode.server)
+              Container(
+                margin: const EdgeInsets.only(left: 8),
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppColors.success,
+                  shape: BoxShape.circle,
+                ),
+              ),
+          ],
+        ),
         actions: [
+          // 服务器模式显示用户菜单
+          if (_accountController.puzzleMode == PuzzleMode.server)
+            UserProfileMenu(controller: _accountController),
           IconButton(
             tooltip: AppStrings.tooltipCheckConnection,
             onPressed: _refreshingEmbedding ? null : _refreshEmbedding,

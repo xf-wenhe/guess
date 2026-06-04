@@ -17,7 +17,8 @@ extension _GuessHomePageActions on _GuessHomePageState {
       _focusInput();
       return;
     }
-    if (!isAllChinese(raw)) {
+    // 支持中英文输入
+    if (!isAllChinese(raw) && !RegExp(r'^[a-zA-Z]+$').hasMatch(raw)) {
       _showStatusTip(AppStrings.invalidGuess);
       _focusInput();
       return;
@@ -125,11 +126,9 @@ extension _GuessHomePageActions on _GuessHomePageState {
   }
 
   Future<void> _showEmbeddingSettings() async {
-    final controller =
-        TextEditingController(text: _controller.onlineEmbeddingUrl);
-    final localController =
-        TextEditingController(text: _controller.localEmbeddingDir);
-    final result = await showModalBottomSheet<Map<String, String>>(
+    final puzzlePathController =
+        TextEditingController(text: _controller.puzzlePath);
+    final result = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
       shape: const RoundedRectangleBorder(
@@ -149,8 +148,18 @@ extension _GuessHomePageActions on _GuessHomePageState {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              Text(
+                AppStrings.settingsTitle,
+                style: const TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: 18,
+                  color: AppColors.textPrimary,
+                  fontWeight: AppFonts.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
               const Text(
-                AppStrings.localModelDir,
+                AppStrings.puzzlePathLabel,
                 style: TextStyle(
                   fontFamily: AppFonts.primaryFamily,
                   fontSize: 16,
@@ -160,10 +169,10 @@ extension _GuessHomePageActions on _GuessHomePageState {
               ),
               const SizedBox(height: 8),
               TextField(
-                controller: localController,
+                controller: puzzlePathController,
                 style: const TextStyle(color: AppColors.textPrimary),
                 decoration: InputDecoration(
-                  hintText: AppStrings.localModelDirHint,
+                  hintText: AppStrings.puzzlePathHint,
                   hintStyle: const TextStyle(color: AppColors.textMuted),
                   filled: true,
                   fillColor: Colors.white.withOpacity(0.06),
@@ -178,53 +187,15 @@ extension _GuessHomePageActions on _GuessHomePageState {
                 ),
               ),
               const SizedBox(height: 8),
-              const Text(
-                AppStrings.localModelDirCaption,
-                style: TextStyle(
+              Text(
+                AppStrings.puzzlePathHint,
+                style: const TextStyle(
                   fontFamily: AppFonts.primaryFamily,
                   fontSize: 12,
                   color: AppColors.textSecondary,
                 ),
               ),
-              const SizedBox(height: 16),
-              const Text(
-                AppStrings.onlineModelUrl,
-                style: TextStyle(
-                  fontFamily: AppFonts.primaryFamily,
-                  fontSize: 16,
-                  color: AppColors.textPrimary,
-                  fontWeight: AppFonts.bold,
-                ),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: controller,
-                style: const TextStyle(color: AppColors.textPrimary),
-                decoration: InputDecoration(
-                  hintText: AppStrings.onlineModelUrlHint,
-                  hintStyle: const TextStyle(color: AppColors.textMuted),
-                  filled: true,
-                  fillColor: Colors.white.withOpacity(0.06),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(color: AppColors.neonCyan),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                AppStrings.onlineModelUrlCaption,
-                style: TextStyle(
-                  fontFamily: AppFonts.primaryFamily,
-                  fontSize: 12,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
                 children: [
@@ -237,10 +208,7 @@ extension _GuessHomePageActions on _GuessHomePageState {
                   ),
                   const SizedBox(width: 8),
                   ElevatedButton(
-                    onPressed: () => Navigator.of(context).pop({
-                      'online': controller.text.trim(),
-                      'local': localController.text.trim(),
-                    }),
+                    onPressed: () => Navigator.of(context).pop(puzzlePathController.text.trim()),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: AppColors.neonCyan,
                       foregroundColor: const Color(0xFF1A1A2E),
@@ -255,12 +223,7 @@ extension _GuessHomePageActions on _GuessHomePageState {
       },
     );
     if (result == null) return;
-    final online = result['online'] ?? '';
-    final local = result['local'] ?? '';
-    await _controller.updateOnlineEmbeddingUrl(online.trim());
-    await _controller.updateLocalEmbeddingDir(local.trim());
-    await _initLocalEmbedding();
-    _maybeAutoRefresh();
+    await _controller.updatePuzzlePath(result);
   }
 
   Future<void> _refreshEmbedding({bool auto = false}) async {
