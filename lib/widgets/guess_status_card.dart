@@ -1,5 +1,6 @@
 import 'dart:math';
 import 'package:flutter/material.dart';
+import 'package:guess/controllers/account_controller.dart';
 import 'package:guess/resources/resources.dart';
 
 import '../models/guess_models.dart';
@@ -14,6 +15,7 @@ class GuessStatusCard extends StatefulWidget {
     required this.lengthUnlocked,
     required this.posUnlocked,
     required this.current,
+    required this.puzzleMode,
   });
 
   final int attemptsLeft;
@@ -22,6 +24,7 @@ class GuessStatusCard extends StatefulWidget {
   final bool lengthUnlocked;
   final bool posUnlocked;
   final GuessPuzzle current;
+  final PuzzleMode puzzleMode;
 
   @override
   State<GuessStatusCard> createState() => _GuessStatusCardState();
@@ -249,7 +252,9 @@ class _GuessStatusCardState extends State<GuessStatusCard>
               ),
             ),
             const SizedBox(width: 6),
-            _InfoPill(label: AppStrings.modelLabel(widget.embeddingSourceLabel)),
+            // 根据词库模式显示不同状态
+            if (widget.puzzleMode == PuzzleMode.server)
+              const _InfoPill(label: AppStrings.serverConnected),
           ],
         ),
         if (widget.categoryUnlocked) ...[

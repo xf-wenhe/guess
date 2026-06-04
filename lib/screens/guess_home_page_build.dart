@@ -64,6 +64,7 @@ extension _GuessHomePageBuild on _GuessHomePageState {
                         lengthUnlocked: _controller.lengthUnlocked,
                         posUnlocked: _controller.posUnlocked,
                         current: current,
+                        puzzleMode: _accountController.puzzleMode,
                       ),
                       const SizedBox(height: 6),
                       Expanded(
