@@ -302,8 +302,10 @@ extension _GuessHomePageActions on _GuessHomePageState {
       } else {
         _modelDownloadPending = false;
         _localRunnerError = null;
-        _showToast(
-            AppStrings.currentModelLabel(_controller.embeddingSourceLabel));
+        // 根据词库模式显示不同提示
+        if (_accountController.puzzleMode == PuzzleMode.server) {
+          _showToast(AppStrings.serverConnected);
+        }
         if (auto) {
           _autoRefreshAttempts = 0;
         }
