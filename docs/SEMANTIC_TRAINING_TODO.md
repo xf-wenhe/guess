@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-02 15:49 CST
+Last updated: 2026-06-04 12:35 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -82,6 +82,20 @@ Report: `.nightly/reports/nightly_promotion_20260602_153608.md`
 
 Result: rejected. Selective contrastive reduced the all-scope bucket damage (`65.93 -> 66.67`) and improved hard negatives further, but still hurt bucket accuracy, same-category, and synonym bucket accuracy. It should stay experimental.
 
+### 2026-06-03 Nightly Daily Run
+
+Report: `.nightly/reports/nightly_promotion_20260603_230006.md`
+
+| metric | baseline | candidate |
+|--------|----------|-----------|
+| cal_mae | 7.4838 | 7.7946 |
+| cal_bucket_acc | 68.13 | 65.93 |
+| hard_negative_cal_mae | 9.4009 | 9.6486 |
+| synonym_recall_at70 | 93.22 | 89.83 |
+| regression | - | 30/30 |
+
+Result: rejected. The previous daily default used 2500 rows, batch 16, `mixed` loss, and MPS. It took 306.5 minutes and degraded key gates. Daily has been changed to a high-signal 300-row cap with batch 8; larger runs should stay in `full` or explicit experiments until proven.
+
 ## Active TODO
 
 - [x] Fix CPU fallback so `SEM_DEVICE=cpu` does not accidentally use MPS through Trainer/Accelerate.
@@ -90,6 +104,8 @@ Result: rejected. Selective contrastive reduced the all-scope bucket damage (`65
 - [x] Add selective contrastive scope so hard-negative margin training avoids ambiguous same-category rows by default.
 - [x] Re-run selective `mixed_contrastive` micro-smoke to check whether bucket accuracy damage is reduced.
 - [ ] User reviews the latest reports and chooses the next experiment direction.
+- [x] Read the 2026-06-03 nightly report and change daily defaults away from the regressing 2500-row run.
+- [ ] Wait for the next nightly report to verify the new 300-row daily default.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
 - [ ] Promote only after strict gates pass.

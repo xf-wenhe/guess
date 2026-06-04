@@ -48,14 +48,16 @@ The daily profile is designed to finish reliably on local GPU/MPS by using a str
 
 ```bash
 NIGHTLY_TOTAL_RUNS=1
-NIGHTLY_SUP_MAX_TRAIN_ROWS=2500
+NIGHTLY_SUP_MAX_TRAIN_ROWS=300
 NIGHTLY_SUP_EPOCHS=1
-NIGHTLY_SUP_BATCH_SIZE=16
+NIGHTLY_SUP_BATCH_SIZE=8
 NIGHTLY_SUP_LEARNING_RATE=2e-6
 NIGHTLY_SUP_MAX_REPEAT=3
 NIGHTLY_SUP_ANGLE_MODE=cycle
 NIGHTLY_SUP_LOSS_MODE=mixed
 ```
+
+The daily row cap intentionally matches the high-signal smoke scale. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger runs in `full` or explicit experiments until they beat the fixed gates.
 
 `NIGHTLY_SUP_ANGLE_MODE=cycle` trains examples with the same semantic-angle prefixes used by production scoring. This avoids fine-tuning on bare word pairs while evaluating on prefixed text pairs.
 
