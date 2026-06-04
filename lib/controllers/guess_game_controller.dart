@@ -5,6 +5,7 @@ import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:guess/config/server_config.dart';
+import 'package:guess/controllers/account_controller.dart';
 import 'package:guess/resources/resources.dart';
 import 'package:guess/services/connection_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,9 +34,11 @@ class GuessGameController extends ChangeNotifier {
     required PuzzleRepository puzzleRepository,
     required EmbeddingService embeddingService,
     required ConnectionService connectionService,
+    required AccountController accountController,
   })  : _puzzleRepository = puzzleRepository,
         _embeddingService = embeddingService,
-        _connectionService = connectionService {
+        _connectionService = connectionService,
+        _accountController = accountController {
     _semanticScorer = SemanticScorer(
       embeddingService: _embeddingService,
       onTrace: _traceScore,
@@ -49,6 +52,7 @@ class GuessGameController extends ChangeNotifier {
   final PuzzleRepository _puzzleRepository;
   final EmbeddingService _embeddingService;
   final ConnectionService _connectionService;
+  final AccountController _accountController;
   late final SemanticScorer _semanticScorer;
 
   List<GuessPuzzle> _puzzles = [];
@@ -135,6 +139,7 @@ class GuessGameController extends ChangeNotifier {
     final becameLose = !outcome.isWin && _attemptsLeft <= 0;
     if (becameLose) {
       _lost = true;
+      _recordGameResult(false);
     }
 
     final becameWin = outcome.isWin;
@@ -142,10 +147,18 @@ class GuessGameController extends ChangeNotifier {
       _won = true;
       _winBySemantic = false;
       _lastGuess = guess;
+      _recordGameResult(true, _hintIndex);
     }
 
     notifyListeners();
     return GuessApplyResult(becameWin: becameWin, becameLose: becameLose);
+  }
+
+  /// 记录答题结果到服务器
+  void _recordGameResult(bool correct, [int hintIndex = -1]) {
+    if (_accountController.puzzleMode == PuzzleMode.server) {
+      _accountController.recordGameResult(correct: correct, hintIndex: hintIndex);
+    }
   }
 
   Future<void> updateOnlineEmbeddingUrl(String next) async {
