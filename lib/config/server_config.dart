@@ -38,4 +38,15 @@ class ServerConfig {
 
   /// 默认词库路径（本地开发用）
   static const String defaultPuzzlesPath = 'assets/puzzles.json';
+
+  /// 账号服务端口
+  static const int accountPort = 8001;
+
+  /// 局域网账号端点列表
+  static List<String> get lanAccountEndpoints =>
+      lanHosts.map((h) => 'http://$h:$accountPort/api').toList();
+
+  /// 公网账号端点
+  static String get publicAccountEndpoint =>
+      'https://$publicHost/api';
 }
