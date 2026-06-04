@@ -78,6 +78,22 @@ nohup python account_server.py > /tmp/account_server.log 2>&1 &
 
 # Health check
 curl -sS http://192.168.11.29:8001/health
+
+# 初始化数据库（首次运行）
+python scripts/init_account_db.py
+```
+
+### 一键启动所有服务
+
+```bash
+# 启动所有服务（embedding + account）
+pkill -f "python.*embedding_server" 2>/dev/null
+pkill -f "python.*account_server" 2>/dev/null
+python embedding_server.py > /tmp/embedding_server.log 2>&1 &
+python account_server.py > /tmp/account_server.log 2>&1 &
+sleep 3
+echo "Embedding: $(curl -s http://192.168.11.29:8000/health | head -1)"
+echo "Account: $(curl -s http://192.168.11.29:8001/health)"
 ```
 
 **启动顺序**：
