@@ -155,4 +155,29 @@ class AppStrings {
     if (value >= 40) return '有一定关联';
     return '关联较弱';
   }
+
+  // 账号相关
+  static const connectServer = '连接服务器';
+  static const connectServerPuzzle = '连接服务器词库';
+  static const unknownUser = '未知用户';
+  static const createAccountTitle = '创建账号';
+  static const nicknameHint = '请输入昵称';
+  static const nicknameRequired = '昵称不能为空';
+  static const nicknameTooLong = '昵称最多10个字符';
+  static const createAccountFailed = '创建账号失败';
+  static const confirm = '确认';
+
+  // 统计相关
+  static const correctCount = '答对';
+  static const wrongCount = '答错';
+  static const totalCount = '总计';
+  static const accuracy = '正确率';
+  static const todayStats = '今日';
+
+  // 词库相关
+  static const puzzleLoadFailed = '词库加载失败';
+  static const puzzlePathLabel = '本地词库路径';
+  static const puzzlePathHint = '重启后生效';
+  static const serverConnected = '服务器已连接';
+  static const settingsTitle = '设置';
 }

@@ -142,4 +142,12 @@ class AppColors {
   static const scoreGreenBg = Color(0x1A4ADE80);
   static const scoreAmberBg = Color(0x1AFBBF24);
   static const scoreGoldBg = Color(0x1AFB923C);
+
+  // 用户界面相关
+  static const primary = Color(0xFF14B8A6);
+  static const successGreen = Color(0xFF22C55E);
+  static const error = Color(0xFFEF4444);
+  static const errorLight = Color(0xFFFFA0A0);
+  static const errorBackground = Color(0x1AEF4444);
+  static const surface = Color(0xFF1A1F3A);
 }
