@@ -96,6 +96,9 @@ class AccountController extends ChangeNotifier {
     }
   }
 
+  /// 获取账号服务端点（供 PuzzleRepository 使用）
+  String? get accountEndpoint => _accountService.activeEndpoint;
+
   /// 创建账号（输入昵称后）
   Future<bool> createAccount(String nickname) async {
     if (_deviceId == null || _accountService.activeEndpoint == null) {

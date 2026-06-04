@@ -256,17 +256,28 @@ extension _GuessHomePageBuild on _GuessHomePageState {
             error: puzzleError,
             onRetry: () => _controller.reloadPuzzles(),
             onConnectServer: () async {
+              // 1. 连接账号服务
               final success = await _accountController.connectToServerPuzzles();
-              if (success && _accountController.user == null) {
+              if (!success) {
+                _showToast('连接服务器失败');
+                return;
+              }
+              // 2. 如果是新用户，弹出昵称对话框
+              if (_accountController.user == null) {
                 if (!mounted) return;
-                AccountCreationDialog.show(
+                await AccountCreationDialog.show(
                   context,
                   onSubmit: _accountController.createAccount,
                 );
+                // 检查是否创建成功
+                if (_accountController.user == null) {
+                  // 用户取消了昵称输入，重置状态
+                  _accountController.resetSession();
+                  return;
+                }
               }
-              if (success) {
-                await _controller.reloadPuzzles();
-              }
+              // 3. 启用服务器词库并重新加载
+              await _controller.enableServerPuzzlesAndReload();
             },
           ),
         ),

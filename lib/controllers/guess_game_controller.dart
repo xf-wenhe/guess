@@ -114,6 +114,16 @@ class GuessGameController extends ChangeNotifier {
     }
   }
 
+  /// 启用服务器词库模式并重新加载
+  Future<void> enableServerPuzzlesAndReload() async {
+    _puzzleRepository.enableServerPuzzles();
+    // 设置词库端点
+    if (_connectionService.connectedPuzzleEndpoint != null) {
+      _puzzleRepository.setActiveEndpoint(_connectionService.connectedPuzzleEndpoint!);
+    }
+    await reloadPuzzles();
+  }
+
   void resetGame() {
     _startNewPuzzle();
     notifyListeners();

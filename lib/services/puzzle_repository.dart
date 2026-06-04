@@ -26,6 +26,7 @@ class PuzzleRepository {
 
   String? _activeEndpoint;
   String? _localPuzzlePath;
+  bool _useServerPuzzles = false;  // 是否使用服务器词库
 
   /// 设置网络词库端点（由 ConnectionService 探测后设置）
   void setActiveEndpoint(String endpoint) {
@@ -37,13 +38,51 @@ class PuzzleRepository {
     _localPuzzlePath = path.trim().isEmpty ? null : path.trim();
   }
 
-  /// 加载词库，优先级：本地路径 > 网络端点 > 抛出异常
+  /// 启用服务器词库模式
+  void enableServerPuzzles() {
+    _useServerPuzzles = true;
+  }
+
+  /// 禁用服务器词库模式
+  void disableServerPuzzles() {
+    _useServerPuzzles = false;
+  }
+
+  /// 是否使用服务器词库
+  bool get isUsingServerPuzzles => _useServerPuzzles;
+
+  /// 加载词库
+  /// 本地模式：用户设置了本地词库路径
+  /// 服务器模式：用户点击"连接服务器词库"
+  /// 都没有设置：抛出异常，显示错误提示
   Future<List<GuessPuzzle>> loadPuzzles() async {
     String? raw;
     String? errorSource;
 
-    // 1. 优先使用用户设置的本地词库路径
-    if (_localPuzzlePath != null && _localPuzzlePath!.isNotEmpty) {
+    // 1. 服务器词库模式：用户主动连接服务器词库
+    if (_useServerPuzzles && _activeEndpoint != null) {
+      try {
+        final response = await http
+            .get(Uri.parse(_activeEndpoint!))
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode == 200) {
+          raw = response.body;
+          ConnectionLog.info('Puzzle', '服务器词库加载成功', {
+            'endpoint': _activeEndpoint!,
+            'size': response.body.length,
+          });
+        } else {
+          errorSource = '服务器词库返回 HTTP ${response.statusCode}';
+          ConnectionLog.error('Puzzle', '服务器词库返回非200状态', null);
+        }
+      } catch (e) {
+        errorSource = '服务器词库连接失败: $e';
+        ConnectionLog.error('Puzzle', '服务器词库连接失败', e);
+      }
+    }
+
+    // 2. 本地词库模式：用户设置了本地词库路径
+    if (raw == null && _localPuzzlePath != null && _localPuzzlePath!.isNotEmpty) {
       try {
         final file = File(_localPuzzlePath!);
         if (await file.exists()) {
@@ -60,31 +99,18 @@ class PuzzleRepository {
       }
     }
 
-    // 2. 尝试网络端点（由 ConnectionService 探测后的可用端点）
-    if (raw == null && _activeEndpoint != null) {
-      try {
-        final response = await http
-            .get(Uri.parse(_activeEndpoint!))
-            .timeout(const Duration(seconds: 10));
-        if (response.statusCode == 200) {
-          raw = response.body;
-          ConnectionLog.info('Puzzle', '网络词库加载成功', {
-            'endpoint': _activeEndpoint!,
-            'size': response.body.length,
-          });
-        } else {
-          errorSource = '网络词库返回 HTTP ${response.statusCode}';
-          ConnectionLog.error('Puzzle', '网络词库返回非200状态', null);
-        }
-      } catch (e) {
-        errorSource = '网络词库连接失败: $e';
-        ConnectionLog.error('Puzzle', '网络词库连接失败', e);
-      }
-    }
-
-    // 3. 无 fallback，全部失败时抛出异常
+    // 3. 无词库源，抛出异常
     if (raw == null) {
-      throw PuzzleLoadException(errorSource ?? '未配置词库源，请在设置中配置本地词库路径');
+      if (_localPuzzlePath != null && _localPuzzlePath!.isNotEmpty) {
+        // 用户设置了本地路径但文件不存在
+        throw PuzzleLoadException(errorSource ?? '本地词库文件不存在');
+      } else if (_useServerPuzzles) {
+        // 用户想用服务器词库但连接失败
+        throw PuzzleLoadException(errorSource ?? '服务器词库连接失败');
+      } else {
+        // 用户没有设置任何词库源
+        throw PuzzleLoadException('未配置词库源，请在设置中配置本地词库路径或点击连接服务器词库');
+      }
     }
 
     final List<dynamic> data = jsonDecode(raw) as List<dynamic>;
