@@ -366,13 +366,23 @@ class GuessGameController extends ChangeNotifier {
     _puzzlePath = (savedPuzzlePath ?? '').trim();
     _embeddingService.onlineUrl = next;
 
-    // 设置本地词库路径
+    // 设置本地词库路径（如果有）
     if (_puzzlePath.isNotEmpty) {
       _puzzleRepository.setLocalPuzzlePath(_puzzlePath);
     }
 
     // 探测网络端点
     await _refreshConnectionStatus();
+
+    // 如果没有本地词库路径，默认尝试服务器词库
+    if (_puzzlePath.isEmpty && _connectionService.connectedPuzzleEndpoint != null) {
+      _puzzleRepository.enableServerPuzzles();
+      _puzzleRepository.setActiveEndpoint(_connectionService.connectedPuzzleEndpoint!);
+      // 同时启用账号控制器连接服务器
+      if (_accountController.puzzleMode == PuzzleMode.local) {
+        unawaited(_accountController.connectToServerPuzzles());
+      }
+    }
 
     unawaited(refreshEmbeddingSourceLabel());
     notifyListeners();
