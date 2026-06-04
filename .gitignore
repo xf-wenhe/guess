@@ -56,8 +56,21 @@ embedding_server.log
 
 # Additional build artifacts
 build/
-data/
+# ML models (large files, not for git)
 models/
 .nightly/
 .claude/worktrees/
 .nightly/workspaces/**/.claude/worktrees/
+
+# Data directory - ignore all but keep essential calibration files
+data/*.csv
+data/*.jsonl
+data/*.md
+data/*.json
+data/splits*/
+!data/semantic_calibration_v27_semreal_anchor.json
+!data/semantic_calibration_v21_refine.json
+!data/semantic_calibration_v19.json
+!data/semantic_calibration_v18_v3.json
+!data/semantic_calibration_v18.json
+!data/manual_similarity_overrides.json

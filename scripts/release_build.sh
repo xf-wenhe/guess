@@ -202,35 +202,67 @@ create_release() {
         exit 1
     fi
 
-    # Build release notes
+    # Build release notes dynamically based on built platforms
+    local platform_table=""
+    local system_requirements=""
+
+    if echo "$BUILD_FILES" | grep -q "android"; then
+        platform_table="${platform_table}| Android | \`guess-${VERSION}-android.apk\` | 直接安装 |\n"
+        system_requirements="${system_requirements}- **Android**: Android 5.0 (API 21) 或更高\n"
+    fi
+    if echo "$BUILD_FILES" | grep -q "windows"; then
+        platform_table="${platform_table}| Windows | \`guess-${VERSION}-windows.zip\` | 解压后运行 guess.exe |\n"
+        system_requirements="${system_requirements}- **Windows**: Windows 10 或更高\n"
+    fi
+    if echo "$BUILD_FILES" | grep -q "macos"; then
+        platform_table="${platform_table}| macOS | \`guess-${VERSION}-macos.zip\` | 解压后打开 guess.app |\n"
+        system_requirements="${system_requirements}- **macOS**: macOS 10.14 或更高\n"
+    fi
+
     local notes="## 词语猜谜 v${VERSION}
 
 ### 下载说明
 
-本次发布包含以下平台：${BUILD_NOTES}
-
 | 平台 | 文件 | 说明 |
 |------|------|------|
-| Android | \`guess-${VERSION}-android.apk\` | 直接安装 |
-| Windows | \`guess-${VERSION}-windows.zip\` | 解压后运行 guess.exe |
-| macOS | \`guess-${VERSION}-macos.zip\` | 解压后打开 guess.app |
-
+${platform_table}
 ### 系统要求
 
-- **Android**: Android 5.0 (API 21) 或更高
-- **Windows**: Windows 10 或更高
-- **macOS**: macOS 10.14 或更高
-
+${system_requirements}
 ### 注意事项
 
 - macOS 首次运行可能需要在「系统偏好设置 → 安全性与隐私」中允许运行
 - 游戏需要运行 embedding server 才能正常游玩"
 
-    # Create release with files
-    gh release create "$tag" \
-        --title "$title" \
-        --notes "$notes" \
-        $BUILD_FILES
+    # Create release with retry logic
+    local max_retries=3
+    local retry_count=0
+    local success=false
+
+    while [ $retry_count -lt $max_retries ]; do
+        echo "  Attempt $((retry_count + 1))/$max_retries..."
+
+        if gh release create "$tag" \
+            --title "$title" \
+            --notes "$notes" \
+            $BUILD_FILES 2>&1; then
+            success=true
+            break
+        fi
+
+        retry_count=$((retry_count + 1))
+        if [ $retry_count -lt $max_retries ]; then
+            echo -e "${YELLOW}  Release creation failed, retrying in 5 seconds...${NC}"
+            sleep 5
+        fi
+    done
+
+    if [ "$success" = false ]; then
+        echo -e "${RED}Error: Failed to create release after $max_retries attempts${NC}"
+        echo -e "${YELLOW}Tip: You can manually create the release with:${NC}"
+        echo "  gh release create \"$tag\" --title \"$title\" --notes \"\$notes\" $BUILD_FILES"
+        exit 1
+    fi
 
     echo -e "${GREEN}✓ Release created: ${tag}${NC}"
 }
