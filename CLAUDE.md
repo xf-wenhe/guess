@@ -65,10 +65,26 @@ curl -sS http://192.168.11.29:8000/ready
 EMBED_MODEL_DIR=/path/to/model python embedding_server.py
 ```
 
+### Account Server
+
+账号服务独立运行，提供用户注册和统计功能：
+
+```bash
+# 启动账号服务（端口 8001）
+python account_server.py
+
+# 后台运行（推荐）
+nohup python account_server.py > /tmp/account_server.log 2>&1 &
+
+# Health check
+curl -sS http://192.168.11.29:8001/health
+```
+
 **启动顺序**：
 1. 先启动本地 embedding server（在本机 macOS 上）
-2. 再启动 Flutter 应用
-3. 应用通过局域网 IP `192.168.11.29:8000` 访问服务和词库
+2. 启动 account server（端口 8001）
+3. 再启动 Flutter 应用
+4. 应用通过局域网 IP `192.168.11.29:8000` 访问模型服务，`192.168.11.29:8001` 访问账号服务
 
 ### Pre-flight Checks
 
