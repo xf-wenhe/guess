@@ -3,8 +3,11 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:guess/controllers/account_controller.dart';
 import 'package:guess/resources/resources.dart';
+import 'package:guess/services/account_service.dart';
 import 'package:guess/services/connection_service.dart';
+import 'package:guess/services/statistics_service.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../controllers/guess_game_controller.dart';
@@ -38,6 +41,7 @@ class _GuessHomePageState extends State<GuessHomePage>
   static const List<int> _hintPercents = [30, 40, 50, 60, 70, 80, 90];
 
   late final GuessGameController _controller;
+  late final AccountController _accountController;
   late final LocalEmbeddingRunner _localRunner;
   final TextEditingController _textController = TextEditingController();
   final FocusNode _inputFocus = FocusNode();
@@ -71,6 +75,12 @@ class _GuessHomePageState extends State<GuessHomePage>
       duration: const Duration(seconds: 2),
     );
 
+    // 初始化 AccountController
+    _accountController = AccountController(
+      accountService: AccountService(),
+      statisticsService: StatisticsService(),
+    );
+
     _controller = GuessGameController(
       puzzleRepository: PuzzleRepository(),
       embeddingService: EmbeddingService(
@@ -80,8 +90,10 @@ class _GuessHomePageState extends State<GuessHomePage>
         embeddingPrefix: '',
       ),
       connectionService: ConnectionService(),
+      accountController: _accountController,
     )..addListener(_onControllerChanged);
 
+    _accountController.initialize();
     _controller.initialize();
     if (widget.autoStartLocalEmbedding) {
       _initLocalEmbedding();
@@ -93,6 +105,7 @@ class _GuessHomePageState extends State<GuessHomePage>
     _controller
       ..removeListener(_onControllerChanged)
       ..dispose();
+    _accountController.dispose();
     if (_localRunnerReady) {
       _localRunner.stop();
     }
