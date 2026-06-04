@@ -62,6 +62,7 @@ class _WinOverlayState extends State<WinOverlay>
 
   @override
   void dispose() {
+    widget.animation.removeListener(_checkShowResult);
     _bounceController.dispose();
     _glowController.dispose();
     super.dispose();
@@ -361,6 +362,7 @@ class _LoseOverlayState extends State<LoseOverlay>
 
   @override
   void dispose() {
+    widget.animation.removeListener(_checkShowResult);
     _shakeController.dispose();
     _glowController.dispose();
     super.dispose();
