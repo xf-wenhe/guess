@@ -85,7 +85,9 @@
       "Bash(flutter run *)",
       "Bash(flutter logs *)",
       "Bash(git -C /Volumes/新/work/flutter/guess add lib/controllers/guess_game_controller.dart lib/screens/guess_home_page_build.dart lib/widgets/puzzle_error_banner.dart)",
-      "Bash(git -C /Volumes/新/work/flutter/guess add lib/screens/guess_home_page_actions.dart)"
+      "Bash(git -C /Volumes/新/work/flutter/guess add lib/screens/guess_home_page_actions.dart)",
+      "Bash(flutter build *)",
+      "Bash(flutter --version)"
     ],
     "additionalDirectories": [
       "/Volumes/新/work/flutter/guess/docs/superpowers"
