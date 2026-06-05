@@ -58,8 +58,6 @@ ANGLES = [
 ]
 
 HARD_NEG_TAGS = {
-    "antonym_low",
-    "antonym_or_conflict",
     "collocation_not_equivalent",
     "function_word_low",
     "function_word_vs_real_low",

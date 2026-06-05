@@ -86,6 +86,8 @@ cat > "$PLIST_PATH" <<PLIST
     <string>0.3</string>
     <key>NIGHTLY_MIN_ACC_IMPROVEMENT</key>
     <string>2.0</string>
+    <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key>
+    <string>0.0</string>
     <key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>
     <string>1</string>
     <key>NIGHTLY_REQUIRE_STRICT_IMPROVEMENT</key>
@@ -97,7 +99,7 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>
-    <string>1</string>
+    <string>3</string>
     <key>NIGHTLY_CONTINUE_ON_ROUND_ERROR</key>
     <string>1</string>
     <key>NIGHTLY_BUILD_TIMEOUT_SEC</key>
@@ -178,7 +180,7 @@ echo "wrapper_script: $WRAPPER_SCRIPT"
 echo "logs: $STDOUT_LOG / $STDERR_LOG"
 echo "reports: $REPORTS_DIR"
 echo "train_profile: daily"
-echo "total_runs: 1"
+echo "total_runs: 3"
 echo "model: $PROJECT_MODEL_NAME"
 echo "calib: $PROJECT_CALIB_NAME"
 echo "auto_promote: 1"

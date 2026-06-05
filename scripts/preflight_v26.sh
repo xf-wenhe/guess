@@ -42,7 +42,7 @@ if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[4/6] regression check (expect 30/30)"
+echo "[4/6] regression check (expect all pairs pass)"
 "$PYTHON_BIN" scripts/run_regression_pairs_v23.py | tail -n 8
 
 echo "[5/6] puzzle structural/naturalness check"

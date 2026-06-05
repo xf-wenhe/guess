@@ -31,6 +31,7 @@ EVAL_RATIO = float(os.getenv("SEM_GOLD_EVAL_RATIO", "0.25"))
 DEFAULT_EXTRA_GOLD = [
     "data/semantic_error_review_template_v1.csv",
     "data/score_trace_review_candidates.csv",
+    "data/nightly_worst_case_review_candidates.csv",
     "data/hard_negatives_relabel_applied_ab_v1.csv",
     "data/semantic_scoring_user_input_template_with_relabels_ab_applied_v1_rangefixed_weighted.csv",
 ]
@@ -70,6 +71,21 @@ FIELDNAMES = [
     "sample_weight",
 ]
 
+ANTONYM_TAGS = {
+    "antonym_low",
+    "antonym_mid",
+    "antonym_or_conflict",
+}
+ANTONYM_SCORE = 50
+ANTONYM_RANGE = "45-55"
+REQUIRED_ANTONYM_TRAIN_PATCH_ROWS = [
+    ("高兴", "难过", "情感", "情感"),
+    ("快乐", "悲伤", "情感", "情感"),
+    ("胜利", "失败", "抽象", "抽象"),
+    ("白天", "黑夜", "时间", "时间"),
+    ("古代", "现代", "时间", "时间"),
+]
+
 
 def score_bin(score: float) -> str:
     if score < 20:
@@ -99,6 +115,34 @@ def range_for_score(score: int) -> str:
     left = max(0, score - 5)
     right = min(100, score + 5)
     return f"{left}-{right}"
+
+
+def is_antonym_relation(relation_tag: str, reason: str) -> bool:
+    tag = relation_tag.strip().lower()
+    return tag in ANTONYM_TAGS or "反义" in reason
+
+
+def required_antonym_train_patch_rows() -> list[dict]:
+    rows = []
+    for answer, user_input, answer_category, input_category in REQUIRED_ANTONYM_TRAIN_PATCH_ROWS:
+        normalized = normalize_row(
+            {
+                "answer": answer,
+                "user_input": user_input,
+                "answer_category": answer_category,
+                "input_category_guess": input_category,
+                "relation_tag": "antonym_mid",
+                "expected_range": ANTONYM_RANGE,
+                "score_0_100": str(ANTONYM_SCORE),
+                "reason": "required antonym regression patch; train as 50 percent semantic relatedness",
+                "reviewer": "required_antonym_patch",
+                "sample_weight": "4.0",
+            },
+            "required_antonym_patch",
+        )
+        if normalized is not None:
+            rows.append(normalized)
+    return rows
 
 
 def normalize_row(row: dict, reviewer_fallback: str) -> Optional[dict]:
@@ -137,6 +181,13 @@ def normalize_row(row: dict, reviewer_fallback: str) -> Optional[dict]:
     except ValueError:
         sample_weight_f = 1.0
 
+    if is_antonym_relation(relation_tag, reason):
+        relation_tag = "antonym_mid"
+        score = ANTONYM_SCORE
+        expected_range = ANTONYM_RANGE
+    else:
+        expected_range = (row.get("expected_range") or range_for_score(score)).strip()
+
     return {
         "id": "",
         "answer": answer,
@@ -144,7 +195,7 @@ def normalize_row(row: dict, reviewer_fallback: str) -> Optional[dict]:
         "answer_category": (row.get("answer_category") or "").strip(),
         "input_category_guess": (row.get("input_category_guess") or "").strip(),
         "relation_tag": relation_tag or relation_for_score(score),
-        "expected_range": (row.get("expected_range") or range_for_score(score)).strip(),
+        "expected_range": expected_range,
         "score_0_100": str(score),
         "reason": reason[:120],
         "reviewer": reviewer,
@@ -296,6 +347,7 @@ def main() -> None:
     train_patch_rows = []
     for path in TRAIN_PATCH_CSVS:
         train_patch_rows.extend(read_csv_rows(path, path.stem))
+    train_patch_rows.extend(required_antonym_train_patch_rows())
     train_patch_rows = dedupe(exclude_pairs(train_patch_rows, holdout_keys))
     supervised_gold_rows = dedupe(exclude_pairs(supervised_gold_rows, pair_keys(train_patch_rows)))
     train_gold_rows, calib_rows, eval_candidate_rows = split_train_calib_eval([dict(row) for row in supervised_gold_rows], SEED)

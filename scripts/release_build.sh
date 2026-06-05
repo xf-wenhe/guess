@@ -1,8 +1,28 @@
 #!/bin/bash
 # Multi-platform release build script for Flutter Guess Game
 # Builds available platforms and uploads to GitHub Release
+#
+# Usage:
+#   bash scripts/release_build.sh           # Create new Release
+#   bash scripts/release_build.sh --supplement  # Upload to existing Release
 
 set -e
+
+# Parse arguments
+SUPPLEMENT_MODE=false
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --supplement)
+            SUPPLEMENT_MODE=true
+            shift
+            ;;
+        *)
+            echo "Unknown argument: $1"
+            echo "Usage: $0 [--supplement]"
+            exit 1
+            ;;
+    esac
+done
 
 # Colors for output
 RED='\033[0;31m'
@@ -43,6 +63,9 @@ echo -e "${BLUE}========================================${NC}"
 echo -e "${GREEN}Version: ${VERSION}${NC}"
 echo -e "${GREEN}Project: ${PROJECT_ROOT}${NC}"
 echo -e "${GREEN}Current Platform: ${CURRENT_PLATFORM}${NC}"
+if [ "$SUPPLEMENT_MODE" = true ]; then
+    echo -e "${YELLOW}Mode: Supplement (upload to existing Release)${NC}"
+fi
 echo ""
 
 # Track built files
@@ -198,8 +221,19 @@ create_release() {
 
     # Check if tag already exists
     if git tag -l | grep -q "^${tag}$"; then
-        echo -e "${RED}Error: Tag ${tag} already exists. Please update version in pubspec.yaml.${NC}"
-        exit 1
+        if [ "$SUPPLEMENT_MODE" = true ]; then
+            echo -e "${YELLOW}  Tag ${tag} exists, will upload supplemental files${NC}"
+        else
+            echo -e "${RED}Error: Tag ${tag} already exists. Please update version in pubspec.yaml.${NC}"
+            echo -e "${YELLOW}Tip: Use --supplement to add files to existing release${NC}"
+            exit 1
+        fi
+    else
+        if [ "$SUPPLEMENT_MODE" = true ]; then
+            echo -e "${RED}Error: Tag ${tag} does not exist. Cannot supplement non-existent release.${NC}"
+            echo -e "${YELLOW}Tip: Run without --supplement to create a new release${NC}"
+            exit 1
+        fi
     fi
 
     # Build release notes dynamically based on built platforms
@@ -219,7 +253,39 @@ create_release() {
         system_requirements="${system_requirements}- **macOS**: macOS 10.14 或更高\n"
     fi
 
-    local notes="## 词语猜谜 v${VERSION}
+    if [ "$SUPPLEMENT_MODE" = true ]; then
+        # 补齐模式：直接上传文件到已有 Release
+        echo "  Uploading supplemental files to existing release..."
+        for file in $BUILD_FILES; do
+            local filename=$(basename "$file")
+            if gh release view "$tag" --json assets --jq ".assets[].name" | grep -q "^${filename}$"; then
+                echo -e "${YELLOW}  ⊘ ${filename} already exists in release, skipping${NC}"
+            else
+                echo "  Uploading ${filename}..."
+                gh release upload "$tag" "$file"
+                echo -e "${GREEN}  ✓ Uploaded: ${filename}${NC}"
+            fi
+        done
+        echo -e "${GREEN}✓ Supplemental files uploaded${NC}"
+    else
+        # 正常模式：创建新 Release
+        local platform_table=""
+        local system_requirements=""
+
+        if echo "$BUILD_FILES" | grep -q "android"; then
+            platform_table="${platform_table}| Android | \`guess-${VERSION}-android.apk\` | 直接安装 |\n"
+            system_requirements="${system_requirements}- **Android**: Android 5.0 (API 21) 或更高\n"
+        fi
+        if echo "$BUILD_FILES" | grep -q "windows"; then
+            platform_table="${platform_table}| Windows | \`guess-${VERSION}-windows.zip\` | 解压后运行 guess.exe |\n"
+            system_requirements="${system_requirements}- **Windows**: Windows 10 或更高\n"
+        fi
+        if echo "$BUILD_FILES" | grep -q "macos"; then
+            platform_table="${platform_table}| macOS | \`guess-${VERSION}-macos.zip\` | 解压后打开 guess.app |\n"
+            system_requirements="${system_requirements}- **macOS**: macOS 10.14 或更高\n"
+        fi
+
+        local notes="## 词语猜谜 v${VERSION}
 
 ### 下载说明
 
@@ -234,37 +300,38 @@ ${system_requirements}
 - macOS 首次运行可能需要在「系统偏好设置 → 安全性与隐私」中允许运行
 - 游戏需要运行 embedding server 才能正常游玩"
 
-    # Create release with retry logic
-    local max_retries=3
-    local retry_count=0
-    local success=false
+        # Create release with retry logic
+        local max_retries=3
+        local retry_count=0
+        local success=false
 
-    while [ $retry_count -lt $max_retries ]; do
-        echo "  Attempt $((retry_count + 1))/$max_retries..."
+        while [ $retry_count -lt $max_retries ]; do
+            echo "  Attempt $((retry_count + 1))/$max_retries..."
 
-        if gh release create "$tag" \
-            --title "$title" \
-            --notes "$notes" \
-            $BUILD_FILES 2>&1; then
-            success=true
-            break
+            if gh release create "$tag" \
+                --title "$title" \
+                --notes "$notes" \
+                $BUILD_FILES 2>&1; then
+                success=true
+                break
+            fi
+
+            retry_count=$((retry_count + 1))
+            if [ $retry_count -lt $max_retries ]; then
+                echo -e "${YELLOW}  Release creation failed, retrying in 5 seconds...${NC}"
+                sleep 5
+            fi
+        done
+
+        if [ "$success" = false ]; then
+            echo -e "${RED}Error: Failed to create release after $max_retries attempts${NC}"
+            echo -e "${YELLOW}Tip: You can manually create the release with:${NC}"
+            echo "  gh release create \"$tag\" --title \"$title\" --notes \"\$notes\" $BUILD_FILES"
+            exit 1
         fi
 
-        retry_count=$((retry_count + 1))
-        if [ $retry_count -lt $max_retries ]; then
-            echo -e "${YELLOW}  Release creation failed, retrying in 5 seconds...${NC}"
-            sleep 5
-        fi
-    done
-
-    if [ "$success" = false ]; then
-        echo -e "${RED}Error: Failed to create release after $max_retries attempts${NC}"
-        echo -e "${YELLOW}Tip: You can manually create the release with:${NC}"
-        echo "  gh release create \"$tag\" --title \"$title\" --notes \"\$notes\" $BUILD_FILES"
-        exit 1
+        echo -e "${GREEN}✓ Release created: ${tag}${NC}"
     fi
-
-    echo -e "${GREEN}✓ Release created: ${tag}${NC}"
 }
 
 # Cleanup
@@ -277,14 +344,24 @@ cleanup() {
 # Main execution
 main() {
     check_dependencies
-    run_checks
+
+    if [ "$SUPPLEMENT_MODE" = true ]; then
+        echo -e "${YELLOW}[2/5] Skipping quality checks (supplement mode)${NC}"
+    else
+        run_checks
+    fi
+
     build_all
     create_release
     cleanup
 
     echo ""
     echo -e "${GREEN}========================================${NC}"
-    echo -e "${GREEN}  Release v${VERSION} published!        ${NC}"
+    if [ "$SUPPLEMENT_MODE" = true ]; then
+        echo -e "${GREEN}  Supplemental files uploaded!          ${NC}"
+    else
+        echo -e "${GREEN}  Release v${VERSION} published!        ${NC}"
+    fi
     echo -e "${GREEN}========================================${NC}"
     echo ""
     echo "View at: https://github.com/xf-wenhe/guess/releases/tag/v${VERSION}"

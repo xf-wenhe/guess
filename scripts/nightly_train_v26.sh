@@ -150,7 +150,7 @@ else
   DEFAULT_SUP_MAX_TRAIN_ROWS="300"
   DEFAULT_SUP_MAX_REPEAT="3"
   DEFAULT_SUP_LEARNING_RATE="2e-6"
-  DEFAULT_TOTAL_RUNS="1"
+  DEFAULT_TOTAL_RUNS="3"
 fi
 SUP_BATCH_SIZE="${NIGHTLY_SUP_BATCH_SIZE:-$DEFAULT_SUP_BATCH_SIZE}"
 SUP_EPOCHS="${NIGHTLY_SUP_EPOCHS:-$DEFAULT_SUP_EPOCHS}"
@@ -167,6 +167,7 @@ SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
 SUP_CONTRASTIVE_NEG_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD:-0.3}"
 MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
 MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
+MIN_ANTONYM_MID_RECALL_IMPROVEMENT="${NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT:-0.0}"
 TOTAL_RUNS="${NIGHTLY_TOTAL_RUNS:-$DEFAULT_TOTAL_RUNS}"
 BASE_SEED="${NIGHTLY_BASE_SEED:-20260303}"
 CONTINUE_ON_ROUND_ERROR="${NIGHTLY_CONTINUE_ON_ROUND_ERROR:-1}"
@@ -559,7 +560,7 @@ PY
   run_cmd "SEM_MODEL_PATH=$candidate_model SEM_CALIB_PATH=$round_output_calib $PYTHON_BIN scripts/run_regression_pairs_v23.py > $regression_out" "$REGRESSION_TIMEOUT_SEC" || return $?
   tail -n 12 "$regression_out"
 
-  python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
+  python_gate_output="$(BASE_METRICS_JSON="$base_metrics_json" NIGHTLY_METRICS_JSON="$nightly_metrics_json" REGRESSION_OUT="$regression_out" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" MIN_ANTONYM_MID_RECALL_IMPROVEMENT="$MIN_ANTONYM_MID_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
 import json, os, re
 from pathlib import Path
 base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
@@ -569,6 +570,7 @@ min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
 min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
 min_hard_mae = float(os.environ['MIN_HARD_NEG_MAE_IMPROVEMENT'])
 min_syn_recall = float(os.environ['MIN_SYNONYM_RECALL_IMPROVEMENT'])
+min_antonym_recall = float(os.environ['MIN_ANTONYM_MID_RECALL_IMPROVEMENT'])
 require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
 require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
 
@@ -592,23 +594,32 @@ base_hard = base_groups.get('hard_negative') or {}
 cand_hard = cand_groups.get('hard_negative') or {}
 base_syn = base_groups.get('synonym_alias') or {}
 cand_syn = cand_groups.get('synonym_alias') or {}
+base_ant = base_groups.get('antonym') or {}
+cand_ant = cand_groups.get('antonym') or {}
 
 b_hard_mae = float(base_hard.get('cal_mae', 0.0))
 c_hard_mae = float(cand_hard.get('cal_mae', 0.0))
 b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
 c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
+b_ant_recall = float(base_ant.get('mid_score_recall_40_60', 0.0))
+c_ant_recall = float(cand_ant.get('mid_score_recall_40_60', 0.0))
 hard_negative_ok = True
 if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
   hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
 synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
+antonym_mid_recall_ok = True
+if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
+  antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
-reg_ok = passed == 30
+total_match = re.search(r'total=(\d+)', reg)
+total = int(total_match.group(1)) if total_match else -1
+reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -636,6 +647,11 @@ print(f'hard_negative_ok={hard_negative_ok}')
 print(f'base_synonym_recall_at70={b_syn_recall:.2f}')
 print(f'cand_synonym_recall_at70={c_syn_recall:.2f}')
 print(f'synonym_recall_ok={synonym_recall_ok}')
+print(f'base_antonym_mid_recall_40_60={b_ant_recall:.2f}')
+print(f'cand_antonym_mid_recall_40_60={c_ant_recall:.2f}')
+print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'regression_passed={passed}')
+print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')
 print(f'accepted={accepted}')
 PY
@@ -721,6 +737,8 @@ for group in groups:
         extra = f"recall@70 {b.get('recall_at_70', '-')} -> {c.get('recall_at_70', '-')}"
     elif group == "hard_negative":
         extra = f"low@30 {b.get('low_score_precision_at_30', '-')} -> {c.get('low_score_precision_at_30', '-')}"
+    elif group == "antonym":
+        extra = f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}"
     lines.append(
         f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
         f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
@@ -794,6 +812,18 @@ with out.open("a", encoding="utf-8") as file:
 PY
 }
 
+append_device_log_excerpt() {
+  local out="$1"
+  {
+    echo ""
+    echo "## 设备日志摘录"
+    echo ""
+    echo '```text'
+    grep -Ei '(^|\s)(SEM_DEVICE|TRAIN_DEVICE|device=|using device|retry with SEM_DEVICE=cpu|ACCELERATE_USE_CPU|mps|cuda|cpu)(\s|$|=|:)' "$LOG_FILE" | tail -n 40 || true
+    echo '```'
+  } >> "$out"
+}
+
 # Find the best accepted round by lowest cal_mae
 BEST_ROUND=""
 BEST_STAGE=""
@@ -829,6 +859,37 @@ done
   echo "**时间**: $(date '+%F %T') CST"
   echo "**模型**: $PROJECT_MODEL_NAME"
   echo "**总轮次**: $TOTAL_RUNS"
+  echo ""
+  echo "## 运行配置"
+  echo ""
+  echo "| item | value |"
+  echo "|------|-------|"
+  echo "| dry_run | $DRY_RUN |"
+  echo "| train_profile | $TRAIN_PROFILE |"
+  echo "| requested_device | $TRAIN_DEVICE |"
+  echo "| supervised | $ENABLE_SUPERVISED_FINETUNE |"
+  echo "| unsup_pretrain | $ENABLE_UNSUP_PRETRAIN |"
+  echo "| anchor | $ENABLE_ANCHOR_FINETUNE |"
+  echo "| sup_rows | $SUP_MAX_TRAIN_ROWS |"
+  echo "| sup_epochs | $SUP_EPOCHS |"
+  echo "| sup_batch | $SUP_BATCH_SIZE |"
+  echo "| sup_lr | $SUP_LEARNING_RATE |"
+  echo "| sup_angle_mode | $SUP_ANGLE_MODE |"
+  echo "| sup_loss_mode | $SUP_LOSS_MODE |"
+  echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
+  echo ""
+  echo "## 晋升门控"
+  echo ""
+  echo "| gate | value |"
+  echo "|------|-------|"
+  echo "| min_cal_mae_improvement | $MIN_MAE_IMPROVEMENT |"
+  echo "| min_cal_bucket_acc_improvement | $MIN_ACC_IMPROVEMENT |"
+  echo "| require_no_degrade_all | $REQUIRE_NO_DEGRADE_ALL |"
+  echo "| require_strict_improvement | $REQUIRE_STRICT_IMPROVEMENT |"
+  echo "| min_hard_negative_mae_improvement | $MIN_HARD_NEG_MAE_IMPROVEMENT |"
+  echo "| min_synonym_recall_improvement | $MIN_SYNONYM_RECALL_IMPROVEMENT |"
+  echo "| min_antonym_mid_recall_improvement | $MIN_ANTONYM_MID_RECALL_IMPROVEMENT |"
+  echo "| regression_gate | passed == total |"
   echo ""
   echo "## 各轮结果"
   echo ""
@@ -912,7 +973,7 @@ else
   tail -n 12 "$BEST_REGRESSION"
 
   # Gate against project model
-  best_gate_output="$(BASE_METRICS_JSON="$PROJECT_BASE_METRICS" NIGHTLY_METRICS_JSON="$BEST_CAND_METRICS" REGRESSION_OUT="$BEST_REGRESSION" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
+  best_gate_output="$(BASE_METRICS_JSON="$PROJECT_BASE_METRICS" NIGHTLY_METRICS_JSON="$BEST_CAND_METRICS" REGRESSION_OUT="$BEST_REGRESSION" MIN_MAE_IMPROVEMENT="$MIN_MAE_IMPROVEMENT" MIN_ACC_IMPROVEMENT="$MIN_ACC_IMPROVEMENT" MIN_HARD_NEG_MAE_IMPROVEMENT="$MIN_HARD_NEG_MAE_IMPROVEMENT" MIN_SYNONYM_RECALL_IMPROVEMENT="$MIN_SYNONYM_RECALL_IMPROVEMENT" MIN_ANTONYM_MID_RECALL_IMPROVEMENT="$MIN_ANTONYM_MID_RECALL_IMPROVEMENT" REQUIRE_NO_DEGRADE_ALL="$REQUIRE_NO_DEGRADE_ALL" REQUIRE_STRICT_IMPROVEMENT="$REQUIRE_STRICT_IMPROVEMENT" $PYTHON_BIN - <<'PY'
 import json, os, re
 from pathlib import Path
 base = json.loads(Path(os.environ['BASE_METRICS_JSON']).read_text(encoding='utf-8'))
@@ -922,6 +983,7 @@ min_mae = float(os.environ['MIN_MAE_IMPROVEMENT'])
 min_acc = float(os.environ['MIN_ACC_IMPROVEMENT'])
 min_hard_mae = float(os.environ['MIN_HARD_NEG_MAE_IMPROVEMENT'])
 min_syn_recall = float(os.environ['MIN_SYNONYM_RECALL_IMPROVEMENT'])
+min_antonym_recall = float(os.environ['MIN_ANTONYM_MID_RECALL_IMPROVEMENT'])
 require_no_degrade_all = os.environ.get('REQUIRE_NO_DEGRADE_ALL', '1') == '1'
 require_strict_improvement = os.environ.get('REQUIRE_STRICT_IMPROVEMENT', '1') == '1'
 
@@ -945,23 +1007,32 @@ base_hard = base_groups.get('hard_negative') or {}
 cand_hard = cand_groups.get('hard_negative') or {}
 base_syn = base_groups.get('synonym_alias') or {}
 cand_syn = cand_groups.get('synonym_alias') or {}
+base_ant = base_groups.get('antonym') or {}
+cand_ant = cand_groups.get('antonym') or {}
 
 b_hard_mae = float(base_hard.get('cal_mae', 0.0))
 c_hard_mae = float(cand_hard.get('cal_mae', 0.0))
 b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
 c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
+b_ant_recall = float(base_ant.get('mid_score_recall_40_60', 0.0))
+c_ant_recall = float(cand_ant.get('mid_score_recall_40_60', 0.0))
 hard_negative_ok = True
 if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
   hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
 synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
+antonym_mid_recall_ok = True
+if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
+  antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
-reg_ok = passed == 30
+total_match = re.search(r'total=(\d+)', reg)
+total = int(total_match.group(1)) if total_match else -1
+reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -981,6 +1052,11 @@ print(f'hard_negative_ok={hard_negative_ok}')
 print(f'project_synonym_recall_at70={b_syn_recall:.2f}')
 print(f'best_synonym_recall_at70={c_syn_recall:.2f}')
 print(f'synonym_recall_ok={synonym_recall_ok}')
+print(f'project_antonym_mid_recall_40_60={b_ant_recall:.2f}')
+print(f'best_antonym_mid_recall_40_60={c_ant_recall:.2f}')
+print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'regression_passed={passed}')
+print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')
 print(f'accepted={accepted}')
 print(f'mae_ok={mae_ok}')
@@ -1056,6 +1132,8 @@ PY
   done
   rm -f "$PROJECT_EVAL_CALIB" "$PROJECT_BASE_METRICS" "$BEST_CAND_METRICS" "$BEST_REGRESSION"
 fi
+
+append_device_log_excerpt "$PROMOTION_REPORT"
 
 echo "[nightly] promotion report: $PROMOTION_REPORT"
 cat "$PROMOTION_REPORT"

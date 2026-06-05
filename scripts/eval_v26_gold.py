@@ -27,7 +27,6 @@ DEVICE = os.getenv('SEM_DEVICE', '').strip().lower()
 ENCODE_BATCH_SIZE = int(os.getenv('SEM_ENCODE_BATCH_SIZE', '32'))
 
 HARD_NEG_TAGS = {
-    'antonym_low',
     'function_word_low',
     'function_word_vs_real_low',
     'hard_negative_low',
@@ -36,6 +35,12 @@ HARD_NEG_TAGS = {
     'cross_category_negative',
     'nonsense_low',
     'abstract_confusion',
+}
+
+ANTONYM_TAGS = {
+    'antonym_low',
+    'antonym_mid',
+    'antonym_or_conflict',
 }
 
 
@@ -62,6 +67,8 @@ def read_eval_dict_rows(path: Path) -> list[dict]:
 def eval_group(row: dict) -> str:
     tag = (row.get('relation_tag') or row.get('error_type') or '').strip()
     score = float(row['_score'])
+    if tag in ANTONYM_TAGS:
+        return 'antonym'
     if tag in HARD_NEG_TAGS or score < 30:
         return 'hard_negative'
     if 'alias' in tag or 'synonym' in tag or score >= 80:
@@ -98,6 +105,12 @@ def grouped_metrics(rows: list[dict], raw_pred: list[float], cal_pred: list[floa
         if name == 'hard_negative':
             hits = sum(1 for pred in values['cal'] if pred <= 30)
             payload['low_score_precision_at_30'] = round(
+                hits / max(len(values['cal']), 1) * 100.0,
+                6,
+            )
+        if name == 'antonym':
+            hits = sum(1 for pred in values['cal'] if 40 <= pred <= 60)
+            payload['mid_score_recall_40_60'] = round(
                 hits / max(len(values['cal']), 1) * 100.0,
                 6,
             )

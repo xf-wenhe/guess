@@ -34,7 +34,7 @@ FIELDNAMES = [
 ]
 
 HARD_NEG_TAGS = {
-    'antonym_low', 'function_word_low', 'function_word_vs_real_low',
+    'function_word_low', 'function_word_vs_real_low',
     'hard_negative_low', 'hard_negative_mid', 'cross_category_low',
     'cross_category_negative', 'nonsense_low',
 }

@@ -11,6 +11,14 @@ MODEL_PATH = os.getenv('SEM_MODEL_PATH', 'models/bge-m3-finetuned-v27-semreal-an
 CALIB_PATH = Path(os.getenv('SEM_CALIB_PATH', 'data/semantic_calibration_v27_semreal_anchor.json'))
 OVERRIDES_PATH = Path(os.getenv('SEM_OVERRIDES_PATH', 'data/manual_similarity_overrides.json'))
 
+REQUIRED_ANTONYM_PAIRS = [
+    {"pair": ["高兴", "难过"], "type": "antonym", "target_min": 45, "target_max": 55},
+    {"pair": ["快乐", "悲伤"], "type": "antonym", "target_min": 45, "target_max": 55},
+    {"pair": ["胜利", "失败"], "type": "antonym", "target_min": 45, "target_max": 55},
+    {"pair": ["白天", "黑夜"], "type": "antonym", "target_min": 45, "target_max": 55},
+    {"pair": ["古代", "现代"], "type": "antonym", "target_min": 45, "target_max": 55},
+]
+
 
 def lexical_score(guess: str, target: str):
     guess_chars = [ord(c) for c in guess]
@@ -84,13 +92,28 @@ def load_overrides(path: Path):
     return overrides
 
 
+def load_regression_pairs(path: Path):
+    pairs = json.loads(path.read_text(encoding='utf-8'))
+    seen = {
+        (tuple(item.get('pair', [])), item.get('type'))
+        for item in pairs
+        if isinstance(item, dict)
+    }
+    for item in REQUIRED_ANTONYM_PAIRS:
+        key = (tuple(item['pair']), item['type'])
+        if key not in seen:
+            pairs.append(dict(item))
+            seen.add(key)
+    return pairs
+
+
 def main():
     if not PAIRS_PATH.exists():
         raise SystemExit(f'missing file: {PAIRS_PATH}')
     if not CALIB_PATH.exists():
         raise SystemExit(f'missing file: {CALIB_PATH}')
 
-    pairs = json.loads(PAIRS_PATH.read_text(encoding='utf-8'))
+    pairs = load_regression_pairs(PAIRS_PATH)
     calib = json.loads(CALIB_PATH.read_text(encoding='utf-8'))
     overrides = load_overrides(OVERRIDES_PATH)
     x = calib['x_pred']
@@ -108,7 +131,7 @@ def main():
 
     print(f'model={MODEL_PATH}')
     print(f'calibration={CALIB_PATH}')
-    print('pair,type,raw_sem,cal_sem,lexical,final,target,pass')
+    print('pair,type,raw_sem,cal_sem,lexical,final,check_score,check_basis,target,pass')
 
     total = 0
     passed = 0
@@ -130,7 +153,12 @@ def main():
             override = overrides.get(key2)
         final = override if override is not None else final_score(cal_sem, lexical)
 
-        ok = target_min <= final <= target_max
+        check_basis = item.get('check_basis')
+        if check_basis is None:
+            check_basis = 'cal_sem' if pair_type == 'antonym' else 'final'
+        check_score = cal_sem if check_basis == 'cal_sem' else final
+
+        ok = target_min <= check_score <= target_max
         total += 1
         passed += 1 if ok else 0
 
@@ -141,6 +169,7 @@ def main():
 
         print(
             f'{guess}-{answer},{pair_type},{raw_sem:.2f},{cal_sem:.2f},{lexical},{final},'
+            f'{check_score:.2f},{check_basis},'
             f'{target_min}-{target_max},{"PASS" if ok else "FAIL"}'
         )
 

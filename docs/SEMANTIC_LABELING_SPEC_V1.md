@@ -40,6 +40,10 @@
 例子：
 - 豆花 vs 勺舀
 - 挟天子 vs 掌控象征
+- 快乐 vs 悲伤
+- 高兴 vs 难过
+
+反义词统一按 50% 左右标注：它们共享语义维度，但方向相反，不再作为 0-25 的硬负例。
 
 ### 56-70
 中等相关，普通人会觉得有明显联系，但不会直接当成同义。
@@ -71,10 +75,10 @@
 - alias
 - near_synonym
 - same_category_but_far
+- antonym_mid
 - hint_like
 - cross_domain_negative
 - nonsense
-- antonym_or_conflict
 - collocation_not_equivalent
 - abstract_confusion
 

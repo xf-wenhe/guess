@@ -13,7 +13,10 @@ REPO_ROOT = Path(__file__).resolve().parent.parent
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install_nightly_10pm_launchd.sh"
 NIGHTLY_SCRIPT = REPO_ROOT / "scripts" / "nightly_train_v26.sh"
 TRACE_EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_score_trace_review_candidates.py"
+WORST_CASE_EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_nightly_worst_case_review_candidates.py"
 BUILD_NIGHTLY_SETS_SCRIPT = REPO_ROOT / "scripts" / "build_nightly_semantic_sets.py"
+REGRESSION_PAIRS_PATH = REPO_ROOT / "data" / "regression_pairs_v23.json"
+ANALYZE_NIGHTLY_REPORT_SCRIPT = REPO_ROOT / "scripts" / "analyze_nightly_report_v26.py"
 
 
 class NightlyScriptsTest(unittest.TestCase):
@@ -66,7 +69,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<key>NIGHTLY_TOTAL_RUNS</key>", plist)
             self.assertIn("<key>NIGHTLY_TRAIN_PROFILE</key>", plist)
             self.assertIn("<string>daily</string>", plist)
-            self.assertIn("<string>1</string>", plist)
+            self.assertIn("<string>3</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_LOSS_MODE</key>", plist)
             self.assertIn("<string>mixed</string>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
@@ -77,6 +80,135 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>", plist)
             self.assertNotIn("workspaces/guess_runtime", plist)
             self.assertIn(f"<string>{REPO_ROOT}/.nightly</string>", plist)
+
+    def test_regression_pairs_include_antonym_mid_checks(self):
+        pairs = json.loads(REGRESSION_PAIRS_PATH.read_text(encoding="utf-8"))
+        antonyms = [item for item in pairs if item.get("type") == "antonym"]
+
+        self.assertGreaterEqual(len(antonyms), 5)
+        for item in antonyms:
+            self.assertEqual(item["target_min"], 45)
+            self.assertEqual(item["target_max"], 55)
+
+    def test_nightly_builder_reads_approved_worst_case_review_candidates(self):
+        source = BUILD_NIGHTLY_SETS_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('"data/nightly_worst_case_review_candidates.csv"', source)
+        self.assertIn('review_status not in {"approved", "merged"}', source)
+
+    def test_analyze_nightly_report_skips_dry_run_and_extracts_training_facts(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nightly = Path(tmp) / ".nightly"
+            reports = nightly / "reports"
+            logs = nightly / "data" / "tmp"
+            reports.mkdir(parents=True)
+            logs.mkdir(parents=True)
+
+            (reports / "nightly_promotion_20260605_102434.md").write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260605_102434
+
+                    **时间**: 2026-06-05 10:24:34 CST
+                    **模型**: bge-m3-finetuned-v27-semreal-anchor
+                    **总轮次**: 3
+
+                    ## 运行配置
+
+                    | item | value |
+                    |------|-------|
+                    | dry_run | 1 |
+                    | requested_device | auto |
+
+                    **结果**: DRY_RUN - 未实际晋升
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            report = reports / "nightly_promotion_20260604_230005.md"
+            report.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260604_230005
+
+                    **时间**: 2026-06-05 01:15:21 CST
+                    **模型**: bge-m3-finetuned-v27-semreal-anchor
+                    **总轮次**: 3
+
+                    ## 运行配置
+
+                    | item | value |
+                    |------|-------|
+                    | dry_run | 0 |
+                    | requested_device | auto |
+                    | sup_rows | 300 |
+
+                    ## 晋升门控
+
+                    | gate | value |
+                    |------|-------|
+                    | min_antonym_mid_recall_improvement | 0.0 |
+                    | regression_gate | passed == total |
+
+                    ## 各轮结果
+
+                    | 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |
+                    |------|-------|----------|----------|----------|----------|--------|----------|
+                    | 1 | supervised | - | 7.7 | - | 66.0 | False | False |
+                    | 2 | supervised | - | 7.2 | - | 69.0 | True | True |
+                    | 3 | supervised | - | 7.5 | - | 67.0 | True | False |
+
+                    **结果**: 无轮次通过门控，未晋升
+
+                    ## 拒绝诊断 Round 1 (supervised)
+
+                    | group | base_mae | cand_mae | base_acc | cand_acc | extra |
+                    |-------|----------|----------|----------|----------|-------|
+                    | antonym | 10.0 | 8.0 | 20.0 | 60.0 | mid@40-60 20.0 -> 60.0 |
+                    | same_category | 7.0 | 8.5 | 55.0 | 50.0 |  |
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (logs / "nightly_train_v26_20260604_230005.log").write_text(
+                "[nightly][config] TRAIN_DEVICE=auto train_profile=daily\n"
+                "train_v28c: device=mps\n"
+                "mae_ok=False\n"
+                "acc_ok=True\n"
+                "hard_negative_ok=True\n"
+                "synonym_recall_ok=True\n"
+                "antonym_mid_recall_ok=True\n"
+                "regression_ok=True\n"
+                "accepted=False\n"
+                "[nightly] no accepted rounds, no promotion\n",
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(ANALYZE_NIGHTLY_REPORT_SCRIPT),
+                    "--nightly-root",
+                    str(nightly),
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["report"], str(report))
+            self.assertFalse(payload["dry_run"])
+            self.assertTrue(payload["three_rounds_ok"])
+            self.assertEqual(payload["requested_device"], "auto")
+            self.assertEqual(payload["actual_device_inferred"], "mps")
+            self.assertTrue(payload["used_gpu_or_mps"])
+            self.assertEqual(payload["best_round"]["轮次"], "2")
+            self.assertEqual(payload["antonym_group"]["group"], "antonym")
+            self.assertEqual(payload["failed_gates"], ["mae_ok"])
+            self.assertEqual(payload["group_regressions"][0]["group"], "same_category")
 
     def test_nightly_dry_run_runs_three_rounds_and_copies_round_base_from_project_model(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -112,6 +244,17 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("[nightly] ===== round 3/3 =====", output)
             self.assertEqual(output.count("copy round base model from project"), 3, msg=output)
             self.assertNotIn("workspaces/guess_runtime", output)
+
+            reports_dir = root / ".nightly" / "reports"
+            promotion_records = sorted(reports_dir.glob("nightly_promotion_*.md"))
+            self.assertTrue(promotion_records, msg=f"no promotion report found in {reports_dir}\n{output}")
+            promotion_text = promotion_records[-1].read_text(encoding="utf-8")
+            self.assertIn("## 运行配置", promotion_text)
+            self.assertIn("| requested_device | auto |", promotion_text)
+            self.assertIn("| sup_rows | 300 |", promotion_text)
+            self.assertIn("## 晋升门控", promotion_text)
+            self.assertIn("| min_antonym_mid_recall_improvement | 0.0 |", promotion_text)
+            self.assertIn("| regression_gate | passed == total |", promotion_text)
 
     def test_nightly_promotes_best_round_records_summary_and_cleans_run_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -282,6 +425,65 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(rows[0]["source"], "score_trace")
             self.assertIn(rows[0]["error_type"], {"possible_false_positive_high_score", "possible_false_negative_low_score"})
 
+    def test_extract_nightly_worst_cases_writes_pending_review_csv(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            report_path = tmp_path / "nightly_promotion_20260604_230005.md"
+            out_path = tmp_path / "nightly_worst_case_review_candidates.csv"
+            report_path.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260604_230005
+
+                    **结果**: 无轮次通过门控，未晋升
+
+                    ### 候选最差样本
+
+                    | answer | input | target | candidate | error | group | tag |
+                    |--------|-------|--------|-----------|-------|-------|-----|
+                    | 飞机 | 轮船 | 22.0 | 75.4 | 53.4 | hard_negative | same_category_but_far |
+                    | 高兴 | 难过 | 10.0 | 61.0 | 51.0 | hard_negative | antonym_or_conflict |
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(WORST_CASE_EXTRACT_SCRIPT),
+                    "--report",
+                    str(report_path),
+                    "--output",
+                    str(out_path),
+                    "--min-error",
+                    "18",
+                    "--created-at",
+                    "2026-06-05",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            with out_path.open("r", encoding="utf-8") as file:
+                rows = list(csv.DictReader(file))
+            self.assertEqual(len(rows), 2)
+            row = rows[0]
+            self.assertEqual(row["answer"], "飞机")
+            self.assertEqual(row["user_input"], "轮船")
+            self.assertEqual(row["current_score"], "75")
+            self.assertEqual(row["corrected_score"], "22")
+            self.assertEqual(row["error_type"], "same_category_but_far")
+            self.assertEqual(row["review_status"], "pending")
+            self.assertEqual(row["source"], "nightly_worst_case")
+            antonym = rows[1]
+            self.assertEqual(antonym["answer"], "高兴")
+            self.assertEqual(antonym["user_input"], "难过")
+            self.assertEqual(antonym["corrected_score"], "50")
+            self.assertEqual(antonym["error_type"], "antonym_mid")
+
     def test_build_nightly_semantic_sets_keeps_fixed_holdout_out_of_train_and_calib(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -372,20 +574,30 @@ class NightlyScriptsTest(unittest.TestCase):
             banana_row = next(row for row in train_rows if (row["answer"], row["user_input"]) == ("香蕉", "苹果"))
             self.assertEqual(banana_row["reviewer"], "train_patch")
             self.assertEqual(banana_row["relation_tag"], "same_category_but_far")
+            antonym_row = next(row for row in train_rows if (row["answer"], row["user_input"]) == ("开心", "伤心"))
+            self.assertEqual(antonym_row["relation_tag"], "antonym_mid")
+            self.assertEqual(antonym_row["score_0_100"], "50")
+            self.assertEqual(antonym_row["expected_range"], "45-55")
+            required_antonym_row = next(row for row in train_rows if (row["answer"], row["user_input"]) == ("古代", "现代"))
+            self.assertEqual(required_antonym_row["reviewer"], "required_antonym_patch")
+            self.assertEqual(required_antonym_row["relation_tag"], "antonym_mid")
+            self.assertEqual(required_antonym_row["score_0_100"], "50")
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["fixed_holdout"], 1)
-            self.assertEqual(stats["train_patch"], 2)
+            self.assertEqual(stats["train_patch"], 7)
             self.assertGreaterEqual(stats["train_gold"], 1)
 
-    def test_supervised_trainer_boosts_real_failure_hard_negative_tags(self):
+    def test_supervised_trainer_boosts_real_failure_hard_negative_tags_without_antonyms(self):
         source = (REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py").read_text(encoding="utf-8")
 
         for tag in (
-            "antonym_or_conflict",
             "collocation_not_equivalent",
             "same_category_but_far",
         ):
             self.assertIn(f'"{tag}"', source)
+        hard_neg_block = source.split("HARD_NEG_TAGS = {", 1)[1].split("}", 1)[0]
+        self.assertNotIn('"antonym_low"', hard_neg_block)
+        self.assertNotIn('"antonym_or_conflict"', hard_neg_block)
         self.assertIn("PIN_HIGH_VALUE_ROWS", source)
         self.assertIn("PIN_WEIGHT_THRESHOLD", source)
         self.assertIn("pinned_high_value_rows", source)
@@ -541,6 +753,7 @@ if script.endswith('eval_v26_gold.py'):
         'group_metrics': {
             'hard_negative': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'low_score_precision_at_30': 100.0},
             'synonym_alias': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'recall_at_70': 100.0},
+            'antonym': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'mid_score_recall_40_60': 100.0},
         },
         'worst_cases': [],
         'model_path': model_path,
@@ -562,7 +775,7 @@ if script.endswith('eval_v26_gold.py'):
 
 if script.endswith('run_regression_pairs_v23.py'):
     print('summary:')
-    print('total=30 passed=30 pass_rate=100.0%')
+    print('total=35 passed=35 pass_rate=100.0%')
     sys.exit(0)
 
 # Handle stdin gate evaluation (script == '-')
@@ -585,6 +798,7 @@ if script == '-' or script == '':
             f.write('| group | base_mae | cand_mae | base_acc | cand_acc | extra |\\n')
             f.write('| hard_negative | 2.0 | 2.0 | 100.0 | 100.0 | low@30 100.0 -> 100.0 |\\n')
             f.write('| synonym_alias | 2.0 | 2.0 | 100.0 | 100.0 | recall@70 100.0 -> 100.0 |\\n')
+            f.write('| antonym | 2.0 | 2.0 | 100.0 | 100.0 | mid@40-60 100.0 -> 100.0 |\\n')
         sys.exit(0)
 
     # Determine round number from env vars (check various paths)

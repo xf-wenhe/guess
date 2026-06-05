@@ -17,7 +17,11 @@ For the live completion checklist, see `docs/SEMANTIC_TRAINING_TODO.md`.
 - `scripts/eval_v26_gold.py`
   Evaluates a model with multi-angle scoring, writes calibration, and reports overall metrics, group metrics, and worst cases.
 - `scripts/run_regression_pairs_v23.py`
-  Runs the fixed 30-pair regression suite used as a promotion gate.
+  Runs the fixed regression suite used as a promotion gate, including required antonym pairs checked at semantic 45-55.
+- `scripts/analyze_nightly_report_v26.py`
+  Reads the latest non-dry-run report and matching log, then summarizes three-round status, device/GPU evidence, best round, failed gates, regressed metric groups, and antonym behavior.
+- `scripts/extract_nightly_worst_case_review_candidates.py`
+  Converts the report's worst-case table into a pending review CSV. Approved rows are consumed by the next nightly build.
 
 ## Default Nightly Behavior
 
@@ -47,7 +51,7 @@ NIGHTLY_ENABLE_ANCHOR_FINETUNE=0
 The daily profile is designed to finish reliably on local GPU/MPS by using a stratified high-signal subset:
 
 ```bash
-NIGHTLY_TOTAL_RUNS=1
+NIGHTLY_TOTAL_RUNS=3
 NIGHTLY_SUP_MAX_TRAIN_ROWS=300
 NIGHTLY_SUP_EPOCHS=1
 NIGHTLY_SUP_BATCH_SIZE=8
@@ -57,7 +61,20 @@ NIGHTLY_SUP_ANGLE_MODE=cycle
 NIGHTLY_SUP_LOSS_MODE=mixed
 ```
 
-The daily row cap intentionally matches the high-signal smoke scale. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger runs in `full` or explicit experiments until they beat the fixed gates.
+The daily row cap intentionally matches the high-signal smoke scale. The daily profile now runs three seeds every night. If a future change requires a faster local check, use `NIGHTLY_TRAIN_PROFILE=smoke` or `NIGHTLY_TOTAL_RUNS=1` explicitly for that manual run only. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger row-count runs in `full` or explicit experiments until they beat the fixed gates.
+
+The 2026-06-04 23:00 launchd run also used the stale 2500-row daily default because the installed job was still executing a copied script under `~/.guess_nightly/`. Reinstalling with `bash scripts/install_nightly_10pm_launchd.sh` fixes the job to execute `.nightly/nightly_launcher.sh`, which then execs the current repo script at `scripts/nightly_train_v26.sh`. Verify the installed entrypoint after changing nightly defaults:
+
+```bash
+launchctl print gui/$(id -u)/com.guess.nightly-train-v26 | sed -n '1,80p'
+NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash .nightly/nightly_launcher.sh | sed -n '1,70p'
+```
+
+The dry-run config line should include:
+
+```text
+TOTAL_RUNS=3 sup_rows=300 sup_epochs=1 sup_batch=8
+```
 
 `NIGHTLY_SUP_ANGLE_MODE=cycle` trains examples with the same semantic-angle prefixes used by production scoring. This avoids fine-tuning on bare word pairs while evaluating on prefixed text pairs.
 
@@ -67,6 +84,10 @@ The daily row cap intentionally matches the high-signal smoke scale. The 2026-06
 - `cosent`: ranking objective; faster and strong for bucket accuracy, but the verified smoke runs showed raw MAE degradation.
 - `cosine`: absolute cosine/label regression objective; useful for investigating raw MAE degradation.
 - `mixed_contrastive`: experimental; adds `OnlineContrastiveLoss` to push selected hard negatives farther apart while protecting clear high positives. Use this for targeted hard-negative experiments before making it the daily default.
+
+Antonym pairs are treated as semantically related but opposite in direction, not as unrelated hard negatives. The normalized training/check target is `antonym_mid`, `score_0_100=50`, `expected_range=45-55`. The nightly builder rewrites older `antonym_low` and `antonym_or_conflict` rows to this policy before they enter train/calib/eval/holdout splits, and the trainer excludes antonyms from contrastive hard-negative mining.
+
+Because `data/*.csv` and `data/*.json` are ignored local data files, the code also carries required antonym fallbacks. `scripts/run_regression_pairs_v23.py` appends the fixed antonym regression checks if the local JSON is missing them. `scripts/build_nightly_semantic_sets.py` injects the corresponding high-weight train-only antonym patch rows, then applies the usual holdout/calib/eval exclusion so frozen holdout pairs still do not leak into training.
 
 `mixed_contrastive` supports a scope knob:
 
@@ -84,7 +105,6 @@ The trainer also pins high-value rows before filling the remaining daily subset.
 Current hard-negative boost tags include the recurring real failure patterns from recent reports:
 
 - `same_category_but_far`
-- `antonym_or_conflict`
 - `collocation_not_equivalent`
 - `hard_negative_low`
 - `cross_category_negative`
@@ -184,13 +204,15 @@ Defaults:
 - raw and calibrated metrics do not degrade
 - hard-negative group MAE does not degrade
 - synonym/alias recall does not degrade
-- 30-pair regression passes
+- antonym mid-score recall at 40-60 does not degrade
+- fixed regression passes
 
 Useful overrides:
 
 ```bash
 NIGHTLY_MIN_MAE_IMPROVEMENT=0.2
 NIGHTLY_MIN_ACC_IMPROVEMENT=1.0
+NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT=0.0
 NIGHTLY_REQUIRE_NO_DEGRADE_ALL=0
 NIGHTLY_AUTO_PROMOTE=0
 ```
@@ -220,6 +242,25 @@ Reports include per-round metrics, project-vs-candidate metrics, group metrics, 
 Rejected candidates also write diagnostics. A failed nightly is still useful: use the rejected candidate's worst cases to add or correct labels before the next run.
 
 Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags.
+
+Analyze the latest real nightly without touching models:
+
+```bash
+python3 scripts/analyze_nightly_report_v26.py
+bash scripts/verify_nightly_outcome_v26.sh --allow-reject
+```
+
+Use `--include-dry-run` only when you intentionally want to inspect the latest manual dry-run instead of the latest launchd run.
+
+The analyzer prints `失败门控` from the nightly gate output (`mae_ok`, `acc_ok`, no-degrade checks, regression, synonym, antonym, and so on) and `退化分组` from report group metrics. Use those two lines as the first triage signal before reading the full report.
+
+Create a review queue from the latest real report's worst cases:
+
+```bash
+python3 scripts/extract_nightly_worst_case_review_candidates.py
+```
+
+This writes `data/nightly_worst_case_review_candidates.csv` with `review_status=pending`. The nightly builder reads this file, but it only consumes rows after you review `corrected_score` / `error_type` and set `review_status=approved` or `merged`. Antonym rows are normalized to `antonym_mid` with `corrected_score=50` during extraction.
 
 ## Real Failure Sample Loop
 

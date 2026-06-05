@@ -53,15 +53,23 @@ flutter run
 ### 执行发布
 
 ```bash
+# 正常发布（创建新 Release）
 bash scripts/release_build.sh
+
+# 补齐模式（上传到已有 Release，比如在 Windows 上补充 Windows 包）
+bash scripts/release_build.sh --supplement
 ```
 
 脚本自动执行以下步骤：
 
-1. 从 `pubspec.yaml` 读取版本号
-2. 运行 `flutter analyze` 和 `flutter test`
-3. 构建 Android APK、Windows ZIP、macOS ZIP
-4. 创建 GitHub Release 并上传附件
+| 模式 | 步骤 |
+|:-----|:-----|
+| 正常发布 | 检查依赖 → 质量检查 → 构建 → 创建 Release → 清理 |
+| 补齐模式 | 检查依赖 → 构建 → 上传到已有 Release → 清理 |
+
+**补齐模式使用场景**：
+- macOS 上发布了 Android + macOS，Windows 上补充 Windows 包
+- 某个平台构建失败后重新补上
 
 ### 输出产物
 
@@ -70,6 +78,16 @@ bash scripts/release_build.sh
 | Android | `guess-{version}-android.apk` | 直接安装 |
 | Windows | `guess-{version}-windows.zip` | 解压运行 `guess.exe` |
 | macOS | `guess-{version}-macos.zip` | 解压打开 `guess.app` |
+
+### 构建说明
+
+| 执行平台 | 构建产物 | 跳过说明 |
+|:---------|:---------|:---------|
+| macOS | Android + macOS | Windows 显示提示并跳过 |
+| Windows | Windows | Android/macOS 显示提示并跳过 |
+| Linux | Android（需 Java） | Windows/macOS 显示提示并跳过 |
+
+> 单个平台构建失败不会中断流程，只有全部失败才会终止。
 
 ### 系统要求
 
@@ -299,7 +317,7 @@ bash scripts/preflight_v26.sh
 |:-----|:-----|:---------|
 | 1. 启动服务 | `python embedding_server.py` | 服务运行在 8000 端口 |
 | 2. 健康检查 | `curl -sS http://192.168.11.29:8000/health` | 返回健康状态 |
-| 3. 回归测试 | `python scripts/run_regression_pairs_v23.py \| tail -n 8` | 30/30 通过 |
+| 3. 回归测试 | `python scripts/run_regression_pairs_v23.py \| tail -n 8` | 全部通过 |
 | 4. 启动 Flutter | `flutter run -d macos` | 应用启动 |
 
 **开启评分追踪**（调试用）：
