@@ -51,6 +51,12 @@ class PuzzleRepository {
   /// 是否使用服务器词库
   bool get isUsingServerPuzzles => _useServerPuzzles;
 
+  /// 获取活动端点
+  String? get activeEndpoint => _activeEndpoint;
+
+  /// 获取本地词库路径
+  String? get localPuzzlePath => _localPuzzlePath;
+
   /// 加载词库
   /// 本地模式：用户设置了本地词库路径
   /// 服务器模式：用户点击"连接服务器词库"
@@ -66,10 +72,11 @@ class PuzzleRepository {
             .get(Uri.parse(_activeEndpoint!))
             .timeout(const Duration(seconds: 10));
         if (response.statusCode == 200) {
-          raw = response.body;
+          // 使用 utf8 解码确保中文字符正确处理
+          raw = utf8.decode(response.bodyBytes);
           ConnectionLog.info('Puzzle', '服务器词库加载成功', {
             'endpoint': _activeEndpoint!,
-            'size': response.body.length,
+            'size': raw.length,
           });
         } else {
           errorSource = '服务器词库返回 HTTP ${response.statusCode}';

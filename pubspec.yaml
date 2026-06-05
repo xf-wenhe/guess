@@ -54,14 +54,12 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^4.0.0
 
-# Platform-specific dependency overrides
-# win32 5.x uses UnmodifiableUint8ListView which was removed in Dart 3.6
-# win32 6.x requires meta ^1.17.0 which conflicts with flutter_test's pinned meta 1.15.0
-# Using 5.5.5 which is compatible with Dart 3.5+ and doesn't have the meta conflict
-# Note: win32 is only actually used on Windows builds, but Flutter compiles
-# all platform code during build, causing this error on macOS/Linux too
+# Dependency overrides to fix Dart 3.6 compatibility
+# win32 5.2.0 uses UnmodifiableUint8ListView which was removed in Dart 3.6
+# Override to 5.10.1 which is compatible with Dart 3.5+ and doesn't conflict
+# with flutter_test's pinned meta version
 dependency_overrides:
-  win32: 5.5.5
+  win32: 5.10.1
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

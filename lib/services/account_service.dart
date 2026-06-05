@@ -85,8 +85,10 @@ class AccountService {
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
+        // 使用 utf8 解码确保中文字符正确处理
+        final body = utf8.decode(response.bodyBytes);
         return AccountResponse.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>,
+          jsonDecode(body) as Map<String, dynamic>,
         );
       }
       return const AccountResponse(success: false, error: 'http_error');
@@ -108,8 +110,10 @@ class AccountService {
           .timeout(const Duration(seconds: 5));
 
       if (response.statusCode == 200) {
+        // 使用 utf8 解码确保中文字符正确处理
+        final body = utf8.decode(response.bodyBytes);
         return AccountResponse.fromJson(
-          jsonDecode(response.body) as Map<String, dynamic>,
+          jsonDecode(body) as Map<String, dynamic>,
         );
       }
       return const AccountResponse(success: false, error: 'http_error');
