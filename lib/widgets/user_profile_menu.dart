@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:guess/controllers/account_controller.dart';
 import 'package:guess/resources/resources.dart';
 import 'package:guess/services/statistics_service.dart';
+import 'package:guess/widgets/account_creation_dialog.dart';
 
 /// 用户下拉菜单
 class UserProfileMenu extends StatelessWidget {
@@ -16,8 +17,7 @@ class UserProfileMenu extends StatelessWidget {
     final today = controller.todayStatistics;
 
     return PopupMenuButton<void>(
-      position: PopupMenuPosition.under,
-      offset: const Offset(0, 8),
+      tooltip: '',
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       itemBuilder: (context) => [
         PopupMenuItem<void>(
@@ -30,6 +30,26 @@ class UserProfileMenu extends StatelessWidget {
           child: _buildStatsSection(stats, today),
         ),
       ],
+      onOpened: () async {
+        // 昵称为空时强制弹框设置
+        final nickname = controller.user?.nickname.trim();
+        if (nickname == null || nickname.isEmpty) {
+          // 先关闭菜单
+          if (context.mounted) {
+            Navigator.of(context).pop();
+          }
+          // 重置会话以允许重新连接
+          controller.resetSession();
+          // 重新连接并弹框
+          final success = await controller.connectToServerPuzzles();
+          if (success && context.mounted) {
+            await AccountCreationDialog.show(
+              context,
+              onSubmit: controller.createAccount,
+            );
+          }
+        }
+      },
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 8),
         child: Row(

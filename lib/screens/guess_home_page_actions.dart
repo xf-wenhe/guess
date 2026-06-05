@@ -1,6 +1,30 @@
 part of 'guess_home_page.dart';
 
 extension _GuessHomePageActions on _GuessHomePageState {
+  /// 启动后自动检查昵称，为空则强制弹框
+  Future<void> _checkNicknameOnStartup() async {
+    if (!mounted) return;
+    // 如果已经在服务器模式且昵称已设置，跳过
+    if (_accountController.puzzleMode == PuzzleMode.server &&
+        _accountController.user?.nickname.trim().isNotEmpty == true) {
+      return;
+    }
+    // 尝试连接服务器
+    final success = await _accountController.connectToServerPuzzles();
+    if (!success || !mounted) return;
+    // 昵称为空则弹框
+    if (_accountController.user?.nickname.trim().isEmpty ?? true) {
+      await AccountCreationDialog.show(
+        context,
+        onSubmit: _accountController.createAccount,
+      );
+      // 检查是否设置成功
+      if (_accountController.user?.nickname.trim().isEmpty ?? true) {
+        _accountController.resetSession();
+      }
+    }
+  }
+
   void _focusInput() {
     if (_inputFocus.canRequestFocus) {
       _inputFocus.requestFocus();
@@ -12,13 +36,7 @@ extension _GuessHomePageActions on _GuessHomePageState {
       return;
     }
     final raw = _textController.text.trim();
-    if (raw.isEmpty || raw.length < 2 || raw.length > 5) {
-      _showStatusTip(AppStrings.invalidGuess);
-      _focusInput();
-      return;
-    }
-    // 支持中英文输入
-    if (!isAllChinese(raw) && !RegExp(r'^[a-zA-Z]+$').hasMatch(raw)) {
+    if (raw.isEmpty) {
       _showStatusTip(AppStrings.invalidGuess);
       _focusInput();
       return;

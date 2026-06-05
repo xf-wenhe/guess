@@ -48,7 +48,9 @@ class AccountController extends ChangeNotifier {
 
   /// 连接服务器词库
   Future<bool> connectToServerPuzzles() async {
-    if (_sessionLocked) {
+    // 昵称为空时允许重新连接，强制用户补全信息
+    final nicknameEmpty = _user?.nickname.trim().isEmpty ?? false;
+    if (_sessionLocked && !nicknameEmpty) {
       debugPrint('[AccountController] 会话已锁定，不能切换');
       return _puzzleMode == PuzzleMode.server;
     }
@@ -78,8 +80,13 @@ class AccountController extends ChangeNotifier {
       // 查询现有账号
       final accountResult = await _accountService.getAccountByDevice(_deviceId!);
       if (accountResult.success && accountResult.user != null) {
-        _user = accountResult.user;
-        await _loadStatistics();
+        // 即使设备已有账号，若昵称为空也需用户补充设置
+        final existingUser = accountResult.user!;
+        final existingNickname = existingUser.nickname.trim();
+        if (existingNickname.isNotEmpty) {
+          _user = existingUser;
+          await _loadStatistics();
+        }
       }
 
       _puzzleMode = PuzzleMode.server;
@@ -108,6 +115,7 @@ class AccountController extends ChangeNotifier {
     _loading = true;
     notifyListeners();
 
+    // 先尝试创建账号（设备已存在时会返回现有用户）
     final result = await _accountService.createAccount(
       deviceId: _deviceId!,
       nickname: nickname,
@@ -115,6 +123,20 @@ class AccountController extends ChangeNotifier {
 
     if (result.success && result.user != null) {
       _user = result.user;
+      // 如果服务端返回的昵称仍为空，说明设备已存在但未设置昵称，需要更新
+      if (_user!.nickname.trim().isEmpty) {
+        final updateResult = await _accountService.updateNickname(
+          deviceId: _deviceId!,
+          nickname: nickname,
+        );
+        if (updateResult.success) {
+          // 重新拉取用户信息以获取更新后的昵称
+          final refreshed = await _accountService.getAccountByDevice(_deviceId!);
+          if (refreshed.success && refreshed.user != null) {
+            _user = refreshed.user;
+          }
+        }
+      }
       await _loadStatistics();
       _loading = false;
       notifyListeners();

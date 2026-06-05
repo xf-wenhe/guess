@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -119,6 +120,16 @@ class LocalEmbeddingRunner {
     _process = null;
     try {
       process.kill(ProcessSignal.sigterm);
+      // 等待进程自行退出，超时则强制终止
+      try {
+        await process.exitCode.timeout(
+          const Duration(milliseconds: 500),
+        );
+      } on TimeoutException {
+        try {
+          process.kill(ProcessSignal.sigkill);
+        } catch (_) {}
+      }
     } catch (_) {
       // Ignore stop errors.
     }

@@ -87,7 +87,6 @@ class GuessHistoryList extends StatelessWidget {
                         ? _neonScoreColor(slotItem.match).withOpacity(0.25)
                         : AppColors.historyRowBorder,
                   ),
-                  // 霓虹发光阴影
                   boxShadow: hasData && slotItem != null
                       ? [
                           BoxShadow(
@@ -201,26 +200,27 @@ class GuessHistoryList extends StatelessWidget {
           crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Icon(Icons.bolt, color: color, size: iconSize),
-            const SizedBox(width: 4),
-            // 霓虹发光分数
-            Text(
-              '${item.match}%',
-              strutStyle: const StrutStyle(
-                forceStrutHeight: true,
-                height: 1.0,
-              ),
-              style: TextStyle(
-                fontFamily: AppFonts.primaryFamily,
-                fontSize: bigFont,
-                color: color,
-                fontWeight: AppFonts.extraBold,
-                height: 1.0,
-                shadows: [
-                  Shadow(
-                    color: color.withOpacity(0.5),
-                    blurRadius: 8,
-                  ),
-                ],
+            const SizedBox(width: 2),
+            Flexible(
+              child: Text(
+                '${item.match}%',
+                strutStyle: const StrutStyle(
+                  forceStrutHeight: true,
+                  height: 1.0,
+                ),
+                style: TextStyle(
+                  fontFamily: AppFonts.primaryFamily,
+                  fontSize: bigFont,
+                  color: color,
+                  fontWeight: AppFonts.extraBold,
+                  height: 1.0,
+                  shadows: [
+                    Shadow(
+                      color: color.withOpacity(0.5),
+                      blurRadius: 8,
+                    ),
+                  ],
+                ),
               ),
             ),
           ],

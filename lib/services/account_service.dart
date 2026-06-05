@@ -123,6 +123,40 @@ class AccountService {
     }
   }
 
+  /// 更新昵称
+  Future<AccountResponse> updateNickname({
+    required String deviceId,
+    required String nickname,
+  }) async {
+    if (_activeEndpoint == null) {
+      return const AccountResponse(success: false, error: 'no_endpoint');
+    }
+
+    try {
+      final response = await _client
+          .put(
+            Uri.parse('$baseUrl/api/account/nickname'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'device_id': deviceId,
+              'nickname': nickname,
+            }),
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final body = utf8.decode(response.bodyBytes);
+        return AccountResponse.fromJson(
+          jsonDecode(body) as Map<String, dynamic>,
+        );
+      }
+      return const AccountResponse(success: false, error: 'http_error');
+    } catch (e) {
+      debugPrint('[AccountService] 更新昵称失败: $e');
+      return AccountResponse(success: false, error: e.toString());
+    }
+  }
+
   String get baseUrl => _activeEndpoint ?? '';
 
   void dispose() {

@@ -96,11 +96,17 @@ class _GuessHomePageState extends State<GuessHomePage>
       accountController: _accountController,
     )..addListener(_onControllerChanged);
 
-    _accountController.initialize();
+    _accountController
+      ..initialize()
+      ..addListener(_onAccountChanged);
     _controller.initialize();
     if (widget.autoStartLocalEmbedding) {
       _initLocalEmbedding();
     }
+    // 启动后自动检查昵称
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkNicknameOnStartup();
+    });
   }
 
   @override
@@ -108,7 +114,9 @@ class _GuessHomePageState extends State<GuessHomePage>
     _controller
       ..removeListener(_onControllerChanged)
       ..dispose();
-    _accountController.dispose();
+    _accountController
+      ..removeListener(_onAccountChanged)
+      ..dispose();
     if (_localRunnerReady) {
       _localRunner.stop();
     }
@@ -158,6 +166,11 @@ class _GuessHomePageState extends State<GuessHomePage>
         AppStrings.disconnectedSourceLabel) {
       _maybeAutoRefresh();
     }
+    setState(() {});
+  }
+
+  void _onAccountChanged() {
+    if (!mounted) return;
     setState(() {});
   }
 

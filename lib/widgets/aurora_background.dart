@@ -166,7 +166,6 @@ class _AuroraLayerPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    canvas.saveLayer(Rect.largest, Paint());
     final paint = Paint()
       ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurSigma);
 
@@ -185,8 +184,6 @@ class _AuroraLayerPainter extends CustomPainter {
         paint,
       );
     }
-
-    canvas.restore();
   }
 
   @override

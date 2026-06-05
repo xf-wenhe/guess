@@ -4,7 +4,8 @@ class AppStrings {
   static const appMaterialTitle = 'AI猜词';
   static const homeTitle = 'AI 猜词';
   static const tooltipCheckConnection = '检测连接';
-  static const tooltipModelSettings = '模型设置';
+  static const tooltipModelSettings = '词库设置';
+  static const tooltipConnectServer = '连接服务器';
 
   static const inputHint = '请输入你的猜测';
   static const inputSubmitting = '计算中…';
@@ -30,7 +31,7 @@ class AppStrings {
   static const answerInfo = '答案信息';
   static const unlockMoreHints = '继续猜测可解锁更多提示';
 
-  static const connectionInProgress = '正在连接本地模型，请稍候…';
+  static const connectionInProgress = '正在连接服务器，请稍候…';
   static const initialDownloadHint = '首次启动需要下载本地模型，可能需要几分钟，请保持网络连接。';
   static const loadPuzzleFailed = '词库获取失败，请检查网络后重试';
   static const reload = '重新获取';
