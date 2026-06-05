@@ -161,6 +161,7 @@ class GuessHistoryList extends StatelessWidget {
                         scoreBigFont,
                         scoreSmallFont,
                         scoreIconSize,
+                        rowHeight,
                       )
                     else
                       Text(
@@ -187,8 +188,10 @@ class GuessHistoryList extends StatelessWidget {
     double bigFont,
     double smallFont,
     double iconSize,
+    double rowHeight,
   ) {
     final color = _neonScoreColor(item.match);
+    final showLabel = rowHeight >= 38;
 
     return Column(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -225,22 +228,23 @@ class GuessHistoryList extends StatelessWidget {
             ),
           ],
         ),
-        Text(
-          '${AppStrings.historyAssociationLabel(item.match)} · 关联度',
-          strutStyle: const StrutStyle(
-            forceStrutHeight: true,
-            height: 1.0,
+        if (showLabel)
+          Text(
+            '${AppStrings.historyAssociationLabel(item.match)} · 关联度',
+            strutStyle: const StrutStyle(
+              forceStrutHeight: true,
+              height: 1.0,
+            ),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontFamily: AppFonts.primaryFamily,
+              fontSize: smallFont,
+              color: AppColors.textSecondary,
+              fontWeight: AppFonts.semibold,
+              height: 1.0,
+            ),
           ),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            fontFamily: AppFonts.primaryFamily,
-            fontSize: smallFont,
-            color: AppColors.textSecondary,
-            fontWeight: AppFonts.semibold,
-            height: 1.0,
-          ),
-        ),
       ],
     );
   }
