@@ -47,10 +47,12 @@ flutter run
 | 依赖 | 安装方式 | 用途 |
 |:-----|:---------|:-----|
 | Flutter SDK | [官网](https://flutter.dev) | 构建应用 |
-| GitHub CLI | `brew install gh` | 创建 Release |
+| GitHub CLI | macOS: `brew install gh`<br/>Windows: `winget install GitHub.cli` | 创建 Release |
 | gh 登录 | `gh auth login` | 访问 GitHub |
 
 ### 执行发布
+
+**macOS / Linux / Git Bash**：
 
 ```bash
 # 正常发布（创建新 Release）
@@ -58,6 +60,16 @@ bash scripts/release_build.sh
 
 # 补齐模式（上传到已有 Release，比如在 Windows 上补充 Windows 包）
 bash scripts/release_build.sh --supplement
+```
+
+**Windows PowerShell**：
+
+```powershell
+# 正常发布（创建新 Release）
+.\scripts\release_build.ps1
+
+# 补齐模式（上传到已有 Release）
+.\scripts\release_build.ps1 -Supplement
 ```
 
 脚本自动执行以下步骤：
