@@ -91,6 +91,8 @@ class GuessGameController extends ChangeNotifier {
   String get lastGuess => _lastGuess;
   bool get winBySemantic => _winBySemantic;
   String? get puzzleLoadError => _puzzleLoadError;
+  int get bestMatch => _bestMatch;
+  int _bestMatch = 0;
 
   bool get categoryUnlocked => _hintIndex >= 2;
   bool get lengthUnlocked => _hintIndex >= 4;
@@ -141,6 +143,10 @@ class GuessGameController extends ChangeNotifier {
 
   GuessApplyResult applyGuess(String guess, GuessSubmitOutcome outcome) {
     _history.insert(0, GuessResult(word: guess, match: outcome.similarity));
+    // 更新 bestMatch 缓存
+    if (outcome.similarity > _bestMatch) {
+      _bestMatch = outcome.similarity;
+    }
     _attemptsLeft -= 1;
     if (_current != null && _hintIndex < _current!.hints.length - 1) {
       _hintIndex += 1;
@@ -268,6 +274,7 @@ class GuessGameController extends ChangeNotifier {
     _current = _puzzleRepository.preparePuzzle(base);
     _usedAnswers.add(base.answer);
     _history.clear();
+    _bestMatch = 0;
     _attemptsLeft = 6;
     _hintIndex =
         _current!.hints.isEmpty ? -1 : min(1, _current!.hints.length - 1);

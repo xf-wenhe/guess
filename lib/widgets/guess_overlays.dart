@@ -77,30 +77,32 @@ class _WinOverlayState extends State<WinOverlay>
 
         return Stack(
           children: [
-            // ---- 遮罩层 ----
+            // ---- 遮罩层 — RepaintBoundary 隔离 BackdropFilter ----
             Positioned.fill(
               child: GestureDetector(
                 onTap: widget.onReset,
                 behavior: HitTestBehavior.opaque,
-                child: Stack(
-                  children: [
-                    Container(
-                      decoration: BoxDecoration(
-                        gradient: RadialGradient(
-                          colors: [
-                            AppColors.neonGreen.withOpacity(0.08),
-                            AppColors.overlayBarrier,
-                          ],
-                          center: Alignment.center,
-                          radius: 1.5,
+                child: RepaintBoundary(
+                  child: Stack(
+                    children: [
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: RadialGradient(
+                            colors: [
+                              AppColors.neonGreen.withOpacity(0.08),
+                              AppColors.overlayBarrier,
+                            ],
+                            center: Alignment.center,
+                            radius: 1.5,
+                          ),
                         ),
                       ),
-                    ),
-                    BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                      child: Container(color: Colors.transparent),
-                    ),
-                  ],
+                      BackdropFilter(
+                        filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                        child: Container(color: Colors.transparent),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
@@ -389,25 +391,27 @@ class _LoseOverlayState extends State<LoseOverlay>
                     child: GestureDetector(
                       onTap: widget.onReset,
                       behavior: HitTestBehavior.opaque,
-                      child: Stack(
-                        children: [
-                          Container(
-                            decoration: BoxDecoration(
-                              gradient: RadialGradient(
-                                colors: [
-                                  AppColors.neonPink.withOpacity(0.06),
-                                  AppColors.overlayBarrier,
-                                ],
-                                center: Alignment.center,
-                                radius: 1.5,
+                      child: RepaintBoundary(
+                        child: Stack(
+                          children: [
+                            Container(
+                              decoration: BoxDecoration(
+                                gradient: RadialGradient(
+                                  colors: [
+                                    AppColors.neonPink.withOpacity(0.06),
+                                    AppColors.overlayBarrier,
+                                  ],
+                                  center: Alignment.center,
+                                  radius: 1.5,
+                                ),
                               ),
                             ),
-                          ),
-                          BackdropFilter(
-                            filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
-                            child: Container(color: Colors.transparent),
-                          ),
-                        ],
+                            BackdropFilter(
+                              filter: ImageFilter.blur(sigmaX: 4, sigmaY: 4),
+                              child: Container(color: Colors.transparent),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),

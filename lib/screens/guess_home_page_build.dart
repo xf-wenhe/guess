@@ -134,11 +134,6 @@ extension _GuessHomePageBuild on _GuessHomePageState {
   }
 
   Widget _buildHistoryPanel() {
-    final bestMatch = _controller.history.isEmpty
-        ? 0
-        : _controller.history
-            .map((e) => e.match)
-            .reduce((a, b) => a > b ? a : b);
     return _GlassPanel(
       child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
@@ -164,7 +159,7 @@ extension _GuessHomePageBuild on _GuessHomePageState {
                 Expanded(
                   child: _HistoryMetaChip(
                     icon: Icons.local_fire_department_outlined,
-                    label: AppStrings.bestMatch(bestMatch),
+                    label: AppStrings.bestMatch(_controller.bestMatch),
                   ),
                 ),
               ],

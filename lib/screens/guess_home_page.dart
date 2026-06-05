@@ -156,8 +156,39 @@ class _GuessHomePageState extends State<GuessHomePage>
     });
   }
 
+  // 缓存上次读取的值，避免无关变化触发 setState
+  int _prevHistoryLen = 0;
+  int _prevAttemptsLeft = 6;
+  int _prevHintIndex = 1;
+  bool _prevWon = false;
+  bool _prevLost = false;
+  bool _prevLoading = true;
+  bool _prevInputDisabled = true;
+  String _prevEmbeddingLabel = '';
+
   void _onControllerChanged() {
     if (!mounted) return;
+
+    // 只在实际影响 UI 的状态变化时才 setState
+    final needsRebuild = _controller.history.length != _prevHistoryLen ||
+        _controller.attemptsLeft != _prevAttemptsLeft ||
+        _controller.hintIndex != _prevHintIndex ||
+        _controller.won != _prevWon ||
+        _controller.lost != _prevLost ||
+        _controller.loading != _prevLoading ||
+        _controller.inputDisabled != _prevInputDisabled ||
+        _controller.embeddingSourceLabel != _prevEmbeddingLabel;
+
+    // 更新缓存
+    _prevHistoryLen = _controller.history.length;
+    _prevAttemptsLeft = _controller.attemptsLeft;
+    _prevHintIndex = _controller.hintIndex;
+    _prevWon = _controller.won;
+    _prevLost = _controller.lost;
+    _prevLoading = _controller.loading;
+    _prevInputDisabled = _controller.inputDisabled;
+    _prevEmbeddingLabel = _controller.embeddingSourceLabel;
+
     if (_controller.embeddingSourceLabel !=
         AppStrings.disconnectedSourceLabel) {
       _embeddingToastShown = false;
@@ -166,12 +197,21 @@ class _GuessHomePageState extends State<GuessHomePage>
         AppStrings.disconnectedSourceLabel) {
       _maybeAutoRefresh();
     }
-    setState(() {});
+
+    if (needsRebuild) {
+      setState(() {});
+    }
   }
+
+  PuzzleMode? _prevPuzzleMode;
 
   void _onAccountChanged() {
     if (!mounted) return;
-    setState(() {});
+    final mode = _accountController.puzzleMode;
+    if (mode != _prevPuzzleMode) {
+      _prevPuzzleMode = mode;
+      setState(() {});
+    }
   }
 
   void _maybeAutoRefresh() {

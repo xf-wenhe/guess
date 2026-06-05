@@ -137,8 +137,10 @@ class _AuroraBackgroundState extends State<AuroraBackground>
                 ),
               ),
             ),
-            // 内容层
-            widget.child,
+            // 内容层 — 用 RepaintBoundary 隔离，避免动画重绘波及内容
+            RepaintBoundary(
+              child: widget.child,
+            ),
           ],
         );
       },

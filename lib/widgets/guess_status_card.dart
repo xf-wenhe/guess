@@ -115,25 +115,23 @@ class _GuessStatusCardState extends State<GuessStatusCard>
                           ),
                         ],
                       )
-                    : IntrinsicHeight(
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            Expanded(
-                              child: _buildSection(
-                                child: _buildAttemptsInfo(shimmerT),
-                                alignment: Alignment.centerLeft,
-                              ),
+                    : Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Expanded(
+                            child: _buildSection(
+                              child: _buildAttemptsInfo(shimmerT),
+                              alignment: Alignment.centerLeft,
                             ),
-                            const SizedBox(width: 8),
-                            Expanded(
-                              child: _buildSection(
-                                child: _buildRightInfo(compact: false),
-                                alignment: Alignment.centerRight,
-                              ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: _buildSection(
+                              child: _buildRightInfo(compact: false),
+                              alignment: Alignment.centerRight,
                             ),
-                          ],
-                        ),
+                          ),
+                        ],
                       );
 
                 return infoSection;

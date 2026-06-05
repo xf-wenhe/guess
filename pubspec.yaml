@@ -54,12 +54,6 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^4.0.0
 
-# Dependency overrides for Windows compatibility
-# win32 5.10.1 requires Dart SDK >=3.3.0-279.1.beta
-# Current Flutter SDK (3.16.0-8.0.pre) uses Dart 3.3.0-2.0.dev and doesn't conflict
-# Use 5.2.0 for compatibility with current environment
-dependency_overrides:
-  win32: 5.2.0
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
