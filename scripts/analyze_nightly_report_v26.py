@@ -115,6 +115,24 @@ def parse_group_sections(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def parse_bucket_confusion_sections(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for section in re.split(r"\n### ", text):
+        if not section.startswith("校准桶错分 Top"):
+            continue
+        headers: list[str] = []
+        for line in section.splitlines():
+            if not line.startswith("|") or "---" in line:
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if not headers:
+                headers = cells
+                continue
+            if len(cells) == len(headers):
+                rows.append(dict(zip(headers, cells)))
+    return rows
+
+
 def parse_result(text: str) -> str:
     match = re.search(r"\*\*结果\*\*:\s*([^\n]+)", text)
     return match.group(1).strip() if match else "unknown"
@@ -237,6 +255,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     gates = parse_key_value_table(text, "晋升门控")
     rounds = parse_rounds(text)
     groups = parse_group_sections(text)
+    bucket_confusions = parse_bucket_confusion_sections(text)
     result = parse_result(text)
     dry_run = "DRY_RUN" in text or config.get("dry_run") == "1"
 
@@ -274,6 +293,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
         "best_round": best_round,
         "groups": groups,
         "group_regressions": parse_group_regressions(groups),
+        "bucket_confusions": bucket_confusions,
         "antonym_group": next((row for row in groups if row.get("group") == "antonym"), None),
         "recent_failure_lines": failures,
         "selected_with_include_dry_run": include_dry_run,
@@ -326,6 +346,20 @@ def print_human(summary: dict[str, object]) -> None:
         print("退化分组:")
         for item in group_regressions[:8]:
             print(f"- {item.get('group')}: {', '.join(item.get('reasons', []))}")
+
+    bucket_confusions = summary.get("bucket_confusions") or []
+    if bucket_confusions:
+        print("桶错分 Top:")
+        for item in bucket_confusions[:8]:
+            print(
+                "- "
+                f"{item.get('target_bucket')} -> {item.get('predicted_bucket')}: "
+                f"cand_count={item.get('cand_count')} "
+                f"avg_error={item.get('cand_avg_error')} "
+                f"tags={item.get('top_tags')} "
+                f"groups={item.get('top_groups')} "
+                f"examples={item.get('examples')}"
+            )
 
     antonym = summary.get("antonym_group")
     if isinstance(antonym, dict):

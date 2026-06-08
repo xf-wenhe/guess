@@ -397,9 +397,11 @@ python3 scripts/eval_v19_holdout.py
 
 ---
 
-### v26 流程（金标 + 自监督）
+### 历史 v26 流程（金标 + 自监督）
 
-目标：仅保留小批人工金标用于校准与验收；主训练改为无标注自监督。
+这是历史流程，保留用于复现旧数据和可选无监督预训练。当前每日夜训主路径已经改为 `scripts/nightly_train_v26.sh` 调用 v28c 监督训练、困难负例/反义词 50 分策略、固定 holdout/regression 门控。最新技术说明见 `docs/SEMANTIC_NIGHTLY_TRAINING.md` 和 `scripts/README.md`。
+
+历史目标：仅保留小批人工金标用于校准与验收；主训练改为无标注自监督。
 
 ```bash
 # 1. 构建金标 + 自监督数据
@@ -436,26 +438,9 @@ python3 scripts/eval_v26_gold.py
 
 ## 每晚自动训练（macOS）
 
-### 方案对比
+### 当前推荐
 
-| 方案 | 命令 | 特点 |
-|:-----|:-----|:-----|
-| Daemon（推荐） | `sudo bash scripts/install_nightly_10pm_daemon.sh` | 不依赖登录会话 |
-| LaunchAgent | `bash scripts/install_nightly_10pm_launchd.sh` | 依赖用户会话 |
-
-### Daemon 方式
-
-```bash  # 安装
-sudo bash scripts/install_nightly_10pm_daemon.sh
-```
-
-```bash  # 查看状态
-sudo launchctl print system/com.guess.nightly-train-v26.daemon | egrep 'state =|last exit code =|runs ='
-```
-
-```bash  # 卸载
-sudo bash scripts/uninstall_nightly_10pm_daemon.sh
-```
+当前本地无人值守路径使用用户 LaunchAgent。旧的 sudo daemon 安装脚本仍保留为手动/system 部署工具，但不是当前每日训练入口。
 
 ### LaunchAgent 方式
 
@@ -464,7 +449,7 @@ bash scripts/install_nightly_10pm_launchd.sh
 ```
 
 ```bash  # 查看状态
-launchctl list | grep com.guess.nightly-train-v26
+python3 scripts/check_nightly_launchd_v26.py
 ```
 
 ```bash  # 手动触发
@@ -475,6 +460,10 @@ bash scripts/nightly_train_v26.sh
 NIGHTLY_DRY_RUN=1 bash scripts/nightly_train_v26.sh
 ```
 
+```bash  # 次日上午读取夜训健康与报告摘要
+python3 scripts/nightly_next_morning_triage_v26.py
+```
+
 ### 参数配置
 
 | 参数 | 默认值 | 说明 |
@@ -482,9 +471,11 @@ NIGHTLY_DRY_RUN=1 bash scripts/nightly_train_v26.sh
 | `NIGHTLY_AUTO_PROMOTE` | `1` | 达标后自动晋升 |
 | `NIGHTLY_DELETE_OLD_ON_PROMOTE` | `1` | 晋升时删除旧模型 |
 | `NIGHTLY_DELETE_REJECTED_CANDIDATE` | `1` | 未达标时删除候选 |
-| `NIGHTLY_MIN_MAE_IMPROVEMENT` | `0.01` | MAE 最小改善阈值 |
-| `NIGHTLY_MIN_ACC_IMPROVEMENT` | `0.3` | 准确率最小改善阈值 |
-| `NIGHTLY_TOTAL_RUNS` | `1` | 每晚训练轮数 |
+| `NIGHTLY_MIN_MAE_IMPROVEMENT` | `0.3` | 固定 holdout calibrated MAE 最小改善阈值 |
+| `NIGHTLY_MIN_ACC_IMPROVEMENT` | `2.0` | bucket accuracy 最小改善百分点 |
+| `NIGHTLY_TOTAL_RUNS` | `3` | 每晚训练轮数 |
+| `NIGHTLY_SEM_DEVICE` | `auto` | 默认使用 CUDA/MPS，监督训练失败时自动 CPU 重试 |
+| `NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT` | `0.0` | 反义词 45-55 分段召回不退化 |
 | `NIGHTLY_PROMOTE_WEEKDAYS` | `6,7` | 仅周末晋升（6=周六，7=周日） |
 
 ### 日志位置
@@ -492,9 +483,10 @@ NIGHTLY_DRY_RUN=1 bash scripts/nightly_train_v26.sh
 | 日志 | 路径 |
 |:-----|:-----|
 | 训练日志 | `.nightly/data/tmp/nightly_train_v26_*.log` |
-| 标准输出 | `.nightly/logs/launchd_nightly_v26.out.log` |
-| 错误输出 | `.nightly/logs/launchd_nightly_v26.err.log` |
+| LaunchAgent 标准输出 | `$HOME/.guess_nightly/logs/launchd_nightly_v26.out.log` |
+| LaunchAgent 错误输出 | `$HOME/.guess_nightly/logs/launchd_nightly_v26.err.log` |
 | 轮次汇总 | `.nightly/data/tmp/nightly_round_summary_*.txt` |
+| 晋升报告 | `.nightly/reports/nightly_promotion_*.md` |
 
 ### 验收夜训结果
 

@@ -7,6 +7,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+from datetime import datetime
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -17,9 +18,52 @@ WORST_CASE_EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_nightly_worst_case_
 BUILD_NIGHTLY_SETS_SCRIPT = REPO_ROOT / "scripts" / "build_nightly_semantic_sets.py"
 REGRESSION_PAIRS_PATH = REPO_ROOT / "data" / "regression_pairs_v23.json"
 ANALYZE_NIGHTLY_REPORT_SCRIPT = REPO_ROOT / "scripts" / "analyze_nightly_report_v26.py"
+CHECK_NIGHTLY_LAUNCHD_SCRIPT = REPO_ROOT / "scripts" / "check_nightly_launchd_v26.py"
+NEXT_MORNING_TRIAGE_SCRIPT = REPO_ROOT / "scripts" / "nightly_next_morning_triage_v26.py"
+TODO_STATUS_SCRIPT = REPO_ROOT / "scripts" / "semantic_training_todo_status.py"
+VALIDATE_REVIEW_SCRIPT = REPO_ROOT / "scripts" / "validate_review_candidates.py"
+SCRIPTS_README = REPO_ROOT / "scripts" / "README.md"
 
 
 class NightlyScriptsTest(unittest.TestCase):
+    def test_scripts_readme_lists_current_semantic_entrypoints(self):
+        guide = SCRIPTS_README.read_text(encoding="utf-8")
+        required = [
+            "nightly_train_v26.sh",
+            "build_nightly_semantic_sets.py",
+            "train_v28c_mse_contrastive.py",
+            "eval_v26_gold.py",
+            "run_regression_pairs_v23.py",
+            "analyze_nightly_report_v26.py",
+            "check_nightly_launchd_v26.py",
+            "nightly_next_morning_triage_v26.py",
+            "semantic_training_todo_status.py",
+            "validate_review_candidates.py",
+            "extract_nightly_worst_case_review_candidates.py",
+        ]
+        for script_name in required:
+            self.assertIn(f"`{script_name}`", guide)
+            self.assertTrue((REPO_ROOT / "scripts" / script_name).exists(), msg=script_name)
+        self.assertIn("Historical Or Manual-Only Entrypoints", guide)
+        self.assertIn("antonym/opposite pairs", guide)
+
+    def test_semantic_training_todo_status_reports_pending_goal_items(self):
+        result = subprocess.run(
+            [sys.executable, str(TODO_STATUS_SCRIPT), "--json"],
+            cwd=REPO_ROOT,
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+        payload = json.loads(result.stdout)
+        self.assertGreater(payload["total"], 0)
+        self.assertGreater(payload["pending"], 0)
+        self.assertLess(payload["done"], payload["total"])
+        pending_text = "\n".join(item["text"] for item in payload["pending_items"])
+        self.assertIn("At least one real candidate passes strict gates", pending_text)
+        self.assertIn("Wait for the next real nightly report", pending_text)
+
     def test_install_script_generates_project_local_daily_launchd_job(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -27,6 +71,12 @@ class NightlyScriptsTest(unittest.TestCase):
             fake_bin = tmp_path / "fake-bin"
             home_dir.mkdir(parents=True)
             fake_bin.mkdir(parents=True)
+            logs_dir = home_dir / ".guess_nightly" / "logs"
+            logs_dir.mkdir(parents=True)
+            old_stdout = logs_dir / "launchd_nightly_v26.out.log"
+            old_stderr = logs_dir / "launchd_nightly_v26.err.log"
+            old_stdout.write_text("old stdout\n", encoding="utf-8")
+            old_stderr.write_text("old stderr\n", encoding="utf-8")
 
             self._write_executable(
                 fake_bin / "launchctl",
@@ -80,6 +130,501 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<key>NIGHTLY_REQUIRE_NO_DEGRADE_ALL</key>", plist)
             self.assertNotIn("workspaces/guess_runtime", plist)
             self.assertIn(f"<string>{REPO_ROOT}/.nightly</string>", plist)
+            wrapper_path = home_dir / ".guess_nightly" / "nightly_launcher.sh"
+            self.assertTrue(wrapper_path.exists(), msg=result.stdout)
+            self.assertIn(f"<string>{wrapper_path}</string>", plist)
+            wrapper = wrapper_path.read_text(encoding="utf-8")
+            self.assertIn(f'cd "{REPO_ROOT}"', wrapper)
+            self.assertIn(f'exec /bin/bash "{REPO_ROOT}/scripts/nightly_train_v26.sh"', wrapper)
+            self.assertNotIn("$HOME/.guess_nightly/nightly_train_v26.sh", wrapper)
+            self.assertFalse(old_stdout.exists())
+            self.assertFalse(old_stderr.exists())
+            self.assertTrue(list(logs_dir.glob("launchd_nightly_v26.out.log.*.bak")))
+            self.assertTrue(list(logs_dir.glob("launchd_nightly_v26.err.log.*.bak")))
+
+            check = subprocess.run(
+                [
+                    sys.executable,
+                    str(CHECK_NIGHTLY_LAUNCHD_SCRIPT),
+                    "--root",
+                    str(REPO_ROOT),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-07T13:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(check.returncode, 0, msg=check.stderr or check.stdout)
+            payload = json.loads(check.stdout)
+            self.assertTrue(payload["ok"], msg=payload)
+            self.assertEqual(payload["wrapper_loaded"], str(wrapper_path))
+            self.assertEqual(payload["nightly_total_runs"], "3")
+            self.assertEqual(payload["antonym_gate"], "0.0")
+            self.assertFalse(payload["missed_latest_schedule"])
+
+    def test_check_nightly_launchd_warns_after_missed_schedule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            reports_dir = root / ".nightly" / "reports"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            report = reports_dir / "nightly_promotion_20260606_230000.md"
+            report.write_text("# real report\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CHECK_NIGHTLY_LAUNCHD_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-08T09:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"], msg=payload)
+            self.assertTrue(payload["missed_latest_schedule"])
+            self.assertIn("latest scheduled 23:00 run has passed", "\n".join(payload["warnings"]))
+
+    def test_check_nightly_launchd_treats_new_run_log_as_started(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            reports_dir = root / ".nightly" / "reports"
+            logs_dir = root / ".nightly" / "data" / "tmp"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            report = reports_dir / "nightly_promotion_20260606_230000.md"
+            report.write_text("# real report\n", encoding="utf-8")
+            run_log = logs_dir / "nightly_train_v26_20260607_230100.log"
+            run_log.write_text("TRAIN_DEVICE=auto\n[nightly] still running\n", encoding="utf-8")
+            run_started = datetime(2026, 6, 7, 23, 1, 0).timestamp()
+            os.utime(run_log, (run_started, run_started))
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CHECK_NIGHTLY_LAUNCHD_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-08T09:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"], msg=payload)
+            self.assertFalse(payload["missed_latest_schedule"], msg=payload)
+            self.assertTrue(payload["run_log_after_latest_schedule"], msg=payload)
+            self.assertEqual(payload["latest_run_log_stamp"], "20260607_230100")
+            self.assertIn("appears to have started", "\n".join(payload["warnings"]))
+
+    def test_check_nightly_launchd_fails_on_post_install_stderr_error(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            log_dir = wrapper_dir / "logs"
+            reports_dir = root / ".nightly" / "reports"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            log_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            stderr_log = log_dir / "launchd_nightly_v26.err.log"
+            stderr_log.write_text("Traceback: simulated launchd failure\n", encoding="utf-8")
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(CHECK_NIGHTLY_LAUNCHD_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-07T13:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertFalse(payload["ok"])
+            self.assertIn("launchd stderr has fatal-looking lines", "\n".join(payload["problems"]))
+            self.assertEqual(payload["fatal_stderr_lines"], ["Traceback: simulated launchd failure"])
+
+    def test_next_morning_triage_reports_missed_schedule(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            reports_dir = root / ".nightly" / "reports"
+            logs_dir = root / ".nightly" / "data" / "tmp"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            report = reports_dir / "nightly_promotion_20260606_230000.md"
+            report.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260606_230000
+
+                    **总轮次**: 1
+
+                    ## 各轮结果
+
+                    | 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |
+                    |------|-------|----------|----------|----------|----------|--------|----------|
+                    | 1 | supervised | - | 7.5 | - | 66.0 | True | False |
+
+                    **结果**: 无轮次通过门控，未晋升
+
+                    ## 拒绝诊断 Round 1 (supervised)
+
+                    | group | base_mae | cand_mae | base_acc | cand_acc | extra |
+                    |-------|----------|----------|----------|----------|-------|
+                    | same_category | 7.0 | 8.5 | 55.0 | 50.0 |  |
+
+                    ### 校准桶错分 Top
+
+                    | target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |
+                    |---------------|------------------|------------|------------|----------------|----------|------------|----------|
+                    | 80-100 | 60-80 | 1 | 3 | 18.5 | alias_synonym_high:3 | synonym_alias:3 | 医生->大夫 |
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (logs_dir / "nightly_train_v26_20260606_230000.log").write_text(
+                "TRAIN_DEVICE=auto\nmae_ok=False\naccepted=False\n",
+                encoding="utf-8",
+            )
+            md_out = tmp_path / "triage.md"
+            review_out = tmp_path / "review.csv"
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(NEXT_MORNING_TRIAGE_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-08T09:00:00",
+                    "--markdown-output",
+                    str(md_out),
+                    "--write-review-csv",
+                    "--review-output",
+                    str(review_out),
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 3, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "missed_schedule")
+            self.assertTrue(payload["health"]["missed_latest_schedule"])
+            self.assertFalse(payload["analysis"]["three_rounds_ok"])
+            self.assertEqual(payload["analysis"]["failed_gates"], ["mae_ok"])
+            self.assertEqual(payload["analysis"]["bucket_confusions"][0]["target_bucket"], "80-100")
+            self.assertEqual(payload["analysis"]["bucket_confusions"][0]["top_tags"], "alias_synonym_high:3")
+            self.assertEqual(payload["review_source_counts"]["nightly_bucket_confusion"], 1)
+            self.assertEqual(payload["review_summary"]["status_counts"]["pending"], 1)
+            self.assertEqual(payload["review_summary"]["severity_counts"]["medium"], 1)
+            self.assertTrue(payload["review_validation"]["ok"])
+            self.assertEqual(payload["review_validation"]["issue_count"], 0)
+            self.assertGreater(payload["todo"]["pending"], 0)
+            with review_out.open("r", encoding="utf-8") as file:
+                review_rows = list(csv.DictReader(file))
+            self.assertEqual(review_rows[0]["source"], "nightly_bucket_confusion")
+            md = md_out.read_text(encoding="utf-8")
+            self.assertIn("# Nightly Next-Morning Triage", md)
+            self.assertIn("status: `missed_schedule`", md)
+            self.assertIn("todo_progress:", md)
+            self.assertIn("## Goal TODO", md)
+            self.assertIn("## Bucket Confusions", md)
+            self.assertIn("`80-100->60-80`", md)
+            self.assertIn("alias_synonym_high:3", md)
+            self.assertIn("source_counts:", md)
+            self.assertIn("status_counts:", md)
+            self.assertIn("severity_counts:", md)
+            self.assertIn("validation_ok:", md)
+            self.assertIn("`mae_ok`", md)
+            self.assertIn("antonym group missing", md)
+
+    def test_next_morning_triage_reports_started_waiting_for_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            reports_dir = root / ".nightly" / "reports"
+            logs_dir = root / ".nightly" / "data" / "tmp"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            report = reports_dir / "nightly_promotion_20260606_230000.md"
+            report.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260606_230000
+
+                    **总轮次**: 1
+
+                    **结果**: 无轮次通过门控，未晋升
+                    """
+                ),
+                encoding="utf-8",
+            )
+            old_report_time = datetime(2026, 6, 6, 23, 0, 0).timestamp()
+            os.utime(report, (old_report_time, old_report_time))
+            run_log = logs_dir / "nightly_train_v26_20260607_230100.log"
+            run_log.write_text("TRAIN_DEVICE=auto\n[nightly] still running\n", encoding="utf-8")
+            run_started = datetime(2026, 6, 7, 23, 1, 0).timestamp()
+            os.utime(run_log, (run_started, run_started))
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(NEXT_MORNING_TRIAGE_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-08T09:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "nightly_started_waiting_for_report")
+            self.assertFalse(payload["health"]["missed_latest_schedule"])
+            self.assertTrue(payload["health"]["run_log_after_latest_schedule"])
+            self.assertIn("todo", payload)
+            self.assertGreater(payload["todo"]["total"], 0)
 
     def test_regression_pairs_include_antonym_mid_checks(self):
         pairs = json.loads(REGRESSION_PAIRS_PATH.read_text(encoding="utf-8"))
@@ -166,6 +711,12 @@ class NightlyScriptsTest(unittest.TestCase):
                     |-------|----------|----------|----------|----------|-------|
                     | antonym | 10.0 | 8.0 | 20.0 | 60.0 | mid@40-60 20.0 -> 60.0 |
                     | same_category | 7.0 | 8.5 | 55.0 | 50.0 |  |
+
+                    ### 校准桶错分 Top
+
+                    | target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |
+                    |---------------|------------------|------------|------------|----------------|----------|------------|----------|
+                    | 80-100 | 60-80 | 1 | 3 | 18.5 | alias_synonym_high:3 | synonym_alias:3 | 医生->大夫 |
                     """
                 ),
                 encoding="utf-8",
@@ -209,6 +760,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["antonym_group"]["group"], "antonym")
             self.assertEqual(payload["failed_gates"], ["mae_ok"])
             self.assertEqual(payload["group_regressions"][0]["group"], "same_category")
+            self.assertEqual(payload["bucket_confusions"][0]["target_bucket"], "80-100")
+            self.assertEqual(payload["bucket_confusions"][0]["predicted_bucket"], "60-80")
+            self.assertEqual(payload["bucket_confusions"][0]["top_groups"], "synonym_alias:3")
 
     def test_nightly_dry_run_runs_three_rounds_and_copies_round_base_from_project_model(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -347,6 +901,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("拒绝诊断 Round 1", promotion_text)
             self.assertIn("hard_negative", promotion_text)
             self.assertIn("synonym_alias", promotion_text)
+            self.assertIn("校准桶错分 Top", promotion_text)
+            self.assertIn("| 80-100 | 60-80 |", promotion_text)
 
     def test_nightly_auto_device_retries_supervised_training_on_cpu(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -443,6 +999,12 @@ class NightlyScriptsTest(unittest.TestCase):
                     |--------|-------|--------|-----------|-------|-------|-----|
                     | 飞机 | 轮船 | 22.0 | 75.4 | 53.4 | hard_negative | same_category_but_far |
                     | 高兴 | 难过 | 10.0 | 61.0 | 51.0 | hard_negative | antonym_or_conflict |
+
+                    ### 校准桶错分 Top
+
+                    | target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |
+                    |---------------|------------------|------------|------------|----------------|----------|------------|----------|
+                    | 80-100 | 60-80 | 1 | 2 | 18.5 | alias_synonym_high:2 | synonym_alias:2 | 医生->大夫, 开心->快乐 |
                     """
                 ),
                 encoding="utf-8",
@@ -469,7 +1031,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
             with out_path.open("r", encoding="utf-8") as file:
                 rows = list(csv.DictReader(file))
-            self.assertEqual(len(rows), 2)
+            self.assertEqual(len(rows), 4)
             row = rows[0]
             self.assertEqual(row["answer"], "飞机")
             self.assertEqual(row["user_input"], "轮船")
@@ -483,6 +1045,70 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(antonym["user_input"], "难过")
             self.assertEqual(antonym["corrected_score"], "50")
             self.assertEqual(antonym["error_type"], "antonym_mid")
+            bucket = rows[2]
+            self.assertEqual(bucket["answer"], "医生")
+            self.assertEqual(bucket["user_input"], "大夫")
+            self.assertEqual(bucket["current_score"], "70")
+            self.assertEqual(bucket["corrected_score"], "90")
+            self.assertEqual(bucket["error_type"], "alias_synonym_high")
+            self.assertEqual(bucket["natural_relation"], "synonym_alias")
+            self.assertEqual(bucket["source"], "nightly_bucket_confusion")
+
+    def test_validate_review_candidates_blocks_bad_approved_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            review_path = tmp_path / "review.csv"
+            review_path.write_text(
+                textwrap.dedent(
+                    """\
+                    case_id,answer,user_input,current_score,corrected_score,error_type,error_severity,why_wrong,natural_relation,evidence,review_status,reviewer,source,created_at
+                    1,高兴,难过,10,40,antonym_or_conflict,high,approved bad antonym,antonym,x,approved,,nightly_worst_case,2026-06-07
+                    2,猫,猫咪,80,95,alias_synonym_high,medium,ok,synonym_alias,x,pending,,nightly_bucket_confusion,2026-06-07
+                    3,猫,猫咪,80,95,alias_synonym_high,medium,duplicate,synonym_alias,x,pending,,nightly_bucket_confusion,2026-06-07
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(VALIDATE_REVIEW_SCRIPT), str(review_path), "--json"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 1, msg=result.stdout)
+            payload = json.loads(result.stdout)
+            problems = "\n".join(";".join(item["problems"]) for item in payload["issues"])
+            self.assertIn("antonym rows must have corrected_score=50", problems)
+            self.assertIn("duplicate pair", problems)
+
+    def test_validate_review_candidates_allows_clean_pending_and_approved_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            review_path = tmp_path / "review.csv"
+            review_path.write_text(
+                textwrap.dedent(
+                    """\
+                    case_id,answer,user_input,current_score,corrected_score,error_type,error_severity,why_wrong,natural_relation,evidence,review_status,reviewer,source,created_at
+                    1,高兴,难过,10,50,antonym_mid,high,approved antonym,antonym,x,approved,,nightly_worst_case,2026-06-07
+                    2,医生,大夫,70,90,alias_synonym_high,medium,pending synonym,synonym_alias,x,pending,,nightly_bucket_confusion,2026-06-07
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(VALIDATE_REVIEW_SCRIPT), str(review_path), "--json"],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertTrue(payload["ok"])
+            self.assertEqual(payload["training_rows"], 1)
 
     def test_build_nightly_semantic_sets_keeps_fixed_holdout_out_of_train_and_calib(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -756,6 +1382,18 @@ if script.endswith('eval_v26_gold.py'):
             'antonym': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'mid_score_recall_40_60': 100.0},
         },
         'worst_cases': [],
+        'bucket_confusion': [
+            {
+                'target_bucket': '80-100',
+                'cal_bucket': '60-80',
+                'count': 2,
+                'avg_abs_error': 18.5,
+                'max_abs_error': 22.0,
+                'top_tags': [{'tag': 'alias_synonym_high', 'count': 2}],
+                'top_groups': [{'group': 'synonym_alias', 'count': 2}],
+                'examples': ['医生->大夫', '开心->快乐'],
+            }
+        ],
         'model_path': model_path,
         'calib_csv': env.get('SEM_CALIB_CSV', ''),
         'eval_csv': env.get('SEM_EVAL_CSV', ''),
@@ -799,6 +1437,11 @@ if script == '-' or script == '':
             f.write('| hard_negative | 2.0 | 2.0 | 100.0 | 100.0 | low@30 100.0 -> 100.0 |\\n')
             f.write('| synonym_alias | 2.0 | 2.0 | 100.0 | 100.0 | recall@70 100.0 -> 100.0 |\\n')
             f.write('| antonym | 2.0 | 2.0 | 100.0 | 100.0 | mid@40-60 100.0 -> 100.0 |\\n')
+            f.write('\\n### 候选最差样本\\n')
+            f.write('| answer | input | target | candidate | error | group | tag |\\n')
+            f.write('\\n### 校准桶错分 Top\\n')
+            f.write('| target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |\\n')
+            f.write('| 80-100 | 60-80 | 1 | 2 | 18.5 | alias_synonym_high:2 | synonym_alias:2 | 医生->大夫, 开心->快乐 |\\n')
         sys.exit(0)
 
     # Determine round number from env vars (check various paths)

@@ -12,6 +12,7 @@ fi
 AGENT_ID="com.guess.nightly-train-v26"
 PLIST_PATH="$HOME/Library/LaunchAgents/${AGENT_ID}.plist"
 LOGS_DIR="${NIGHTLY_LOGS_DIR:-$HOME/.guess_nightly/logs}"
+LAUNCHER_DIR="${NIGHTLY_LAUNCHER_DIR:-$HOME/.guess_nightly}"
 STDOUT_LOG="$LOGS_DIR/launchd_nightly_v26.out.log"
 STDERR_LOG="$LOGS_DIR/launchd_nightly_v26.err.log"
 REPORTS_DIR="$NIGHTLY_ROOT/reports"
@@ -23,8 +24,20 @@ DATA_GOLD="$NIGHTLY_ROOT/data/gold"
 PROJECT_MODEL_NAME="bge-m3-finetuned-v27-semreal-anchor"
 PROJECT_CALIB_NAME="semantic_calibration_v27_semreal_anchor.json"
 
-mkdir -p "$HOME/Library/LaunchAgents" "$LOGS_DIR" "$REPORTS_DIR" "$DATA_TMP" "$DATA_MODELS" "$DATA_CALIB" "$DATA_GOLD"
+mkdir -p "$HOME/Library/LaunchAgents" "$LOGS_DIR" "$LAUNCHER_DIR" "$REPORTS_DIR" "$DATA_TMP" "$DATA_MODELS" "$DATA_CALIB" "$DATA_GOLD"
 mkdir -p "$ROOT_DIR/models" "$ROOT_DIR/data"
+
+archive_log_if_present() {
+  local log_path="$1"
+  local stamp
+  stamp="$(date +%Y%m%d_%H%M%S)"
+  if [[ -f "$log_path" ]]; then
+    mv "$log_path" "${log_path}.${stamp}.bak"
+  fi
+}
+
+archive_log_if_present "$STDOUT_LOG"
+archive_log_if_present "$STDERR_LOG"
 
 # Validate project model exists
 if [[ ! -d "$ROOT_DIR/models/$PROJECT_MODEL_NAME" ]]; then
@@ -36,8 +49,9 @@ if [[ ! -f "$ROOT_DIR/data/$PROJECT_CALIB_NAME" ]]; then
   exit 1
 fi
 
-# Create wrapper script that launches from project root
-WRAPPER_SCRIPT="$NIGHTLY_ROOT/nightly_launcher.sh"
+# Create wrapper script under HOME. Launchd can hit Operation-not-permitted
+# restrictions when executing wrappers directly from an external project volume.
+WRAPPER_SCRIPT="$LAUNCHER_DIR/nightly_launcher.sh"
 cat > "$WRAPPER_SCRIPT" <<WRAPPER
 #!/usr/bin/env bash
 set -euo pipefail

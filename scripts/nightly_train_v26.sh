@@ -757,6 +757,47 @@ for case in (cand.get('worst_cases') or [])[:10]:
         f"{case.get('cal_pred', '')} | {case.get('abs_error', '')} | {case.get('group', '')} | {case.get('relation_tag', '')} |"
     )
 
+base_conf = {
+    (item.get('target_bucket'), item.get('cal_bucket')): item
+    for item in (base.get('bucket_confusion') or [])
+}
+cand_conf = {
+    (item.get('target_bucket'), item.get('cal_bucket')): item
+    for item in (cand.get('bucket_confusion') or [])
+}
+conf_keys = sorted(
+    set(base_conf) | set(cand_conf),
+    key=lambda key: (
+        -int((cand_conf.get(key) or base_conf.get(key) or {}).get('count') or 0),
+        str(key[0]),
+        str(key[1]),
+    ),
+)
+if conf_keys:
+    lines.extend([
+        "",
+        "### 校准桶错分 Top",
+        "",
+        "| target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |",
+        "|---------------|------------------|------------|------------|----------------|----------|------------|----------|",
+    ])
+    for key in conf_keys[:10]:
+        b = base_conf.get(key) or {}
+        c = cand_conf.get(key) or {}
+        examples = ", ".join(c.get('examples') or b.get('examples') or [])
+        top_tags = ", ".join(
+            f"{item.get('tag')}:{item.get('count')}"
+            for item in (c.get('top_tags') or b.get('top_tags') or [])
+        )
+        top_groups = ", ".join(
+            f"{item.get('group')}:{item.get('count')}"
+            for item in (c.get('top_groups') or b.get('top_groups') or [])
+        )
+        lines.append(
+            f"| {key[0]} | {key[1]} | {b.get('count', 0)} | {c.get('count', 0)} | "
+            f"{c.get('avg_abs_error', '-')} | {top_tags} | {top_groups} | {examples} |"
+        )
+
 with out.open('a', encoding='utf-8') as file:
     file.write("\n".join(lines) + "\n")
 PY

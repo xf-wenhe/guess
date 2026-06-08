@@ -63,11 +63,13 @@ NIGHTLY_SUP_LOSS_MODE=mixed
 
 The daily row cap intentionally matches the high-signal smoke scale. The daily profile now runs three seeds every night. If a future change requires a faster local check, use `NIGHTLY_TRAIN_PROFILE=smoke` or `NIGHTLY_TOTAL_RUNS=1` explicitly for that manual run only. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger row-count runs in `full` or explicit experiments until they beat the fixed gates.
 
-The 2026-06-04 23:00 launchd run also used the stale 2500-row daily default because the installed job was still executing a copied script under `~/.guess_nightly/`. Reinstalling with `bash scripts/install_nightly_10pm_launchd.sh` fixes the job to execute `.nightly/nightly_launcher.sh`, which then execs the current repo script at `scripts/nightly_train_v26.sh`. Verify the installed entrypoint after changing nightly defaults:
+The 2026-06-04 23:00 launchd run also used the stale 2500-row daily default because the installed job was still executing a copied script under `~/.guess_nightly/`. Reinstalling with `bash scripts/install_nightly_10pm_launchd.sh` fixes the job to execute `$HOME/.guess_nightly/nightly_launcher.sh`, which then execs the current repo script at `scripts/nightly_train_v26.sh`. The 2026-06-05 and 2026-06-06 launchd attempts failed before training with `Operation not permitted` when launchd tried to execute a wrapper directly from `.nightly/` on the external project volume; the installer now keeps the wrapper under `$HOME/.guess_nightly/` to avoid that launchd restriction while still running the current repo script.
+
+Verify the installed entrypoint after changing nightly defaults:
 
 ```bash
 launchctl print gui/$(id -u)/com.guess.nightly-train-v26 | sed -n '1,80p'
-NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash .nightly/nightly_launcher.sh | sed -n '1,70p'
+NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash scripts/nightly_train_v26.sh | sed -n '1,70p'
 ```
 
 The dry-run config line should include:
@@ -237,30 +239,59 @@ Nightly reports are written to:
 .nightly/reports/nightly_promotion_*.md
 ```
 
-Reports include per-round metrics, project-vs-candidate metrics, group metrics, and the candidate's largest holdout errors. Review the worst cases first when adding new labels.
+Reports include per-round metrics, project-vs-candidate metrics, group metrics, the candidate's largest holdout errors, and calibrated bucket-confusion summaries. Review the worst cases and repeated bucket shifts first when adding new labels or tuning the next objective.
 
 Rejected candidates also write diagnostics. A failed nightly is still useful: use the rejected candidate's worst cases to add or correct labels before the next run.
 
 Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags.
 
-Analyze the latest real nightly without touching models:
+Run the next-morning triage without touching models:
 
 ```bash
+python3 scripts/nightly_next_morning_triage_v26.py
+```
+
+It combines launchd health, missed-schedule detection, latest real-report analysis, device inference, failed gates, regressed metric groups, bucket-confusion summaries, and the live goal TODO progress from `docs/SEMANTIC_TRAINING_TODO.md`. The missed-schedule check also looks for a non-dry-run `.nightly/data/tmp/nightly_train_v26_*.log` whose timestamp falls within the latest scheduled 23:00 start window; if a three-round run has started but has not written a report yet, triage reports `nightly_started_waiting_for_report` instead of `missed_schedule`. Use `--markdown-output tmp/nightly_triage.md` when you want a saved summary, and `--write-review-csv` when you also want it to refresh `data/nightly_worst_case_review_candidates.csv` from the latest real report's worst cases.
+
+Check live goal progress from the repo:
+
+```bash
+python3 scripts/semantic_training_todo_status.py
+```
+
+Use `--json` when another script or a morning report needs the same checklist state.
+
+Individual checks remain available:
+
+```bash
+python3 scripts/check_nightly_launchd_v26.py
 python3 scripts/analyze_nightly_report_v26.py
 bash scripts/verify_nightly_outcome_v26.sh --allow-reject
 ```
 
 Use `--include-dry-run` only when you intentionally want to inspect the latest manual dry-run instead of the latest launchd run.
 
+`check_nightly_launchd_v26.py` validates that launchd is pointed at `$HOME/.guess_nightly/nightly_launcher.sh`, the wrapper still execs the current repo `scripts/nightly_train_v26.sh`, `NIGHTLY_TOTAL_RUNS=3` is loaded, and the latest real report or run log is newer than the latest scheduled run. Historical stderr errors are reported as warnings when they predate the current plist install; fatal-looking stderr lines written after the current install are reported as problems.
+
+The install script archives existing launchd stdout/stderr logs to `*.bak` before reloading the job. This keeps old failures from being mistaken for tonight's run while preserving the evidence for later inspection.
+
 The analyzer prints `失败门控` from the nightly gate output (`mae_ok`, `acc_ok`, no-degrade checks, regression, synonym, antonym, and so on) and `退化分组` from report group metrics. Use those two lines as the first triage signal before reading the full report.
 
-Create a review queue from the latest real report's worst cases:
+Create a review queue from the latest real report's worst cases and bucket-confusion examples:
 
 ```bash
 python3 scripts/extract_nightly_worst_case_review_candidates.py
 ```
 
-This writes `data/nightly_worst_case_review_candidates.csv` with `review_status=pending`. The nightly builder reads this file, but it only consumes rows after you review `corrected_score` / `error_type` and set `review_status=approved` or `merged`. Antonym rows are normalized to `antonym_mid` with `corrected_score=50` during extraction.
+This writes `data/nightly_worst_case_review_candidates.csv` with `review_status=pending`. The nightly builder reads this file, but it only consumes rows after you review `corrected_score` / `error_type` and set `review_status=approved` or `merged`. Antonym rows are normalized to `antonym_mid` with `corrected_score=50` during extraction. Bucket-confusion rows use the target/predicted bucket midpoints as temporary scores and keep `source=nightly_bucket_confusion` so they are easy to audit before approval. When `nightly_next_morning_triage_v26.py --write-review-csv` writes this file, its output also includes source/status/severity counts so worst-case rows, bucket-confusion rows, pending rows, and high-severity rows are distinguishable at a glance.
+
+Before changing rows to `approved` or `merged`, validate the queue:
+
+```bash
+python3 scripts/validate_review_candidates.py
+```
+
+The validator fails approved/merged rows with invalid score ranges, invalid status/source/severity values, duplicate pairs, or antonym rows that are not normalized to `antonym_mid` and `corrected_score=50`. Use `--strict-pending` when you also want pending drafts to be fully clean. The next-morning triage runs the non-strict validation automatically and prints `review_validation_ok` / `review_validation_issues`.
 
 ## Real Failure Sample Loop
 

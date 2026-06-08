@@ -164,6 +164,49 @@ def bucket_misses(rows: list[dict], raw_pred: list[float], cal_pred: list[float]
     return misses[:limit]
 
 
+def bucket_confusion(rows: list[dict], cal_pred: list[float], limit: int) -> list[dict]:
+    summary = defaultdict(lambda: {'count': 0, 'errors': [], 'examples': [], 'tags': defaultdict(int), 'groups': defaultdict(int)})
+    for row, cal in zip(rows, cal_pred):
+        target = float(row['_score'])
+        target_bucket = score_bucket(target)
+        cal_bucket = score_bucket(cal)
+        if cal_bucket == target_bucket:
+            continue
+        tag = (row.get('relation_tag') or row.get('error_type') or '').strip() or '(untagged)'
+        group = eval_group(row)
+        key = (target_bucket, cal_bucket)
+        error = abs(cal - target)
+        payload = summary[key]
+        payload['count'] += 1
+        payload['errors'].append(error)
+        payload['tags'][tag] += 1
+        payload['groups'][group] += 1
+        if len(payload['examples']) < 3:
+            payload['examples'].append(f"{row['_answer']}->{row['_user_input']}")
+
+    rows_out = []
+    for (target_bucket, cal_bucket), values in summary.items():
+        errors = values['errors']
+        rows_out.append({
+            'target_bucket': target_bucket,
+            'cal_bucket': cal_bucket,
+            'count': values['count'],
+            'avg_abs_error': round(sum(errors) / max(len(errors), 1), 3),
+            'max_abs_error': round(max(errors), 3),
+            'top_tags': [
+                {'tag': tag, 'count': count}
+                for tag, count in sorted(values['tags'].items(), key=lambda item: (-item[1], item[0]))[:3]
+            ],
+            'top_groups': [
+                {'group': group, 'count': count}
+                for group, count in sorted(values['groups'].items(), key=lambda item: (-item[1], item[0]))[:3]
+            ],
+            'examples': values['examples'],
+        })
+    rows_out.sort(key=lambda item: (-item['count'], -item['avg_abs_error'], item['target_bucket'], item['cal_bucket']))
+    return rows_out[:limit]
+
+
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--json-out', default='')
@@ -211,6 +254,7 @@ def main():
         'group_metrics': grouped_metrics(eval_dict_rows, eval_raw, eval_cal),
         'worst_cases': worst_cases(eval_dict_rows, eval_raw, eval_cal, args.top_errors),
         'bucket_misses': bucket_misses(eval_dict_rows, eval_raw, eval_cal, args.top_errors),
+        'bucket_confusion': bucket_confusion(eval_dict_rows, eval_cal, args.top_errors),
         'model_path': MODEL_PATH,
         'calib_csv': str(CALIB_CSV),
         'eval_csv': str(EVAL_CSV),

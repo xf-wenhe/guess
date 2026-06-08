@@ -73,6 +73,24 @@ def parse_markdown_tables(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def parse_bucket_confusion_tables(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for section in re.split(r"\n### ", text):
+        if not section.startswith("校准桶错分 Top"):
+            continue
+        headers: list[str] = []
+        for line in section.splitlines():
+            if not line.startswith("|") or "---" in line:
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if not headers:
+                headers = cells
+                continue
+            if len(cells) == len(headers):
+                rows.append(dict(zip(headers, cells)))
+    return rows
+
+
 def as_int(value: str) -> int | None:
     try:
         return int(round(float(value)))
@@ -88,6 +106,22 @@ def severity(error: int) -> str:
     if error >= 18:
         return "medium"
     return "low"
+
+
+def bucket_midpoint(value: str) -> int | None:
+    match = re.match(r"^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$", value or "")
+    if not match:
+        return as_int(value)
+    low = float(match.group(1))
+    high = float(match.group(2))
+    return int(round((low + high) / 2.0))
+
+
+def first_label(value: str, fallback: str) -> str:
+    raw = (value or "").split(",", 1)[0].strip()
+    if ":" in raw:
+        raw = raw.split(":", 1)[0].strip()
+    return raw or fallback
 
 
 def is_antonym(tag: str, group: str) -> bool:
@@ -141,6 +175,69 @@ def to_review_rows(cases: list[dict[str, str]], stamp: str, created_at: str, min
     return out
 
 
+def to_bucket_review_rows(
+    confusions: list[dict[str, str]],
+    stamp: str,
+    created_at: str,
+    limit: int,
+    existing: set[tuple[str, str]] | None = None,
+) -> list[dict[str, str]]:
+    out: list[dict[str, str]] = []
+    seen = set(existing or set())
+    for row in confusions:
+        target_bucket = (row.get("target_bucket") or "").strip()
+        predicted_bucket = (row.get("predicted_bucket") or row.get("cal_bucket") or "").strip()
+        corrected = bucket_midpoint(target_bucket)
+        current = bucket_midpoint(predicted_bucket)
+        if corrected is None or current is None:
+            continue
+        err = abs(current - corrected)
+        tag = first_label(row.get("top_tags", ""), "bucket_confusion")
+        group = first_label(row.get("top_groups", ""), "")
+        examples = [item.strip() for item in (row.get("examples") or "").split(",") if item.strip()]
+        for example in examples:
+            if "->" not in example:
+                continue
+            answer, user_input = [part.strip() for part in example.split("->", 1)]
+            if not answer or not user_input:
+                continue
+            key = (answer, user_input)
+            if key in seen:
+                continue
+            seen.add(key)
+            corrected_for_row = 50 if is_antonym(tag, group) else corrected
+            normalized_tag = "antonym_mid" if is_antonym(tag, group) else tag
+            direction = "over_score" if current > corrected_for_row else "under_score"
+            out.append(
+                {
+                    "case_id": str(len(out) + 1),
+                    "answer": answer,
+                    "user_input": user_input,
+                    "current_score": str(current),
+                    "corrected_score": str(corrected_for_row),
+                    "error_type": normalized_tag,
+                    "error_severity": severity(err),
+                    "why_wrong": (
+                        f"nightly bucket confusion {direction}; target_bucket={target_bucket}, "
+                        f"predicted_bucket={predicted_bucket}, estimated_target={corrected_for_row}, "
+                        f"estimated_candidate={current}"
+                    ),
+                    "natural_relation": group,
+                    "evidence": (
+                        f"nightly_report {stamp}; bucket={target_bucket}->{predicted_bucket}; "
+                        f"top_tags={row.get('top_tags', '')}; top_groups={row.get('top_groups', '')}"
+                    ),
+                    "review_status": "pending",
+                    "reviewer": "",
+                    "source": "nightly_bucket_confusion",
+                    "created_at": created_at,
+                }
+            )
+            if limit > 0 and len(out) >= limit:
+                return out
+    return out
+
+
 def write_csv(path: Path, rows: list[dict[str, str]]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", encoding="utf-8", newline="") as file:
@@ -162,11 +259,19 @@ def main() -> int:
     args = parser.parse_args()
 
     report = choose_report(args.report, args.include_dry_run)
-    cases = parse_markdown_tables(read_text(report))
+    text = read_text(report)
+    cases = parse_markdown_tables(text)
+    confusions = parse_bucket_confusion_tables(text)
     rows = to_review_rows(cases, report_stamp(report), args.created_at, args.min_error, args.limit)
+    remaining = max(args.limit - len(rows), 0) if args.limit > 0 else 0
+    existing = {(row["answer"], row["user_input"]) for row in rows}
+    if args.limit <= 0 or remaining > 0:
+        rows.extend(to_bucket_review_rows(confusions, report_stamp(report), args.created_at, remaining, existing))
+    for index, row in enumerate(rows, start=1):
+        row["case_id"] = str(index)
     write_csv(args.output, rows)
     print(f"report={report}")
-    print(f"worst_cases={len(cases)} review_rows={len(rows)} output={args.output}")
+    print(f"worst_cases={len(cases)} bucket_confusions={len(confusions)} review_rows={len(rows)} output={args.output}")
     print("Next: review corrected_score/error_type, then set review_status=approved for rows to train.")
     return 0
 

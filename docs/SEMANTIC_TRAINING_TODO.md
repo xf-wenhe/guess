@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-05 10:44 CST
+Last updated: 2026-06-07 18:12 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -114,7 +114,17 @@ Report: `.nightly/reports/nightly_promotion_20260604_230005.md`
 
 Result: rejected. It ran on `device=mps` and used only 1 round, not the three-seed `full` profile. The failure was global quality: calibrated MAE worsened by `0.0481`, bucket accuracy fell by `1.46` points, and same-category cases degraded even though hard negatives and synonym recall improved.
 
-Root cause for the wrong scale: the real 23:00 launchd job was still executing the stale copied script at `~/.guess_nightly/nightly_train_v26.sh`, whose daily default was `sup_rows=2500`, `sup_batch=16`. Manual dry-run from the repo had already shown the new `300/8` defaults, but launchd was not using that repo script. The launchd job has been reinstalled and now points to `.nightly/nightly_launcher.sh`, which execs `/Volumes/新/work/flutter/guess/scripts/nightly_train_v26.sh`.
+Root cause for the wrong scale: the real 23:00 launchd job was still executing the stale copied script at `~/.guess_nightly/nightly_train_v26.sh`, whose daily default was `sup_rows=2500`, `sup_batch=16`. Manual dry-run from the repo had already shown the new `300/8` defaults, but launchd was not using that repo script.
+
+### 2026-06-05 and 2026-06-06 Launchd Attempts
+
+No real nightly promotion reports were produced after the 2026-06-04 run. The launchd stderr log shows:
+
+```text
+/bin/bash: /Volumes/新/work/flutter/guess/.nightly/nightly_launcher.sh: Operation not permitted
+```
+
+Result: no training started. The installed job was pointed at a wrapper under the external project volume's `.nightly/` directory, which launchd could not execute. The installer now writes the launchd wrapper to `$HOME/.guess_nightly/nightly_launcher.sh`; that wrapper `cd`s into `/Volumes/新/work/flutter/guess` and execs the current repo script, avoiding the stale copied training script and the external-volume wrapper restriction.
 
 ## Active TODO
 
@@ -123,7 +133,7 @@ Root cause for the wrong scale: the real 23:00 launchd job was still executing t
 - [x] Run `mixed_contrastive` micro-smoke to test hard-negative direction.
 - [x] Add selective contrastive scope so hard-negative margin training avoids ambiguous same-category rows by default.
 - [x] Re-run selective `mixed_contrastive` micro-smoke to check whether bucket accuracy damage is reduced.
-- [ ] User reviews the latest reports and chooses the next experiment direction.
+- [ ] Read the next real nightly report, then analyze gates/device/three-round stability and choose the next experiment direction.
 - [x] Read the 2026-06-03 nightly report and change daily defaults away from the regressing 2500-row run.
 - [x] Read the 2026-06-04 nightly report and confirm it still used the stale 2500-row launchd script.
 - [x] Reinstall launchd so the 23:00 job executes the current repo script.
@@ -140,6 +150,22 @@ Root cause for the wrong scale: the real 23:00 launchd job was still executing t
 - [x] Add `scripts/analyze_nightly_report_v26.py` to summarize the latest real report, skipping dry-runs by default.
 - [x] Extend nightly report analysis to list failed gates and regressed metric groups for faster next-day tuning.
 - [x] Add `scripts/extract_nightly_worst_case_review_candidates.py` so rejected-report worst cases become pending review rows for the next high-value training patch.
+- [x] Diagnose why 2026-06-05 and 2026-06-06 did not produce reports: launchd could not execute the `.nightly/` wrapper due `Operation not permitted`.
+- [x] Change launchd install/uninstall scripts to use `$HOME/.guess_nightly/nightly_launcher.sh`, while the wrapper still execs the current repo `scripts/nightly_train_v26.sh`.
+- [x] Reinstall launchd with the HOME wrapper and verify the loaded plist plus HOME-wrapper dry-run.
+- [x] Add `scripts/check_nightly_launchd_v26.py` to distinguish current launchd install health from historical stderr failures.
+- [x] Extend launchd health check with latest-scheduled-run detection so missed 23:00 runs are visible the next morning.
+- [x] Treat a post-23:00 `nightly_train_v26_*.log` as an in-progress/started run so long three-round nightlies are not mislabeled as missed before the report is written.
+- [x] Add `scripts/nightly_next_morning_triage_v26.py` as the one-command next-morning check for launchd health, missed schedules, report analysis, device status, failed gates, and optional worst-case review CSV generation.
+- [x] Flag fatal-looking launchd stderr written after the current install, while keeping older stderr as historical warnings.
+- [x] Add optional Markdown output to next-morning triage for saved report comparisons.
+- [x] Archive existing launchd stdout/stderr logs during install so tonight's logs start clean while old failure evidence is preserved as `.bak`.
+- [x] Add calibrated bucket-confusion summaries to nightly diagnostics so repeated bucket-boundary failures are visible without manually reading metric JSON.
+- [x] Add `relation_tag` and group summaries to bucket-confusion diagnostics so repeated bucket shifts point at a fixable data family.
+- [x] Convert bucket-confusion examples into pending review candidates, with bucket-midpoint temporary scores and no training consumption until review approval.
+- [x] Add review queue source/status/severity summaries to next-morning triage so high-priority pending rows are visible immediately.
+- [x] Add review candidate validation so approved/merged rows cannot silently enter training with invalid scores, invalid statuses, duplicate pairs, or non-50 antonyms.
+- [x] Run review candidate validation from next-morning triage so unsafe approved/merged rows are visible before the next training build.
 - [ ] Wait for the next real nightly report to verify the new 300-row, three-round daily default.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
@@ -154,7 +180,7 @@ Root cause for the wrong scale: the real 23:00 launchd job was still executing t
    The current losses improve continuous MAE but can move samples across bucket boundaries in the wrong direction.
 
 3. Improve calibration/reporting further.
-   Add per-bucket confusion summaries so the next patches target bucket-boundary errors instead of only largest absolute errors.
+   Per-bucket confusion summaries now include top `relation_tag`/group counts and can be converted into pending review candidates. Next reporting step, if needed, is to auto-cluster repeated pairs across multiple rejected reports.
 
 4. Keep default nightly on `mixed`.
    `mixed_contrastive` is not safe as the daily default yet.
