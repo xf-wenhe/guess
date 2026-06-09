@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure Python stdout/stderr are unbuffered so progress bars (tqdm) and logs
+# are visible even when launchd redirects output to files.
+export PYTHONUNBUFFERED=1
+
 ROOT_DIR="${NIGHTLY_SCRIPT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT_DIR"
 
@@ -8,6 +12,10 @@ NIGHTLY_ROOT="${NIGHTLY_ROOT:-$ROOT_DIR/.nightly}"
 if [[ "$NIGHTLY_ROOT" != /* ]]; then
   NIGHTLY_ROOT="$ROOT_DIR/$NIGHTLY_ROOT"
 fi
+
+# HuggingFace cache on the external disk to avoid filling the system volume
+export HF_HOME="${NIGHTLY_ROOT}/hf_cache"
+mkdir -p "$HF_HOME"
 
 to_abs_path() {
   local p="$1"
@@ -67,7 +75,7 @@ LOG_FILE="$WORK_DIR/nightly_train_v26_${STAMP}.log"
 SUMMARY_FILE="$WORK_DIR/nightly_round_summary_${STAMP}.txt"
 LOCK_DIR="$WORK_DIR/.nightly_train_v26.lock"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+mkdir -p "$WORK_DIR"
 
 echo "[nightly] start at $(date '+%F %T')"
 echo "[nightly] root=$ROOT_DIR"
