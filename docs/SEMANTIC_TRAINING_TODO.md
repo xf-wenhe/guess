@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-07 18:12 CST
+Last updated: 2026-06-11 14:10 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -146,6 +146,9 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Fix nightly promotion gates to require `passed == total`, not the old hard-coded `30`.
 - [x] Add code-level fallback for required antonym regression pairs and train patches so ignored local data files cannot silently drop the new policy.
 - [x] Add nightly promotion gate for antonym 40-60 recall no-degrade.
+- [x] Add strict nightly promotion gate for antonym 45-55 recall no-degrade.
+- [x] Boost normalized antonym training rows so the 50% policy is represented under the 300-row daily cap.
+- [x] Add trainer stats for antonym row/repeat coverage.
 - [x] Add nightly report sections for run config, gate thresholds, regression gate, and device log excerpt.
 - [x] Add `scripts/analyze_nightly_report_v26.py` to summarize the latest real report, skipping dry-runs by default.
 - [x] Extend nightly report analysis to list failed gates and regressed metric groups for faster next-day tuning.

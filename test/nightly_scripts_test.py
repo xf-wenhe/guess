@@ -215,6 +215,8 @@ class NightlyScriptsTest(unittest.TestCase):
             )
             report = reports_dir / "nightly_promotion_20260606_230000.md"
             report.write_text("# real report\n", encoding="utf-8")
+            installed_at = datetime(2026, 6, 7, 12, 0, 0).timestamp()
+            os.utime(plist, (installed_at, installed_at))
 
             result = subprocess.run(
                 [
@@ -247,11 +249,13 @@ class NightlyScriptsTest(unittest.TestCase):
             resolved_root = root.resolve()
             plist_dir = home_dir / "Library" / "LaunchAgents"
             wrapper_dir = home_dir / ".guess_nightly"
+            launchd_logs_dir = wrapper_dir / "logs"
             reports_dir = root / ".nightly" / "reports"
             logs_dir = root / ".nightly" / "data" / "tmp"
             scripts_dir = root / "scripts"
             plist_dir.mkdir(parents=True)
             wrapper_dir.mkdir(parents=True)
+            launchd_logs_dir.mkdir(parents=True)
             reports_dir.mkdir(parents=True)
             logs_dir.mkdir(parents=True)
             scripts_dir.mkdir(parents=True)
@@ -401,11 +405,13 @@ class NightlyScriptsTest(unittest.TestCase):
             resolved_root = root.resolve()
             plist_dir = home_dir / "Library" / "LaunchAgents"
             wrapper_dir = home_dir / ".guess_nightly"
+            launchd_logs_dir = wrapper_dir / "logs"
             reports_dir = root / ".nightly" / "reports"
             logs_dir = root / ".nightly" / "data" / "tmp"
             scripts_dir = root / "scripts"
             plist_dir.mkdir(parents=True)
             wrapper_dir.mkdir(parents=True)
+            launchd_logs_dir.mkdir(parents=True)
             reports_dir.mkdir(parents=True)
             logs_dir.mkdir(parents=True)
             scripts_dir.mkdir(parents=True)
@@ -472,10 +478,12 @@ class NightlyScriptsTest(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            (logs_dir / "nightly_train_v26_20260606_230000.log").write_text(
-                "TRAIN_DEVICE=auto\nmae_ok=False\naccepted=False\n",
+            (launchd_logs_dir / "launchd_nightly_v26.out.log.20260607_120000.bak").write_text(
+                "TRAIN_DEVICE=auto\ntrain_v28c: device=mps\nmae_ok=False\naccepted=False\n",
                 encoding="utf-8",
             )
+            installed_at = datetime(2026, 6, 7, 12, 0, 0).timestamp()
+            os.utime(plist, (installed_at, installed_at))
             md_out = tmp_path / "triage.md"
             review_out = tmp_path / "review.csv"
 
@@ -506,6 +514,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["status"], "missed_schedule")
             self.assertTrue(payload["health"]["missed_latest_schedule"])
             self.assertFalse(payload["analysis"]["three_rounds_ok"])
+            self.assertEqual(payload["analysis"]["actual_device_inferred"], "mps")
+            self.assertTrue(payload["analysis"]["used_gpu_or_mps"])
             self.assertEqual(payload["analysis"]["failed_gates"], ["mae_ok"])
             self.assertEqual(payload["analysis"]["bucket_confusions"][0]["target_bucket"], "80-100")
             self.assertEqual(payload["analysis"]["bucket_confusions"][0]["top_tags"], "alias_synonym_high:3")
@@ -709,7 +719,7 @@ class NightlyScriptsTest(unittest.TestCase):
 
                     | group | base_mae | cand_mae | base_acc | cand_acc | extra |
                     |-------|----------|----------|----------|----------|-------|
-                    | antonym | 10.0 | 8.0 | 20.0 | 60.0 | mid@40-60 20.0 -> 60.0 |
+                    | antonym | 10.0 | 8.0 | 20.0 | 60.0 | mid@40-60 20.0 -> 60.0; strict@45-55 10.0 -> 50.0 |
                     | same_category | 7.0 | 8.5 | 55.0 | 50.0 |  |
 
                     ### 校准桶错分 Top
@@ -729,6 +739,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 "hard_negative_ok=True\n"
                 "synonym_recall_ok=True\n"
                 "antonym_mid_recall_ok=True\n"
+                "antonym_strict_mid_recall_ok=True\n"
                 "regression_ok=True\n"
                 "accepted=False\n"
                 "[nightly] no accepted rounds, no promotion\n",
@@ -1204,10 +1215,12 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(antonym_row["relation_tag"], "antonym_mid")
             self.assertEqual(antonym_row["score_0_100"], "50")
             self.assertEqual(antonym_row["expected_range"], "45-55")
+            self.assertEqual(antonym_row["sample_weight"], "4.0000")
             required_antonym_row = next(row for row in train_rows if (row["answer"], row["user_input"]) == ("古代", "现代"))
             self.assertEqual(required_antonym_row["reviewer"], "required_antonym_patch")
             self.assertEqual(required_antonym_row["relation_tag"], "antonym_mid")
             self.assertEqual(required_antonym_row["score_0_100"], "50")
+            self.assertEqual(required_antonym_row["sample_weight"], "4.0000")
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["fixed_holdout"], 1)
             self.assertEqual(stats["train_patch"], 7)
@@ -1228,7 +1241,9 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("PIN_WEIGHT_THRESHOLD", source)
         self.assertIn("pinned_high_value_rows", source)
         self.assertIn("TAG_REPEAT_BOOSTS", source)
+        self.assertIn('"antonym_mid": 2.0', source)
         self.assertIn("protected_positive_rows", source)
+        self.assertIn("antonym_mid_examples_after_repeat", source)
         self.assertIn("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", source)
         self.assertIn("full_angle_coverage_rows", source)
         self.assertIn("SEM_LOSS_MODE", source)
@@ -1379,7 +1394,13 @@ if script.endswith('eval_v26_gold.py'):
         'group_metrics': {
             'hard_negative': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'low_score_precision_at_30': 100.0},
             'synonym_alias': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'recall_at_70': 100.0},
-            'antonym': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'mid_score_recall_40_60': 100.0},
+            'antonym': {
+                'count': 1,
+                'cal_mae': 2.0,
+                'cal_bucket_acc': 100.0,
+                'mid_score_recall_40_60': 100.0,
+                'mid_score_recall_45_55': 100.0,
+            },
         },
         'worst_cases': [],
         'bucket_confusion': [
@@ -1436,7 +1457,7 @@ if script == '-' or script == '':
             f.write('| group | base_mae | cand_mae | base_acc | cand_acc | extra |\\n')
             f.write('| hard_negative | 2.0 | 2.0 | 100.0 | 100.0 | low@30 100.0 -> 100.0 |\\n')
             f.write('| synonym_alias | 2.0 | 2.0 | 100.0 | 100.0 | recall@70 100.0 -> 100.0 |\\n')
-            f.write('| antonym | 2.0 | 2.0 | 100.0 | 100.0 | mid@40-60 100.0 -> 100.0 |\\n')
+            f.write('| antonym | 2.0 | 2.0 | 100.0 | 100.0 | mid@40-60 100.0 -> 100.0; strict@45-55 100.0 -> 100.0 |\\n')
             f.write('\\n### 候选最差样本\\n')
             f.write('| answer | input | target | candidate | error | group | tag |\\n')
             f.write('\\n### 校准桶错分 Top\\n')

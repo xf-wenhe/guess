@@ -114,6 +114,11 @@ def grouped_metrics(rows: list[dict], raw_pred: list[float], cal_pred: list[floa
                 hits / max(len(values['cal']), 1) * 100.0,
                 6,
             )
+            strict_hits = sum(1 for pred in values['cal'] if 45 <= pred <= 55)
+            payload['mid_score_recall_45_55'] = round(
+                strict_hits / max(len(values['cal']), 1) * 100.0,
+                6,
+            )
         result[name] = payload
     return result
 

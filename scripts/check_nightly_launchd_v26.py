@@ -177,20 +177,19 @@ def check(root: Path, home: Path) -> dict[str, object]:
     now = datetime.now()
     last_schedule = last_scheduled_time(now, hour, minute)
     real_report_mtime = mtime(real_report)
+    real_report_started_at = run_log_start_time(real_report)
     run_log_mtime = mtime(run_log)
     run_log_started_at = run_log_start_time(run_log)
     run_log_after_latest_schedule = (
         last_schedule is not None
-        and run_log_mtime is not None
         and run_log_started_at is not None
-        and run_log_mtime >= last_schedule.timestamp()
         and last_schedule <= run_log_started_at <= last_schedule + timedelta(hours=2)
     )
     missed_latest_schedule = (
         last_schedule is not None
         and plist_mtime is not None
         and plist_mtime < last_schedule.timestamp()
-        and (real_report_mtime is None or real_report_mtime < last_schedule.timestamp())
+        and (real_report_started_at is None or real_report_started_at < last_schedule)
         and not run_log_after_latest_schedule
     )
 
@@ -198,7 +197,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append("no real nightly report found")
     elif plist_mtime is not None and real_report.stat().st_mtime < plist_mtime:
         warnings.append("latest real report predates current launchd install; wait for next 23:00 run")
-    if run_log_after_latest_schedule and (real_report_mtime is None or real_report_mtime < last_schedule.timestamp()):
+    if run_log_after_latest_schedule and (real_report_started_at is None or real_report_started_at < last_schedule):
         warnings.append("latest scheduled 23:00 run appears to have started but no newer real report exists yet")
     if missed_latest_schedule:
         warnings.append("latest scheduled 23:00 run has passed but no newer real report was produced")
@@ -224,6 +223,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "stdout_log": str(stdout_log),
         "latest_real_report": str(real_report) if real_report else "",
         "latest_real_stamp": report_stamp(real_report),
+        "latest_real_started_at": real_report_started_at.isoformat(timespec="seconds") if real_report_started_at else "",
         "latest_report_including_dry_run": str(dry_report) if dry_report else "",
         "latest_report_including_dry_run_stamp": report_stamp(dry_report),
     }

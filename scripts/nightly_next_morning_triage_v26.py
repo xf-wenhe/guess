@@ -84,6 +84,24 @@ def review_validation_paths(root: Path, review_output: Path) -> list[Path]:
     return unique
 
 
+def launchd_log_text(health: dict[str, object]) -> str:
+    texts: list[str] = []
+    for key in ("stdout_log", "stderr_log"):
+        raw_path = str(health.get(key) or "")
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        candidates = [path, *sorted(path.parent.glob(path.name + ".*.bak"))]
+        for candidate in candidates:
+            if candidate.exists():
+                texts.append(candidate.read_text(encoding="utf-8", errors="replace"))
+    return "\n".join(texts)
+
+
+def launchd_device_evidence(health: dict[str, object]) -> dict[str, object]:
+    return analyze_nightly_report_v26.parse_log_devices(launchd_log_text(health))
+
+
 def build_triage(args: argparse.Namespace) -> dict[str, object]:
     root = args.root.resolve()
     nightly_root = root / ".nightly"
@@ -104,6 +122,14 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
     health = check_nightly_launchd_v26.check(root, args.home)
     report_path = analyze_nightly_report_v26.choose_report(nightly_root, explicit=None, include_dry_run=False)
     analysis = analyze_nightly_report_v26.build_summary(report_path, nightly_root, include_dry_run=False)
+    if analysis.get("actual_device_inferred") == "unknown":
+        device = launchd_device_evidence(health)
+        if device.get("actual_device_inferred") != "unknown":
+            analysis.update(device)
+    if not analysis.get("gate_status"):
+        gate_status = analyze_nightly_report_v26.parse_gate_status(launchd_log_text(health))
+        if gate_status.get("gate_status"):
+            analysis.update(gate_status)
 
     review_rows = 0
     review_stats: dict[str, object] = {"rows": 0, "source_counts": {}, "status_counts": {}, "severity_counts": {}}
@@ -183,6 +209,7 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
             "used_gpu_or_mps": analysis.get("used_gpu_or_mps"),
             "cpu_fallback_seen": analysis.get("cpu_fallback_seen"),
             "best_round": analysis.get("best_round"),
+            "gate_status_available": bool(analysis.get("gate_status")),
             "failed_gates": analysis.get("failed_gates"),
             "group_regressions": analysis.get("group_regressions"),
             "bucket_confusions": analysis.get("bucket_confusions"),
@@ -224,6 +251,8 @@ def print_human(payload: dict[str, object]) -> None:
         print(f"best_round={analysis['best_round']}")
     if analysis["failed_gates"]:
         print("failed_gates=" + ",".join(analysis["failed_gates"]))
+    elif not analysis.get("gate_status_available"):
+        print("failed_gates=(unavailable: matching gate log not found)")
     if analysis["group_regressions"]:
         names = [item.get("group", "") for item in analysis["group_regressions"][:8]]
         print("regressed_groups=" + ",".join(names))
@@ -299,6 +328,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     failed = analysis.get("failed_gates") or []
     if failed:
         lines.extend(f"- `{item}`" for item in failed)
+    elif not analysis.get("gate_status_available"):
+        lines.append("- unavailable: matching gate log was not found; use regressed groups and bucket confusions below")
     else:
         lines.append("- no failed gates detected")
 

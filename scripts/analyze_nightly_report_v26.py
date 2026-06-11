@@ -163,6 +163,14 @@ def parse_log_devices(log_text: str) -> dict[str, object]:
     for value in candidates:
         if value in {"cuda", "mps", "cpu"}:
             actual = value
+    lower = log_text.lower()
+    if actual == "unknown":
+        if re.search(r"\bcuda\b", lower):
+            actual = "cuda"
+        elif re.search(r"\bmps\b|\bmetal\b", lower):
+            actual = "mps"
+        elif re.search(r"\bcpu\b", lower):
+            actual = "cpu"
     return {
         "device_mentions": candidates[-20:],
         "requested_device_inferred": requested,
@@ -203,6 +211,7 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "hard_negative_ok",
         "synonym_recall_ok",
         "antonym_mid_recall_ok",
+        "antonym_strict_mid_recall_ok",
         "regression_ok",
         "accepted",
     )
@@ -223,6 +232,7 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "hard_negative_ok",
         "synonym_recall_ok",
         "antonym_mid_recall_ok",
+        "antonym_strict_mid_recall_ok",
         "regression_ok",
     )
     failed = [name for name in primary if status.get(name) is False]
@@ -251,6 +261,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     stamp = report_stamp(report)
     log_path = find_log(nightly_root, stamp)
     log_text = read_text(log_path) if log_path else ""
+    device_text = "\n".join(part for part in (log_text, text) if part)
     config = parse_key_value_table(text, "运行配置")
     gates = parse_key_value_table(text, "晋升门控")
     rounds = parse_rounds(text)
@@ -269,7 +280,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
             best_mae = mae
             best_round = item
 
-    device = parse_log_devices(log_text)
+    device = parse_log_devices(device_text)
     gate_status = parse_gate_status(log_text)
     failures = parse_log_failures(log_text)
     total_rounds = parse_total_rounds(text)

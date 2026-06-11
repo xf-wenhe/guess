@@ -7,11 +7,11 @@ This directory contains both current operational scripts and older experiment/bu
 - `nightly_train_v26.sh`
   Main nightly training loop. Builds data, trains three daily candidate seeds by default, evaluates strict gates, and optionally promotes. The default device mode is `auto` so local GPU/MPS is used when available, with CPU retry for supervised training failures.
 - `build_nightly_semantic_sets.py`
-  Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration.
+  Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration. Antonym rows are normalized to `antonym_mid`, score `50`, range `45-55`, with protected sample weights.
 - `train_v28c_mse_contrastive.py`
-  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive tag boosts, pinned high-value review rows, and optional multi-angle coverage for high-value rows.
+  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, and optional multi-angle coverage for high-value rows.
 - `eval_v26_gold.py`
-  Evaluates model/calibration metrics and emits group metrics plus worst cases.
+  Evaluates model/calibration metrics and emits group metrics plus worst cases, including antonym 40-60 and stricter 45-55 mid-score recall.
 - `run_regression_pairs_v23.py`
   Fixed semantic regression gate, including antonym/opposite pairs that must score in the 45-55 semantic range.
 - `analyze_nightly_report_v26.py`

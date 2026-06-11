@@ -71,6 +71,7 @@ HARD_NEG_TAGS = {
 
 TAG_REPEAT_BOOSTS = {
     "alias_synonym_high": 1.5,
+    "antonym_mid": 2.0,
     "near_synonym_high": 1.5,
     "hint_like_high": 1.5,
     "same_category_mid": 1.5,
@@ -260,6 +261,8 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
     score_buckets = Counter((int(row["score"] * 100) // 10) * 10 for row in rows)
     hard_count = sum(1 for row in rows if row["tag"] in HARD_NEG_TAGS)
     protected_count = sum(1 for row in rows if row["tag"] in TAG_REPEAT_BOOSTS)
+    antonym_mid_count = sum(1 for row in rows if row["tag"] == "antonym_mid")
+    antonym_mid_repeats = sum(row["repeat"] for row in rows if row["tag"] == "antonym_mid")
     pinned_count = sum(1 for row in rows if is_high_value_row(row))
     angle_covered_count = sum(1 for row in rows if row["repeat"] >= len(ANGLES))
     stats = {
@@ -274,6 +277,8 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
         "contrastive_tag_counts": dict(contrastive_tag_counts.most_common(30)),
         "hard_negative_rows": hard_count,
         "hard_negative_ratio": round(hard_count / max(len(rows), 1), 6),
+        "antonym_mid_rows": antonym_mid_count,
+        "antonym_mid_examples_after_repeat": antonym_mid_repeats,
         "protected_positive_rows": protected_count,
         "pinned_high_value_rows": pinned_count,
         "full_angle_coverage_rows": angle_covered_count,

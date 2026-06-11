@@ -611,6 +611,10 @@ b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
 c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
 b_ant_recall = float(base_ant.get('mid_score_recall_40_60', 0.0))
 c_ant_recall = float(cand_ant.get('mid_score_recall_40_60', 0.0))
+b_ant_strict_recall = float(base_ant.get('mid_score_recall_45_55', 0.0))
+c_ant_strict_recall = float(cand_ant.get('mid_score_recall_45_55', 0.0))
+b_ant_strict_recall = float(base_ant.get('mid_score_recall_45_55', 0.0))
+c_ant_strict_recall = float(cand_ant.get('mid_score_recall_45_55', 0.0))
 hard_negative_ok = True
 if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
   hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
@@ -618,8 +622,10 @@ synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
 antonym_mid_recall_ok = True
+antonym_strict_mid_recall_ok = True
 if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
   antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
+  antonym_strict_mid_recall_ok = c_ant_strict_recall >= (b_ant_strict_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
@@ -627,7 +633,7 @@ total_match = re.search(r'total=(\d+)', reg)
 total = int(total_match.group(1)) if total_match else -1
 reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok and antonym_strict_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -658,6 +664,9 @@ print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'base_antonym_mid_recall_40_60={b_ant_recall:.2f}')
 print(f'cand_antonym_mid_recall_40_60={c_ant_recall:.2f}')
 print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'base_antonym_mid_recall_45_55={b_ant_strict_recall:.2f}')
+print(f'cand_antonym_mid_recall_45_55={c_ant_strict_recall:.2f}')
+print(f'antonym_strict_mid_recall_ok={antonym_strict_mid_recall_ok}')
 print(f'regression_passed={passed}')
 print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')
@@ -746,7 +755,10 @@ for group in groups:
     elif group == "hard_negative":
         extra = f"low@30 {b.get('low_score_precision_at_30', '-')} -> {c.get('low_score_precision_at_30', '-')}"
     elif group == "antonym":
-        extra = f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}"
+        extra = (
+            f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}; "
+            f"strict@45-55 {b.get('mid_score_recall_45_55', '-')} -> {c.get('mid_score_recall_45_55', '-')}"
+        )
     lines.append(
         f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
         f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
@@ -1072,8 +1084,10 @@ synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
 antonym_mid_recall_ok = True
+antonym_strict_mid_recall_ok = True
 if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
   antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
+  antonym_strict_mid_recall_ok = c_ant_strict_recall >= (b_ant_strict_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
@@ -1081,7 +1095,7 @@ total_match = re.search(r'total=(\d+)', reg)
 total = int(total_match.group(1)) if total_match else -1
 reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok and antonym_strict_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -1104,6 +1118,9 @@ print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'project_antonym_mid_recall_40_60={b_ant_recall:.2f}')
 print(f'best_antonym_mid_recall_40_60={c_ant_recall:.2f}')
 print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'project_antonym_mid_recall_45_55={b_ant_strict_recall:.2f}')
+print(f'best_antonym_mid_recall_45_55={c_ant_strict_recall:.2f}')
+print(f'antonym_strict_mid_recall_ok={antonym_strict_mid_recall_ok}')
 print(f'regression_passed={passed}')
 print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')
