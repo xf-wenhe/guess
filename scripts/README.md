@@ -2,10 +2,28 @@
 
 This directory contains both current operational scripts and older experiment/build helpers. Prefer the entrypoints below unless you are rebuilding a historical dataset.
 
+The maintained semantic-training inventory is also recorded in `semantic_script_manifest.json`. Tests verify that every script in that manifest still exists and that the current entrypoints remain documented here.
+
+## Current One-Command Entrypoints
+
+Use these first; they are the maintained path for the local semantic model loop.
+
+| task | command |
+|------|---------|
+| Morning status, latest report, gates, GPU/MPS evidence, review queue | `python3 scripts/nightly_next_morning_triage_v26.py --write-review-csv --markdown-output .nightly/reports/next_morning_triage_$(date +%Y%m%d).md` |
+| LaunchAgent health only | `python3 scripts/check_nightly_launchd_v26.py` |
+| Latest promotion report only | `python3 scripts/analyze_nightly_report_v26.py` |
+| Live goal checklist | `python3 scripts/semantic_training_todo_status.py` |
+| Semantic script inventory check | `python3 scripts/validate_semantic_script_manifest.py` |
+| Manual dry-run of nightly wiring | `NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash scripts/nightly_train_v26.sh` |
+| Deployment preflight after promotion | `bash scripts/preflight_v26.sh` |
+
+The normal unattended route is the user LaunchAgent installed by `install_nightly_10pm_launchd.sh`. It runs `nightly_train_v26.sh` at 23:00 with three daily rounds, default GPU/MPS auto selection, supervised v28c training, and CPU retry if auto-device supervised training fails.
+
 ## Daily Semantic Model Loop
 
 - `nightly_train_v26.sh`
-  Main nightly training loop. Builds data, trains three daily candidate seeds by default, evaluates strict gates, and optionally promotes. The default device mode is `auto` so local GPU/MPS is used when available, with CPU retry for supervised training failures.
+  Main nightly training loop. Builds data, trains three daily candidate seeds by default, evaluates strict gates, and optionally promotes. The default device mode is `auto` so local GPU/MPS is used when available, with CPU retry for supervised training failures. Promotion reports include per-round actual training sampling stats, including `antonym_mid_rows` and `antonym_mid_examples_after_repeat`.
 - `build_nightly_semantic_sets.py`
   Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration. Antonym rows are normalized to `antonym_mid`, score `50`, range `45-55`, with protected sample weights.
 - `train_v28c_mse_contrastive.py`
@@ -19,11 +37,13 @@ This directory contains both current operational scripts and older experiment/bu
 - `check_nightly_launchd_v26.py`
   Verifies the active macOS LaunchAgent wrapper, three-run config, antonym gate env, current stderr health, and latest scheduled-run/report status.
 - `nightly_next_morning_triage_v26.py`
-  Preferred next-morning entrypoint. Combines launchd health, latest real-report analysis, device status, failed gates, and optional worst-case review CSV generation.
+  Preferred next-morning entrypoint. Combines launchd health, latest real-report analysis, device status, failed gates, actual train sampling stats, and optional worst-case review CSV generation.
 - `semantic_training_todo_status.py`
   Prints the live goal checklist from `docs/SEMANTIC_TRAINING_TODO.md`, including completed/pending counts and the remaining blocking items.
+- `validate_semantic_script_manifest.py`
+  Validates `semantic_script_manifest.json`: maintained scripts must exist, removed obsolete trainers must stay absent, and current entrypoints must remain documented in this guide.
 - `preflight_v26.sh`
-  End-to-end deployment preflight for server, regression, and puzzle data.
+  End-to-end deployment preflight for script inventory, server, regression, and puzzle data.
 
 ## Data Quality And Review
 
@@ -69,3 +89,12 @@ Removed obsolete Phoenix trainers:
 
 - `train_v28_phoenix_finetune.py`
 - `train_v28b_phoenix_finetune.py`
+
+## Cleanup Policy
+
+Do not delete scripts simply because they are not part of the current nightly command. Many older builders and repair scripts are provenance for CSVs that still feed the current training pool. A script is safe to remove only when all of these are true:
+
+- It is not referenced by docs, tests, launchd wrappers, or other scripts.
+- Its generated artifacts are not inputs to `build_nightly_semantic_sets.py`.
+- It is not needed to reproduce a historical dataset referenced by the current model docs.
+- The removal is covered by `python3 -m unittest test.nightly_scripts_test` and the relevant preflight or dry-run command.

@@ -213,6 +213,7 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
             "failed_gates": analysis.get("failed_gates"),
             "group_regressions": analysis.get("group_regressions"),
             "bucket_confusions": analysis.get("bucket_confusions"),
+            "train_sampling": analysis.get("train_sampling"),
             "antonym_group": analysis.get("antonym_group"),
         },
         "todo": todo_summary,
@@ -266,6 +267,16 @@ def print_human(payload: dict[str, object]) -> None:
                 f"avg_error={item.get('cand_avg_error')} "
                 f"tags={item.get('top_tags')} groups={item.get('top_groups')} "
                 f"examples={item.get('examples')}"
+            )
+    if analysis.get("train_sampling"):
+        print("train_sampling:")
+        for item in analysis["train_sampling"][:5]:
+            print(
+                "- "
+                f"round={item.get('round')} "
+                f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
+                f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"min_tag_rows={item.get('min_tag_rows', '-')}"
             )
     if analysis["antonym_group"]:
         print(f"antonym_group={analysis['antonym_group']}")
@@ -356,6 +367,20 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
             )
     else:
         lines.append("- none")
+
+    lines.extend(["", "## Train Sampling", ""])
+    sampling = analysis.get("train_sampling") or []
+    if sampling:
+        for item in sampling[:10]:
+            lines.append(
+                "- "
+                f"round `{item.get('round', '')}`: "
+                f"antonym_mid_rows `{item.get('antonym_mid_rows', '-')}`, "
+                f"antonym_mid_examples `{item.get('antonym_mid_examples_after_repeat', '-')}`, "
+                f"min_tag_rows `{item.get('min_tag_rows', '-')}`"
+            )
+    else:
+        lines.append("- unavailable: report has no actual training sampling section")
 
     lines.extend(["", "## Antonym", ""])
     antonym = analysis.get("antonym_group")

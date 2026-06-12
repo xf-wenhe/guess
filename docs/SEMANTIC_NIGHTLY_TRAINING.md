@@ -59,6 +59,7 @@ NIGHTLY_SUP_LEARNING_RATE=2e-6
 NIGHTLY_SUP_MAX_REPEAT=3
 NIGHTLY_SUP_ANGLE_MODE=cycle
 NIGHTLY_SUP_LOSS_MODE=mixed
+NIGHTLY_SUP_MIN_TAG_ROWS=antonym_mid:45
 ```
 
 The daily row cap intentionally matches the high-signal smoke scale. The daily profile now runs three seeds every night. If a future change requires a faster local check, use `NIGHTLY_TRAIN_PROFILE=smoke` or `NIGHTLY_TOTAL_RUNS=1` explicitly for that manual run only. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger row-count runs in `full` or explicit experiments until they beat the fixed gates.
@@ -104,7 +105,9 @@ NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD=0.3
 
 The trainer also pins high-value rows before filling the remaining daily subset. Rows with `sample_weight >= 3.0` or reviewers starting with `nightly_patch` are kept in the capped subset first, then the rest is filled by stratified sampling. This makes yesterday's reviewed failures visible to the next daily run even when the full training pool is much larger than `NIGHTLY_SUP_MAX_TRAIN_ROWS`.
 
-Antonym rows get a dedicated repeat boost in the supervised trainer (`antonym_mid: 2.0`) and the training stats include `antonym_mid_rows` plus `antonym_mid_examples_after_repeat`. This makes it easy to verify that a nightly actually trained enough 50% antonym examples before reading candidate metrics.
+Antonym rows get a dedicated repeat boost in the supervised trainer (`antonym_mid: 2.0`) and the training stats include `antonym_mid_rows` plus `antonym_mid_examples_after_repeat`. Each nightly promotion report now includes an `实际训练抽样 Round N` section, so the next-morning triage can verify that a run actually trained enough 50% antonym examples before reading candidate metrics.
+
+After the 2026-06-11 run still sampled only 19 `antonym_mid` rows out of the 300-row daily cap and regressed strict 45-55 recall to zero, the daily trainer now enforces `NIGHTLY_SUP_MIN_TAG_ROWS=antonym_mid:45`. In the same 300-row cap this raises the sampled antonym rows to about 50 and the repeated antonym training examples to about 150, while leaving most of the batch for hard negatives, synonyms, hints, and same-category rows.
 
 Current hard-negative boost tags include the recurring real failure patterns from recent reports:
 
@@ -242,11 +245,11 @@ Nightly reports are written to:
 .nightly/reports/nightly_promotion_*.md
 ```
 
-Reports include per-round metrics, project-vs-candidate metrics, group metrics, the candidate's largest holdout errors, and calibrated bucket-confusion summaries. Review the worst cases and repeated bucket shifts first when adding new labels or tuning the next objective.
+Reports include per-round metrics, project-vs-candidate metrics, group metrics, actual training sampling stats, the candidate's largest holdout errors, and calibrated bucket-confusion summaries. Review the worst cases and repeated bucket shifts first when adding new labels or tuning the next objective.
 
 Rejected candidates also write diagnostics. A failed nightly is still useful: use the rejected candidate's worst cases to add or correct labels before the next run.
 
-Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags.
+Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags. Supervised runs also include `实际训练抽样 Round N`, which is the capped subset that actually reached the trainer; for the current antonym policy, check `antonym_mid_rows`, `antonym_mid_examples_after_repeat`, and `min_tag_rows`.
 
 Run the next-morning triage without touching models:
 
@@ -254,7 +257,7 @@ Run the next-morning triage without touching models:
 python3 scripts/nightly_next_morning_triage_v26.py
 ```
 
-It combines launchd health, missed-schedule detection, latest real-report analysis, device inference, failed gates, regressed metric groups, bucket-confusion summaries, and the live goal TODO progress from `docs/SEMANTIC_TRAINING_TODO.md`. Device and gate inference first use the report/matching tmp log, then fall back to current or archived launchd stdout/stderr logs so a report can still show `mps` and failed gates after the installer archives old logs. The missed-schedule check also looks for a non-dry-run `.nightly/data/tmp/nightly_train_v26_*.log` whose timestamp falls within the latest scheduled 23:00 start window; if a three-round run has started but has not written a report yet, triage reports `nightly_started_waiting_for_report` instead of `missed_schedule`. Use `--markdown-output tmp/nightly_triage.md` when you want a saved summary, and `--write-review-csv` when you also want it to refresh `data/nightly_worst_case_review_candidates.csv` from the latest real report's worst cases.
+It combines launchd health, missed-schedule detection, latest real-report analysis, device inference, failed gates, regressed metric groups, bucket-confusion summaries, actual train sampling stats, and the live goal TODO progress from `docs/SEMANTIC_TRAINING_TODO.md`. Device and gate inference first use the report/matching tmp log, then fall back to current or archived launchd stdout/stderr logs so a report can still show `mps` and failed gates after the installer archives old logs. The missed-schedule check also looks for a non-dry-run `.nightly/data/tmp/nightly_train_v26_*.log` whose timestamp falls within the latest scheduled 23:00 start window; if a three-round run has started but has not written a report yet, triage reports `nightly_started_waiting_for_report` instead of `missed_schedule`. Use `--markdown-output tmp/nightly_triage.md` when you want a saved summary, and `--write-review-csv` when you also want it to refresh `data/nightly_worst_case_review_candidates.csv` from the latest real report's worst cases.
 
 Check live goal progress from the repo:
 

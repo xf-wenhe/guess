@@ -133,6 +133,25 @@ def parse_bucket_confusion_sections(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def parse_train_sampling_sections(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for section in re.split(r"\n## ", text):
+        if not section.startswith("实际训练抽样 Round "):
+            continue
+        title = section.splitlines()[0].strip()
+        round_match = re.search(r"Round\s+(\d+)", title)
+        row: dict[str, str] = {"round": round_match.group(1) if round_match else ""}
+        for line in section.splitlines():
+            if not line.startswith("|") or "---" in line:
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) != 2 or cells[0] in {"item", "tag"}:
+                continue
+            row[cells[0]] = cells[1]
+        rows.append(row)
+    return rows
+
+
 def parse_result(text: str) -> str:
     match = re.search(r"\*\*结果\*\*:\s*([^\n]+)", text)
     return match.group(1).strip() if match else "unknown"
@@ -267,6 +286,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     rounds = parse_rounds(text)
     groups = parse_group_sections(text)
     bucket_confusions = parse_bucket_confusion_sections(text)
+    train_sampling = parse_train_sampling_sections(text)
     result = parse_result(text)
     dry_run = "DRY_RUN" in text or config.get("dry_run") == "1"
 
@@ -303,6 +323,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
         "rounds": rounds,
         "best_round": best_round,
         "groups": groups,
+        "train_sampling": train_sampling,
         "group_regressions": parse_group_regressions(groups),
         "bucket_confusions": bucket_confusions,
         "antonym_group": next((row for row in groups if row.get("group") == "antonym"), None),
@@ -370,6 +391,18 @@ def print_human(summary: dict[str, object]) -> None:
                 f"tags={item.get('top_tags')} "
                 f"groups={item.get('top_groups')} "
                 f"examples={item.get('examples')}"
+            )
+
+    train_sampling = summary.get("train_sampling") or []
+    if train_sampling:
+        print("实际训练抽样:")
+        for item in train_sampling[:8]:
+            print(
+                "- "
+                f"round={item.get('round')} "
+                f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
+                f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"min_tag_rows={item.get('min_tag_rows', '-')}"
             )
 
     antonym = summary.get("antonym_group")

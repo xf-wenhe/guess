@@ -169,6 +169,7 @@ SUP_HARD_NEG_BOOST="${NIGHTLY_SUP_HARD_NEG_BOOST:-2.0}"
 SUP_MAX_REPEAT="${NIGHTLY_SUP_MAX_REPEAT:-$DEFAULT_SUP_MAX_REPEAT}"
 SUP_ANGLE_MODE="${NIGHTLY_SUP_ANGLE_MODE:-cycle}"
 SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
+SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
@@ -230,7 +231,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -343,6 +344,7 @@ printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\t
 declare -a ROUND_RESULTS  # "round|stage|model|calib|mae|acc|raw_mae|raw_acc|accepted"
 declare -a ROUND_DIAGNOSTICS  # "round|stage|base_metrics_json|candidate_metrics_json|regression_out"
 declare -a ROUND_BUILD_STATS  # "round|build_stats_json"
+declare -a ROUND_TRAIN_STATS  # "round|train_stats_json"
 
 # ---- run single round ----
 
@@ -365,6 +367,7 @@ run_single_round() {
   local nightly_metrics_json="$WORK_DIR/nightly_candidate_metrics_${round_stamp}.json"
   local regression_out="$WORK_DIR/nightly_regression_${round_stamp}.txt"
   local build_stats_json="$WORK_DIR/nightly_build_stats_${round_stamp}.json"
+  local train_stats_json="$WORK_DIR/nightly_train_stats_${round_stamp}.json"
 
   local candidate_model="$round_base_model"
   local candidate_stage="base"
@@ -435,6 +438,8 @@ run_single_round() {
       SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
       SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
       SEM_LOSS_MODE=$SUP_LOSS_MODE \
+      SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+      SEM_TRAIN_STATS_JSON=$train_stats_json \
       SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
       SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
       SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
@@ -460,6 +465,8 @@ run_single_round() {
           SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
           SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
           SEM_LOSS_MODE=$SUP_LOSS_MODE \
+          SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+          SEM_TRAIN_STATS_JSON=$train_stats_json \
           SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
           SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
           SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
@@ -470,6 +477,7 @@ run_single_round() {
         return 1
       fi
     fi
+    ROUND_TRAIN_STATS+=("${round}|${train_stats_json}")
     candidate_model="$round_output_model"
     if [[ "$candidate_stage" == "unsup" ]]; then
       candidate_stage="unsup+supervised"
@@ -873,6 +881,60 @@ with out.open("a", encoding="utf-8") as file:
 PY
 }
 
+append_train_stats() {
+  local title="$1"
+  local stats_json="$2"
+  local out="$3"
+  if [[ ! -f "$stats_json" ]]; then
+    return 0
+  fi
+  TRAIN_STATS_TITLE="$title" TRAIN_STATS_JSON="$stats_json" TRAIN_STATS_REPORT_OUT="$out" "$PYTHON_BIN" - <<'PY'
+import json, os
+from pathlib import Path
+
+title = os.environ["TRAIN_STATS_TITLE"]
+stats = json.loads(Path(os.environ["TRAIN_STATS_JSON"]).read_text(encoding="utf-8"))
+out = Path(os.environ["TRAIN_STATS_REPORT_OUT"])
+
+lines = [
+    "",
+    f"## {title}",
+    "",
+    "| item | value |",
+    "|------|-------|",
+]
+for key in (
+    "source_rows",
+    "train_examples_after_repeat",
+    "contrastive_examples",
+    "hard_negative_rows",
+    "antonym_mid_rows",
+    "antonym_mid_examples_after_repeat",
+    "min_tag_rows",
+    "pinned_high_value_rows",
+    "protected_positive_rows",
+    "full_angle_coverage_rows",
+):
+    value = stats.get(key, "-")
+    if isinstance(value, (dict, list)):
+        value = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    lines.append(f"| {key} | {value} |")
+
+lines.extend([
+    "",
+    "### Selected Tag Counts",
+    "",
+    "| tag | count |",
+    "|-----|-------|",
+])
+for tag, count in sorted((stats.get("tag_counts") or {}).items(), key=lambda item: (-item[1], item[0]))[:20]:
+    lines.append(f"| {tag} | {count} |")
+
+with out.open("a", encoding="utf-8") as file:
+    file.write("\n".join(lines) + "\n")
+PY
+}
+
 append_device_log_excerpt() {
   local out="$1"
   {
@@ -880,7 +942,12 @@ append_device_log_excerpt() {
     echo "## 设备日志摘录"
     echo ""
     echo '```text'
-    grep -Ei '(^|\s)(SEM_DEVICE|TRAIN_DEVICE|device=|using device|retry with SEM_DEVICE=cpu|ACCELERATE_USE_CPU|mps|cuda|cpu)(\s|$|=|:)' "$LOG_FILE" | tail -n 40 || true
+    if [[ -f "$LOG_FILE" ]]; then
+      grep -Ei '(^|\s)(SEM_DEVICE|TRAIN_DEVICE|device=|using device|retry with SEM_DEVICE=cpu|ACCELERATE_USE_CPU|mps|cuda|cpu)(\s|$|=|:)' "$LOG_FILE" | tail -n 40 || true
+    else
+      echo "matching tmp log missing: $LOG_FILE"
+      echo "see launchd stdout/stderr logs for device evidence"
+    fi
     echo '```'
   } >> "$out"
 }
@@ -937,6 +1004,7 @@ done
   echo "| sup_lr | $SUP_LEARNING_RATE |"
   echo "| sup_angle_mode | $SUP_ANGLE_MODE |"
   echo "| sup_loss_mode | $SUP_LOSS_MODE |"
+  echo "| sup_min_tag_rows | $SUP_MIN_TAG_ROWS |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
   echo ""
   echo "## 晋升门控"
@@ -968,6 +1036,14 @@ for build_stats_json in "$WORK_DIR"/nightly_build_stats_"${STAMP}"_r*.json; do
   stats_round="${stats_base##*_r}"
   stats_round="${stats_round%.json}"
   append_build_stats "训练数据分布 Round $stats_round" "$build_stats_json" "$PROMOTION_REPORT"
+done
+
+for train_stats_json in "$WORK_DIR"/nightly_train_stats_"${STAMP}"_r*.json; do
+  [[ -f "$train_stats_json" ]] || continue
+  stats_base="$(basename "$train_stats_json")"
+  stats_round="${stats_base##*_r}"
+  stats_round="${stats_round%.json}"
+  append_train_stats "实际训练抽样 Round $stats_round" "$train_stats_json" "$PROMOTION_REPORT"
 done
 
 if [[ "$DRY_RUN" == "1" ]]; then

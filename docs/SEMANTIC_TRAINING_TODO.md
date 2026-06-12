@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-11 14:10 CST
+Last updated: 2026-06-12 13:00 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -133,7 +133,7 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Run `mixed_contrastive` micro-smoke to test hard-negative direction.
 - [x] Add selective contrastive scope so hard-negative margin training avoids ambiguous same-category rows by default.
 - [x] Re-run selective `mixed_contrastive` micro-smoke to check whether bucket accuracy damage is reduced.
-- [ ] Read the next real nightly report, then analyze gates/device/three-round stability and choose the next experiment direction.
+- [x] Read the 2026-06-11 nightly report and analyze gates/device/three-round stability.
 - [x] Read the 2026-06-03 nightly report and change daily defaults away from the regressing 2500-row run.
 - [x] Read the 2026-06-04 nightly report and confirm it still used the stale 2500-row launchd script.
 - [x] Reinstall launchd so the 23:00 job executes the current repo script.
@@ -149,6 +149,9 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Add strict nightly promotion gate for antonym 45-55 recall no-degrade.
 - [x] Boost normalized antonym training rows so the 50% policy is represented under the 300-row daily cap.
 - [x] Add trainer stats for antonym row/repeat coverage.
+- [x] Add minimum daily sampling quota for `antonym_mid` so strict 45-55 examples are not underrepresented.
+- [x] Write per-round trainer sampling stats into nightly promotion reports so `antonym_mid:45` can be verified without digging through launchd logs.
+- [x] Parse and display trainer sampling stats in next-morning triage so antonym quota evidence appears in the one-command report.
 - [x] Add nightly report sections for run config, gate thresholds, regression gate, and device log excerpt.
 - [x] Add `scripts/analyze_nightly_report_v26.py` to summarize the latest real report, skipping dry-runs by default.
 - [x] Extend nightly report analysis to list failed gates and regressed metric groups for faster next-day tuning.
@@ -169,7 +172,12 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Add review queue source/status/severity summaries to next-morning triage so high-priority pending rows are visible immediately.
 - [x] Add review candidate validation so approved/merged rows cannot silently enter training with invalid scores, invalid statuses, duplicate pairs, or non-50 antonyms.
 - [x] Run review candidate validation from next-morning triage so unsafe approved/merged rows are visible before the next training build.
-- [ ] Wait for the next real nightly report to verify the new 300-row, three-round daily default.
+- [x] Verify the 2026-06-11 real nightly used the 300-row, three-round daily default on MPS.
+- [x] Consolidate the maintained semantic/nightly script entrypoints in `scripts/README.md` so daily operation does not depend on guessing among legacy scripts.
+- [x] Add `scripts/semantic_script_manifest.json` and tests so the maintained semantic script inventory is machine-checkable before future cleanup.
+- [x] Add `scripts/validate_semantic_script_manifest.py` so the semantic script inventory can be checked without remembering a unit-test name.
+- [x] Run the semantic script inventory validator from `scripts/preflight_v26.sh` so deployment checks cover script cleanup drift.
+- [ ] Wait for the next real nightly report to verify the new `antonym_mid:45` sampling quota and strict 45-55 recovery.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
 - [ ] Promote only after strict gates pass.

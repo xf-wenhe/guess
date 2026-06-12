@@ -110,6 +110,8 @@ def fatal_stderr_lines_since_install(stderr_log: Path, plist_mtime: float | None
     lines = []
     for line in read_text(stderr_log).splitlines():
         lower = line.lower()
+        if re.search(r"^grep: .+nightly_train_v26_\d{8}_\d{6}\.log: no such file or directory$", lower):
+            continue
         if any(token in lower for token in fatal_tokens):
             lines.append(line.strip())
     return lines[-20:]
@@ -144,6 +146,10 @@ def check(root: Path, home: Path) -> dict[str, object]:
         problems.append(f"NIGHTLY_TOTAL_RUNS is {env.get('NIGHTLY_TOTAL_RUNS')!r}, expected '3'")
     if env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT") != "0.0":
         problems.append("missing antonym mid-recall gate env")
+    if env.get("NIGHTLY_SUP_MIN_TAG_ROWS") != "antonym_mid:45":
+        warnings.append(
+            f"NIGHTLY_SUP_MIN_TAG_ROWS is {env.get('NIGHTLY_SUP_MIN_TAG_ROWS')!r}, expected 'antonym_mid:45'"
+        )
     hour = calendar.get("Hour")
     minute = calendar.get("Minute")
     if hour != 23 or minute != 0:
@@ -218,6 +224,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "run_log_after_latest_schedule": run_log_after_latest_schedule,
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
+        "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
@@ -243,6 +250,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"run_log_after_latest_schedule={payload['run_log_after_latest_schedule']}")
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
+    print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:

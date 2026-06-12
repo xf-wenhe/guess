@@ -110,6 +110,8 @@ cat > "$PLIST_PATH" <<PLIST
     <string>daily</string>
     <key>NIGHTLY_SUP_LOSS_MODE</key>
     <string>mixed</string>
+    <key>NIGHTLY_SUP_MIN_TAG_ROWS</key>
+    <string>antonym_mid:45</string>
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>

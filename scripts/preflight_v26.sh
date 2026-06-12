@@ -9,10 +9,13 @@ if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
 
-echo "[1/6] stop old embedding server on :8000"
+echo "[1/7] semantic script manifest check"
+"$PYTHON_BIN" scripts/validate_semantic_script_manifest.py
+
+echo "[2/7] stop old embedding server on :8000"
 lsof -ti tcp:8000 | xargs -r kill -9 || true
 
-echo "[2/6] start embedding server"
+echo "[3/7] start embedding server"
 mkdir -p tmp
 LOG_FILE="tmp/preflight_embedding_server.log"
 "$PYTHON_BIN" embedding_server.py > "$LOG_FILE" 2>&1 &
@@ -26,7 +29,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-echo "[3/6] health check"
+echo "[4/7] health check"
 for _ in {1..30}; do
   if curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
     echo "health: ok"
@@ -42,10 +45,10 @@ if ! curl -fsS "http://127.0.0.1:8000/health" >/dev/null 2>&1; then
   exit 1
 fi
 
-echo "[4/6] regression check (expect all pairs pass)"
+echo "[5/7] regression check (expect all pairs pass)"
 "$PYTHON_BIN" scripts/run_regression_pairs_v23.py | tail -n 8
 
-echo "[5/6] puzzle structural/naturalness check"
+echo "[6/7] puzzle structural/naturalness check"
 "$PYTHON_BIN" scripts/validate_puzzle_data.py
 "$PYTHON_BIN" tmp/puzzle_naturalness_diff_report.py >/dev/null
 "$PYTHON_BIN" - <<'PY'
@@ -92,7 +95,7 @@ print(
 )
 PY
 
-echo "[6/6] global hint quality gate"
+echo "[7/7] global hint quality gate"
 "$PYTHON_BIN" scripts/validate_global_hint_rules_v1.py
 
 echo "preflight done"

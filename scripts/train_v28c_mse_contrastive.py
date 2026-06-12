@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 TRAIN_CSV = Path(os.getenv("SEM_TRAIN_CSV", "data/train_v28c_balanced.csv"))
 BASE_MODEL = os.getenv("SEM_BASE_MODEL", "models/bge-m3-finetuned-v27-semreal-anchor")
 OUTPUT_MODEL = os.getenv("SEM_OUTPUT_MODEL", "models/bge-m3-finetuned-v28c-phoenix")
+TRAIN_STATS_JSON = os.getenv("SEM_TRAIN_STATS_JSON", "").strip()
 EPOCHS = int(os.getenv("SEM_EPOCHS", "2"))
 BATCH_SIZE = int(os.getenv("SEM_BATCH_SIZE", "8"))
 LEARNING_RATE = float(os.getenv("SEM_LR", os.getenv("SEM_LEARNING_RATE", "8e-6")))
@@ -48,6 +49,7 @@ PIN_HIGH_VALUE_ROWS = os.getenv("SEM_PIN_HIGH_VALUE_ROWS", "1").strip().lower() 
 PIN_WEIGHT_THRESHOLD = float(os.getenv("SEM_PIN_WEIGHT_THRESHOLD", "3.0"))
 MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = int(os.getenv("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", "0"))
 MIN_TRAIN_EXAMPLES = int(os.getenv("SEM_MIN_TRAIN_EXAMPLES", "200"))
+MIN_TAG_ROWS_SPEC = os.getenv("SEM_MIN_TAG_ROWS", "antonym_mid:45").strip()
 
 ANGLES = [
     "从含义角度看：",
@@ -84,6 +86,26 @@ CONTRASTIVE_POSITIVE_TAGS = {
     "near_synonym_high",
     "hint_like_high",
 }
+
+
+def parse_min_tag_rows(spec: str) -> dict[str, int]:
+    quotas: dict[str, int] = {}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item or ":" not in item:
+            continue
+        tag, raw_count = item.split(":", 1)
+        tag = tag.strip()
+        try:
+            count = int(raw_count.strip())
+        except ValueError:
+            continue
+        if tag and count > 0:
+            quotas[tag] = count
+    return quotas
+
+
+MIN_TAG_ROWS = parse_min_tag_rows(MIN_TAG_ROWS_SPEC)
 
 
 def resolve_device() -> str:
@@ -128,6 +150,24 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
         rng.shuffle(pinned)
         return pinned[:limit]
 
+    selected = list(pinned)
+    if MIN_TAG_ROWS:
+        rows_by_tag: dict[str, list[dict]] = {}
+        for row in pool:
+            rows_by_tag.setdefault(row["tag"], []).append(row)
+        for tag_rows in rows_by_tag.values():
+            rng.shuffle(tag_rows)
+        for tag, minimum in MIN_TAG_ROWS.items():
+            if len(selected) >= limit:
+                break
+            current = sum(1 for row in selected if row["tag"] == tag)
+            need = max(0, min(minimum - current, limit - len(selected)))
+            if need <= 0:
+                continue
+            selected.extend(rows_by_tag.get(tag, [])[:need])
+            rows_by_tag[tag] = rows_by_tag.get(tag, [])[need:]
+        pool = [row for tag_rows in rows_by_tag.values() for row in tag_rows]
+
     buckets: dict[tuple[str, str], list[dict]] = {}
     for row in pool:
         bucket_key = (row["tag"] or "unknown", score_bin(row["score"]))
@@ -135,7 +175,6 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
     for bucket_rows in buckets.values():
         rng.shuffle(bucket_rows)
 
-    selected = list(pinned)
     bucket_names = sorted(
         buckets,
         key=lambda key: (0 if key[0] in HARD_NEG_TAGS else 1, key[0], key[1]),
@@ -271,6 +310,7 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
         "train_examples_after_repeat": len(examples),
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
+        "min_tag_rows": MIN_TAG_ROWS,
         "contrastive_pos_threshold": CONTRASTIVE_POS_THRESHOLD,
         "contrastive_neg_threshold": CONTRASTIVE_NEG_THRESHOLD,
         "contrastive_label_counts": dict(contrastive_label_counts),
@@ -363,6 +403,10 @@ def main() -> None:
     print(f"pin_high_value_rows={PIN_HIGH_VALUE_ROWS} pin_weight_threshold={PIN_WEIGHT_THRESHOLD}")
     print(f"min_angle_repeat_for_high_value={MIN_ANGLE_REPEAT_FOR_HIGH_VALUE}")
     print("train_stats=" + json.dumps(stats, ensure_ascii=False))
+    if TRAIN_STATS_JSON:
+        stats_path = Path(TRAIN_STATS_JSON)
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     model = SentenceTransformer(
         BASE_MODEL,
