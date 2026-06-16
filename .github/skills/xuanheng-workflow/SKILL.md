@@ -1,4 +1,4 @@
----
+﻿---
 name: xuanheng-workflow
 description: Use when the user says “玄衡”, or asks to optimize puzzle hints/categories in this repo with the strict Xuanheng workflow, especially when you must preserve hard gates, batch closure, and source-backed routing between score diagnosis and puzzle editing.
 ---
@@ -59,6 +59,7 @@ description: Use when the user says “玄衡”, or asks to optimize puzzle hin
 4. **任何 hint 不得与 answer 共享字符**
 5. **禁止元描述、模板词、泛词、残片、主观臆造**
 6. **禁止同题重复、同类重复、全局重复**
+7. **禁止同题内 7 条 hints 出现同义词/近义词替换，例如“郁闷”与“郁结”不能同时出现**
 7. **任意修改后必须重检，未到零错误不得报完成**
 8. **禁止未检报检、禁止虚报“已完成/已通过”**
 9. **自然语义优先于整齐化，不得为了控字数牺牲自然性**
@@ -92,6 +93,7 @@ description: Use when the user says “玄衡”, or asks to optimize puzzle hin
 - 若用户指出第2-6条任一槽位泄露，优先下调该槽位强度
 - 若第6/7条只是泛化词或弱相关词，视为无效锚点，优先替换高位锚点
 - 每个 hint 单独设计，不得用提示词池批量抽取填充
+- 若只存在同义词/近义词重复问题，优先替换冲突 hint，而不是全部重写
 
 ### 5. 自然语义规则
 - hints 以自然短语为主，通常不超过 5 字；必要时可放宽到 6 字，但不能为了控字数写成残片
@@ -142,3 +144,5 @@ description: Use when the user says “玄衡”, or asks to optimize puzzle hin
 - 不得把 `tmp/xuanheng_*` 试验脚本当作权威规则
 - 不得把“玄衡”解释成可以绕过校验的身份特权
 - 若系统层问题未排除，不得把所有异常都甩给 `puzzles.json`
+
+

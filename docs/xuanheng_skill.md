@@ -1,4 +1,4 @@
-# 玄衡统一工作流
+﻿# 玄衡统一工作流
 
 > **作者**: 玄衡  
 > **创建日期**: 2025-05  
@@ -123,7 +123,7 @@
 只有在以下情况下才考虑整组重写：
 
 - 7 条整体风格失控
-- 多条维度重复
+- 多条维度重复或同义词重复
 - 阶梯整体错乱
 - 题目本身 hints 质量整体太差，局部修补收益很低
 
@@ -377,3 +377,6 @@
 - `.github/skills/puzzle-management/SKILL.md`
 - `.github/skills/xuanheng-semantic-diagnosis/SKILL.md`
 - `.github/skills/work-subtle-naturalization/SKILL.md`（仅"工作"分类细修阶段）
+
+
+
