@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-07 18:12 CST
+Last updated: 2026-06-15 11:00 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -133,7 +133,7 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Run `mixed_contrastive` micro-smoke to test hard-negative direction.
 - [x] Add selective contrastive scope so hard-negative margin training avoids ambiguous same-category rows by default.
 - [x] Re-run selective `mixed_contrastive` micro-smoke to check whether bucket accuracy damage is reduced.
-- [ ] Read the next real nightly report, then analyze gates/device/three-round stability and choose the next experiment direction.
+- [x] Read the 2026-06-11 nightly report and analyze gates/device/three-round stability.
 - [x] Read the 2026-06-03 nightly report and change daily defaults away from the regressing 2500-row run.
 - [x] Read the 2026-06-04 nightly report and confirm it still used the stale 2500-row launchd script.
 - [x] Reinstall launchd so the 23:00 job executes the current repo script.
@@ -146,6 +146,12 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Fix nightly promotion gates to require `passed == total`, not the old hard-coded `30`.
 - [x] Add code-level fallback for required antonym regression pairs and train patches so ignored local data files cannot silently drop the new policy.
 - [x] Add nightly promotion gate for antonym 40-60 recall no-degrade.
+- [x] Add strict nightly promotion gate for antonym 45-55 recall no-degrade.
+- [x] Boost normalized antonym training rows so the 50% policy is represented under the 300-row daily cap.
+- [x] Add trainer stats for antonym row/repeat coverage.
+- [x] Add minimum daily sampling quota for `antonym_mid` so strict 45-55 examples are not underrepresented.
+- [x] Write per-round trainer sampling stats into nightly promotion reports so `antonym_mid:45` can be verified without digging through launchd logs.
+- [x] Parse and display trainer sampling stats in next-morning triage so antonym quota evidence appears in the one-command report.
 - [x] Add nightly report sections for run config, gate thresholds, regression gate, and device log excerpt.
 - [x] Add `scripts/analyze_nightly_report_v26.py` to summarize the latest real report, skipping dry-runs by default.
 - [x] Extend nightly report analysis to list failed gates and regressed metric groups for faster next-day tuning.
@@ -166,7 +172,20 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Add review queue source/status/severity summaries to next-morning triage so high-priority pending rows are visible immediately.
 - [x] Add review candidate validation so approved/merged rows cannot silently enter training with invalid scores, invalid statuses, duplicate pairs, or non-50 antonyms.
 - [x] Run review candidate validation from next-morning triage so unsafe approved/merged rows are visible before the next training build.
-- [ ] Wait for the next real nightly report to verify the new 300-row, three-round daily default.
+- [x] Verify the 2026-06-11 real nightly used the 300-row, three-round daily default on MPS.
+- [x] Consolidate the maintained semantic/nightly script entrypoints in `scripts/README.md` so daily operation does not depend on guessing among legacy scripts.
+- [x] Add `scripts/semantic_script_manifest.json` and tests so the maintained semantic script inventory is machine-checkable before future cleanup.
+- [x] Add `scripts/validate_semantic_script_manifest.py` so the semantic script inventory can be checked without remembering a unit-test name.
+- [x] Run the semantic script inventory validator from `scripts/preflight_v26.sh` so deployment checks cover script cleanup drift.
+- [x] Read the 2026-06-12 through 2026-06-14 real nightly reports and verify they ran three MPS/GPU rounds with `antonym_mid:45` actually sampled.
+- [x] Change the default mixed supervised objective so `antonym_mid` stays in cosine regression but is excluded from CoSENT ranking.
+- [x] Show CoSENT exclusion counts in analyzer and next-morning triage so the next report proves the new antonym objective path.
+- [x] Add a behavior test proving `antonym_mid` remains in overall/cosine training examples but is removed from CoSENT examples.
+- [x] Add next-morning strategy checks so reports after the new install must prove `antonym_mid` was excluded from CoSENT.
+- [x] Make next-morning triage fail with `semantic_strategy_failed` if a fresh report does not prove the CoSENT antonym exclusion strategy.
+- [x] Add a recent-report comparison command so several real nightlies can be checked together for GPU/MPS, three-round stability, failed gates, antonym 50% behavior, and CoSENT exclusion evidence.
+- [x] Make next-morning triage report `waiting_for_next_real_strategy_report` when the latest real report predates the newly installed strategy.
+- [ ] Wait for the next real nightly report to verify `NIGHTLY_SUP_MIDPOINT_TAGS=antonym_mid` plus CoSENT exclusion recovers strict 45-55 antonym behavior.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
 - [ ] Promote only after strict gates pass.

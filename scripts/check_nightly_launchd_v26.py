@@ -110,6 +110,8 @@ def fatal_stderr_lines_since_install(stderr_log: Path, plist_mtime: float | None
     lines = []
     for line in read_text(stderr_log).splitlines():
         lower = line.lower()
+        if re.search(r"^grep: .+nightly_train_v26_\d{8}_\d{6}\.log: no such file or directory$", lower):
+            continue
         if any(token in lower for token in fatal_tokens):
             lines.append(line.strip())
     return lines[-20:]
@@ -144,6 +146,25 @@ def check(root: Path, home: Path) -> dict[str, object]:
         problems.append(f"NIGHTLY_TOTAL_RUNS is {env.get('NIGHTLY_TOTAL_RUNS')!r}, expected '3'")
     if env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT") != "0.0":
         problems.append("missing antonym mid-recall gate env")
+    if env.get("NIGHTLY_SUP_MIN_TAG_ROWS") != "antonym_mid:45":
+        warnings.append(
+            f"NIGHTLY_SUP_MIN_TAG_ROWS is {env.get('NIGHTLY_SUP_MIN_TAG_ROWS')!r}, expected 'antonym_mid:45'"
+        )
+    if env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS") != "antonym_mid":
+        warnings.append(
+            "NIGHTLY_SUP_COSENT_EXCLUDE_TAGS is "
+            f"{env.get('NIGHTLY_SUP_COSENT_EXCLUDE_TAGS')!r}, expected 'antonym_mid'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_TAGS") != "antonym_mid":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_TAGS is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_TAGS')!r}, expected 'antonym_mid'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST") != "2.0":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST')!r}, expected '2.0'"
+        )
     hour = calendar.get("Hour")
     minute = calendar.get("Minute")
     if hour != 23 or minute != 0:
@@ -177,20 +198,19 @@ def check(root: Path, home: Path) -> dict[str, object]:
     now = datetime.now()
     last_schedule = last_scheduled_time(now, hour, minute)
     real_report_mtime = mtime(real_report)
+    real_report_started_at = run_log_start_time(real_report)
     run_log_mtime = mtime(run_log)
     run_log_started_at = run_log_start_time(run_log)
     run_log_after_latest_schedule = (
         last_schedule is not None
-        and run_log_mtime is not None
         and run_log_started_at is not None
-        and run_log_mtime >= last_schedule.timestamp()
         and last_schedule <= run_log_started_at <= last_schedule + timedelta(hours=2)
     )
     missed_latest_schedule = (
         last_schedule is not None
         and plist_mtime is not None
         and plist_mtime < last_schedule.timestamp()
-        and (real_report_mtime is None or real_report_mtime < last_schedule.timestamp())
+        and (real_report_started_at is None or real_report_started_at < last_schedule)
         and not run_log_after_latest_schedule
     )
 
@@ -198,7 +218,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append("no real nightly report found")
     elif plist_mtime is not None and real_report.stat().st_mtime < plist_mtime:
         warnings.append("latest real report predates current launchd install; wait for next 23:00 run")
-    if run_log_after_latest_schedule and (real_report_mtime is None or real_report_mtime < last_schedule.timestamp()):
+    if run_log_after_latest_schedule and (real_report_started_at is None or real_report_started_at < last_schedule):
         warnings.append("latest scheduled 23:00 run appears to have started but no newer real report exists yet")
     if missed_latest_schedule:
         warnings.append("latest scheduled 23:00 run has passed but no newer real report was produced")
@@ -219,11 +239,16 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "run_log_after_latest_schedule": run_log_after_latest_schedule,
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
+        "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
+        "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
+        "sup_midpoint_tags": env.get("NIGHTLY_SUP_MIDPOINT_TAGS"),
+        "sup_midpoint_repeat_boost": env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST"),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
         "latest_real_report": str(real_report) if real_report else "",
         "latest_real_stamp": report_stamp(real_report),
+        "latest_real_started_at": real_report_started_at.isoformat(timespec="seconds") if real_report_started_at else "",
         "latest_report_including_dry_run": str(dry_report) if dry_report else "",
         "latest_report_including_dry_run_stamp": report_stamp(dry_report),
     }
@@ -243,6 +268,10 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"run_log_after_latest_schedule={payload['run_log_after_latest_schedule']}")
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
+    print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
+    print(f"sup_cosent_exclude_tags={payload['sup_cosent_exclude_tags']}")
+    print(f"sup_midpoint_tags={payload['sup_midpoint_tags']}")
+    print(f"sup_midpoint_repeat_boost={payload['sup_midpoint_repeat_boost']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:

@@ -78,6 +78,7 @@ ANTONYM_TAGS = {
 }
 ANTONYM_SCORE = 50
 ANTONYM_RANGE = "45-55"
+ANTONYM_SAMPLE_WEIGHT = float(os.getenv("SEM_ANTONYM_SAMPLE_WEIGHT", "2.5"))
 REQUIRED_ANTONYM_TRAIN_PATCH_ROWS = [
     ("高兴", "难过", "情感", "情感"),
     ("快乐", "悲伤", "情感", "情感"),
@@ -185,6 +186,7 @@ def normalize_row(row: dict, reviewer_fallback: str) -> Optional[dict]:
         relation_tag = "antonym_mid"
         score = ANTONYM_SCORE
         expected_range = ANTONYM_RANGE
+        sample_weight_f = max(sample_weight_f, ANTONYM_SAMPLE_WEIGHT)
     else:
         expected_range = (row.get("expected_range") or range_for_score(score)).strip()
 

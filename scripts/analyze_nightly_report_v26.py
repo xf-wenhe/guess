@@ -56,8 +56,47 @@ def choose_report(nightly_root: Path, explicit: str | None, include_dry_run: boo
 def find_log(nightly_root: Path, stamp: str) -> Path | None:
     if not stamp:
         return None
-    path = nightly_root / "data" / "tmp" / f"nightly_train_v26_{stamp}.log"
-    return path if path.exists() else None
+    candidates = [
+        nightly_root / "data" / "tmp" / f"nightly_train_v26_{stamp}.log",
+        ROOT / "tmp" / f"nightly_train_v26_{stamp}.log",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+
+    if nightly_root.resolve() == DEFAULT_NIGHTLY_ROOT.resolve():
+        launchd_dir = Path.home() / ".guess_nightly" / "logs"
+        for path in sorted(
+            launchd_dir.glob("launchd_nightly_v26.*.log*"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        ):
+            text = read_text(path)
+            if stamp in text:
+                return path
+    return None
+
+
+def read_log_for_stamp(path: Path | None, stamp: str) -> str:
+    if not path:
+        return ""
+    text = read_text(path)
+    if not stamp or path.name.startswith("nightly_train_v26_"):
+        return text
+
+    start_markers = [
+        f"nightly_train_v26_{stamp}.log",
+        f"Nightly Promotion Report - {stamp}",
+    ]
+    starts = [text.find(marker) for marker in start_markers if text.find(marker) >= 0]
+    if not starts:
+        return text
+
+    start = min(starts)
+    next_run = text.find("\n[nightly] log=", start + 1)
+    if next_run < 0:
+        return text[start:]
+    return text[start:next_run]
 
 
 def parse_key_value_table(text: str, title: str) -> dict[str, str]:
@@ -133,6 +172,25 @@ def parse_bucket_confusion_sections(text: str) -> list[dict[str, str]]:
     return rows
 
 
+def parse_train_sampling_sections(text: str) -> list[dict[str, str]]:
+    rows: list[dict[str, str]] = []
+    for section in re.split(r"\n## ", text):
+        if not section.startswith("实际训练抽样 Round "):
+            continue
+        title = section.splitlines()[0].strip()
+        round_match = re.search(r"Round\s+(\d+)", title)
+        row: dict[str, str] = {"round": round_match.group(1) if round_match else ""}
+        for line in section.splitlines():
+            if not line.startswith("|") or "---" in line:
+                continue
+            cells = [cell.strip() for cell in line.strip("|").split("|")]
+            if len(cells) != 2 or cells[0] in {"item", "tag"}:
+                continue
+            row[cells[0]] = cells[1]
+        rows.append(row)
+    return rows
+
+
 def parse_result(text: str) -> str:
     match = re.search(r"\*\*结果\*\*:\s*([^\n]+)", text)
     return match.group(1).strip() if match else "unknown"
@@ -163,6 +221,14 @@ def parse_log_devices(log_text: str) -> dict[str, object]:
     for value in candidates:
         if value in {"cuda", "mps", "cpu"}:
             actual = value
+    lower = log_text.lower()
+    if actual == "unknown":
+        if re.search(r"\bcuda\b", lower):
+            actual = "cuda"
+        elif re.search(r"\bmps\b|\bmetal\b", lower):
+            actual = "mps"
+        elif re.search(r"\bcpu\b", lower):
+            actual = "cpu"
     return {
         "device_mentions": candidates[-20:],
         "requested_device_inferred": requested,
@@ -203,6 +269,7 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "hard_negative_ok",
         "synonym_recall_ok",
         "antonym_mid_recall_ok",
+        "antonym_strict_mid_recall_ok",
         "regression_ok",
         "accepted",
     )
@@ -223,6 +290,7 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "hard_negative_ok",
         "synonym_recall_ok",
         "antonym_mid_recall_ok",
+        "antonym_strict_mid_recall_ok",
         "regression_ok",
     )
     failed = [name for name in primary if status.get(name) is False]
@@ -250,12 +318,14 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     text = read_text(report)
     stamp = report_stamp(report)
     log_path = find_log(nightly_root, stamp)
-    log_text = read_text(log_path) if log_path else ""
+    log_text = read_log_for_stamp(log_path, stamp)
+    device_text = "\n".join(part for part in (log_text, text) if part)
     config = parse_key_value_table(text, "运行配置")
     gates = parse_key_value_table(text, "晋升门控")
     rounds = parse_rounds(text)
     groups = parse_group_sections(text)
     bucket_confusions = parse_bucket_confusion_sections(text)
+    train_sampling = parse_train_sampling_sections(text)
     result = parse_result(text)
     dry_run = "DRY_RUN" in text or config.get("dry_run") == "1"
 
@@ -269,7 +339,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
             best_mae = mae
             best_round = item
 
-    device = parse_log_devices(log_text)
+    device = parse_log_devices(device_text)
     gate_status = parse_gate_status(log_text)
     failures = parse_log_failures(log_text)
     total_rounds = parse_total_rounds(text)
@@ -292,6 +362,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
         "rounds": rounds,
         "best_round": best_round,
         "groups": groups,
+        "train_sampling": train_sampling,
         "group_regressions": parse_group_regressions(groups),
         "bucket_confusions": bucket_confusions,
         "antonym_group": next((row for row in groups if row.get("group") == "antonym"), None),
@@ -359,6 +430,20 @@ def print_human(summary: dict[str, object]) -> None:
                 f"tags={item.get('top_tags')} "
                 f"groups={item.get('top_groups')} "
                 f"examples={item.get('examples')}"
+            )
+
+    train_sampling = summary.get("train_sampling") or []
+    if train_sampling:
+        print("实际训练抽样:")
+        for item in train_sampling[:8]:
+            print(
+                "- "
+                f"round={item.get('round')} "
+                f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
+                f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
+                f"min_tag_rows={item.get('min_tag_rows', '-')}"
             )
 
     antonym = summary.get("antonym_group")

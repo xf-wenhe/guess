@@ -20,6 +20,8 @@ For the live completion checklist, see `docs/SEMANTIC_TRAINING_TODO.md`.
   Runs the fixed regression suite used as a promotion gate, including required antonym pairs checked at semantic 45-55.
 - `scripts/analyze_nightly_report_v26.py`
   Reads the latest non-dry-run report and matching log, then summarizes three-round status, device/GPU evidence, best round, failed gates, regressed metric groups, and antonym behavior.
+- `scripts/compare_recent_nightly_reports_v26.py`
+  Compares the most recent non-dry-run reports so several nights can be checked at once for three-round stability, GPU/MPS usage, best candidate metrics, failed gates, antonym 45-55 behavior, and CoSENT antonym exclusion evidence.
 - `scripts/extract_nightly_worst_case_review_candidates.py`
   Converts the report's worst-case table into a pending review CSV. Approved rows are consumed by the next nightly build.
 
@@ -59,6 +61,7 @@ NIGHTLY_SUP_LEARNING_RATE=2e-6
 NIGHTLY_SUP_MAX_REPEAT=3
 NIGHTLY_SUP_ANGLE_MODE=cycle
 NIGHTLY_SUP_LOSS_MODE=mixed
+NIGHTLY_SUP_MIN_TAG_ROWS=antonym_mid:45
 ```
 
 The daily row cap intentionally matches the high-signal smoke scale. The daily profile now runs three seeds every night. If a future change requires a faster local check, use `NIGHTLY_TRAIN_PROFILE=smoke` or `NIGHTLY_TOTAL_RUNS=1` explicitly for that manual run only. The 2026-06-03 23:00 nightly used the previous 2500-row daily default, took 306.5 minutes on MPS, and regressed to `cal_mae=7.7946`, `cal_bucket_acc=65.93`. Keep larger row-count runs in `full` or explicit experiments until they beat the fixed gates.
@@ -70,6 +73,12 @@ Verify the installed entrypoint after changing nightly defaults:
 ```bash
 launchctl print gui/$(id -u)/com.guess.nightly-train-v26 | sed -n '1,80p'
 NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash scripts/nightly_train_v26.sh | sed -n '1,70p'
+```
+
+Compare recent real reports after several unattended runs:
+
+```bash
+python3 scripts/compare_recent_nightly_reports_v26.py --limit 7
 ```
 
 The dry-run config line should include:
@@ -87,9 +96,9 @@ TOTAL_RUNS=3 sup_rows=300 sup_epochs=1 sup_batch=8
 - `cosine`: absolute cosine/label regression objective; useful for investigating raw MAE degradation.
 - `mixed_contrastive`: experimental; adds `OnlineContrastiveLoss` to push selected hard negatives farther apart while protecting clear high positives. Use this for targeted hard-negative experiments before making it the daily default.
 
-Antonym pairs are treated as semantically related but opposite in direction, not as unrelated hard negatives. The normalized training/check target is `antonym_mid`, `score_0_100=50`, `expected_range=45-55`. The nightly builder rewrites older `antonym_low` and `antonym_or_conflict` rows to this policy before they enter train/calib/eval/holdout splits, and the trainer excludes antonyms from contrastive hard-negative mining.
+Antonym pairs are treated as semantically related but opposite in direction, not as unrelated hard negatives. The normalized training/check target is `antonym_mid`, `score_0_100=50`, `expected_range=45-55`. The nightly builder rewrites older `antonym_low` and `antonym_or_conflict` rows to this policy before they enter train/calib/eval/holdout splits, lifts ordinary antonym rows to at least `sample_weight=2.5`, and the trainer excludes antonyms from contrastive hard-negative mining.
 
-Because `data/*.csv` and `data/*.json` are ignored local data files, the code also carries required antonym fallbacks. `scripts/run_regression_pairs_v23.py` appends the fixed antonym regression checks if the local JSON is missing them. `scripts/build_nightly_semantic_sets.py` injects the corresponding high-weight train-only antonym patch rows, then applies the usual holdout/calib/eval exclusion so frozen holdout pairs still do not leak into training.
+Because `data/*.csv` and `data/*.json` are ignored local data files, the code also carries required antonym fallbacks. `scripts/run_regression_pairs_v23.py` appends the fixed antonym regression checks if the local JSON is missing them. `scripts/build_nightly_semantic_sets.py` injects the corresponding high-weight train-only antonym patch rows, then applies the usual holdout/calib/eval exclusion so frozen holdout pairs still do not leak into training. Required antonym patches keep `sample_weight=4.0`; the broader generated antonym set now defaults to `sample_weight=2.5` so the 50% policy is visible even under the 300-row daily cap.
 
 `mixed_contrastive` supports a scope knob:
 
@@ -103,6 +112,14 @@ NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD=0.3
 `selective` is the default. It applies contrastive positives only to clear high-positive tags such as `alias_synonym_high`, `near_synonym_high`, and `hint_like_high`, and contrastive negatives only to hard-negative tags. `all` is available for comparison but the 2026-06-02 micro-smoke showed it improved hard-negative MAE while damaging bucket accuracy and same-category behavior.
 
 The trainer also pins high-value rows before filling the remaining daily subset. Rows with `sample_weight >= 3.0` or reviewers starting with `nightly_patch` are kept in the capped subset first, then the rest is filled by stratified sampling. This makes yesterday's reviewed failures visible to the next daily run even when the full training pool is much larger than `NIGHTLY_SUP_MAX_TRAIN_ROWS`.
+
+Antonym rows get a dedicated repeat boost in the supervised trainer (`antonym_mid: 2.0`) and the training stats include `antonym_mid_rows` plus `antonym_mid_examples_after_repeat`. Each nightly promotion report now includes an `实际训练抽样 Round N` section, so the next-morning triage can verify that a run actually trained enough 50% antonym examples before reading candidate metrics.
+
+After the 2026-06-11 run still sampled only 19 `antonym_mid` rows out of the 300-row daily cap and regressed strict 45-55 recall to zero, the daily trainer now enforces `NIGHTLY_SUP_MIN_TAG_ROWS=antonym_mid:45`. In the same 300-row cap this raises the sampled antonym rows to about 50 and the repeated antonym training examples to about 150, while leaving most of the batch for hard negatives, synonyms, hints, and same-category rows.
+
+The 2026-06-12 through 2026-06-14 reports proved that the quota worked, but antonym recall still collapsed. The next fix was loss-specific: `NIGHTLY_SUP_COSENT_EXCLUDE_TAGS=antonym_mid` keeps 50% antonym rows in the cosine regression objective while excluding them from the CoSENT ranking objective. This avoids treating mid-score antonym anchors as pairwise ranking constraints against every lower/higher sample in the batch.
+
+The 2026-06-15 report then proved that CoSENT exclusion alone was not enough: antonym rows were excluded from CoSENT, but strict 45-55 recall still fell to zero. The supervised trainer now adds a dedicated midpoint cosine objective controlled by `NIGHTLY_SUP_MIDPOINT_TAGS=antonym_mid` and `NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST=2.0`, so antonym/opposite rows get an independent pull toward 50% rather than being diluted inside the general cosine objective.
 
 Current hard-negative boost tags include the recurring real failure patterns from recent reports:
 
@@ -207,6 +224,7 @@ Defaults:
 - hard-negative group MAE does not degrade
 - synonym/alias recall does not degrade
 - antonym mid-score recall at 40-60 does not degrade
+- strict antonym 50% recall at 45-55 does not degrade
 - fixed regression passes
 
 Useful overrides:
@@ -239,11 +257,11 @@ Nightly reports are written to:
 .nightly/reports/nightly_promotion_*.md
 ```
 
-Reports include per-round metrics, project-vs-candidate metrics, group metrics, the candidate's largest holdout errors, and calibrated bucket-confusion summaries. Review the worst cases and repeated bucket shifts first when adding new labels or tuning the next objective.
+Reports include per-round metrics, project-vs-candidate metrics, group metrics, actual training sampling stats, the candidate's largest holdout errors, and calibrated bucket-confusion summaries. Review the worst cases and repeated bucket shifts first when adding new labels or tuning the next objective.
 
 Rejected candidates also write diagnostics. A failed nightly is still useful: use the rejected candidate's worst cases to add or correct labels before the next run.
 
-Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags.
+Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags. Supervised runs also include `实际训练抽样 Round N`, which is the capped subset that actually reached the trainer; for the current antonym policy, check `antonym_mid_rows`, `antonym_mid_examples_after_repeat`, `cosent_excluded_examples_after_repeat`, `cosent_exclude_tags`, and `min_tag_rows`.
 
 Run the next-morning triage without touching models:
 
@@ -251,7 +269,7 @@ Run the next-morning triage without touching models:
 python3 scripts/nightly_next_morning_triage_v26.py
 ```
 
-It combines launchd health, missed-schedule detection, latest real-report analysis, device inference, failed gates, regressed metric groups, bucket-confusion summaries, and the live goal TODO progress from `docs/SEMANTIC_TRAINING_TODO.md`. The missed-schedule check also looks for a non-dry-run `.nightly/data/tmp/nightly_train_v26_*.log` whose timestamp falls within the latest scheduled 23:00 start window; if a three-round run has started but has not written a report yet, triage reports `nightly_started_waiting_for_report` instead of `missed_schedule`. Use `--markdown-output tmp/nightly_triage.md` when you want a saved summary, and `--write-review-csv` when you also want it to refresh `data/nightly_worst_case_review_candidates.csv` from the latest real report's worst cases.
+It combines launchd health, missed-schedule detection, latest real-report analysis, device inference, failed gates, regressed metric groups, bucket-confusion summaries, actual train sampling stats, and the live goal TODO progress from `docs/SEMANTIC_TRAINING_TODO.md`. Device and gate inference first use the report/matching tmp log, then fall back to current or archived launchd stdout/stderr logs so a report can still show `mps` and failed gates after the installer archives old logs. The missed-schedule check also looks for a non-dry-run `.nightly/data/tmp/nightly_train_v26_*.log` whose timestamp falls within the latest scheduled 23:00 start window; if a three-round run has started but has not written a report yet, triage reports `nightly_started_waiting_for_report` instead of `missed_schedule`. If the latest real report predates a newly installed semantic strategy, triage reports `waiting_for_next_real_strategy_report`; that means launchd is healthy, but the current strategy still needs the next real 23:00 report before it can be judged. Use `--markdown-output tmp/nightly_triage.md` when you want a saved summary, and `--write-review-csv` when you also want it to refresh `data/nightly_worst_case_review_candidates.csv` from the latest real report's worst cases.
 
 Check live goal progress from the repo:
 

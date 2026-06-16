@@ -1,6 +1,10 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Ensure Python stdout/stderr are unbuffered so progress bars (tqdm) and logs
+# are visible even when launchd redirects output to files.
+export PYTHONUNBUFFERED=1
+
 ROOT_DIR="${NIGHTLY_SCRIPT_ROOT:-$(cd "$(dirname "$0")/.." && pwd)}"
 cd "$ROOT_DIR"
 
@@ -8,6 +12,10 @@ NIGHTLY_ROOT="${NIGHTLY_ROOT:-$ROOT_DIR/.nightly}"
 if [[ "$NIGHTLY_ROOT" != /* ]]; then
   NIGHTLY_ROOT="$ROOT_DIR/$NIGHTLY_ROOT"
 fi
+
+# HuggingFace cache on the external disk to avoid filling the system volume
+export HF_HOME="${NIGHTLY_ROOT}/hf_cache"
+mkdir -p "$HF_HOME"
 
 to_abs_path() {
   local p="$1"
@@ -67,7 +75,7 @@ LOG_FILE="$WORK_DIR/nightly_train_v26_${STAMP}.log"
 SUMMARY_FILE="$WORK_DIR/nightly_round_summary_${STAMP}.txt"
 LOCK_DIR="$WORK_DIR/.nightly_train_v26.lock"
 
-exec > >(tee -a "$LOG_FILE") 2>&1
+mkdir -p "$WORK_DIR"
 
 echo "[nightly] start at $(date '+%F %T')"
 echo "[nightly] root=$ROOT_DIR"
@@ -161,6 +169,10 @@ SUP_HARD_NEG_BOOST="${NIGHTLY_SUP_HARD_NEG_BOOST:-2.0}"
 SUP_MAX_REPEAT="${NIGHTLY_SUP_MAX_REPEAT:-$DEFAULT_SUP_MAX_REPEAT}"
 SUP_ANGLE_MODE="${NIGHTLY_SUP_ANGLE_MODE:-cycle}"
 SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
+SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
+SUP_COSENT_EXCLUDE_TAGS="${NIGHTLY_SUP_COSENT_EXCLUDE_TAGS:-antonym_mid}"
+SUP_MIDPOINT_TAGS="${NIGHTLY_SUP_MIDPOINT_TAGS:-antonym_mid}"
+SUP_MIDPOINT_REPEAT_BOOST="${NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST:-2.0}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
@@ -222,7 +234,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -335,6 +347,7 @@ printf "round\tstage\tbase_mae\tcand_mae\tbase_acc\tcand_acc\treg_ok\taccepted\t
 declare -a ROUND_RESULTS  # "round|stage|model|calib|mae|acc|raw_mae|raw_acc|accepted"
 declare -a ROUND_DIAGNOSTICS  # "round|stage|base_metrics_json|candidate_metrics_json|regression_out"
 declare -a ROUND_BUILD_STATS  # "round|build_stats_json"
+declare -a ROUND_TRAIN_STATS  # "round|train_stats_json"
 
 # ---- run single round ----
 
@@ -357,6 +370,7 @@ run_single_round() {
   local nightly_metrics_json="$WORK_DIR/nightly_candidate_metrics_${round_stamp}.json"
   local regression_out="$WORK_DIR/nightly_regression_${round_stamp}.txt"
   local build_stats_json="$WORK_DIR/nightly_build_stats_${round_stamp}.json"
+  local train_stats_json="$WORK_DIR/nightly_train_stats_${round_stamp}.json"
 
   local candidate_model="$round_base_model"
   local candidate_stage="base"
@@ -427,6 +441,11 @@ run_single_round() {
       SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
       SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
       SEM_LOSS_MODE=$SUP_LOSS_MODE \
+      SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+      SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
+      SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
+      SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
+      SEM_TRAIN_STATS_JSON=$train_stats_json \
       SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
       SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
       SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
@@ -452,6 +471,11 @@ run_single_round() {
           SEM_MAX_REPEAT=$SUP_MAX_REPEAT \
           SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
           SEM_LOSS_MODE=$SUP_LOSS_MODE \
+          SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+          SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
+          SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
+          SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
+          SEM_TRAIN_STATS_JSON=$train_stats_json \
           SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
           SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
           SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
@@ -462,6 +486,7 @@ run_single_round() {
         return 1
       fi
     fi
+    ROUND_TRAIN_STATS+=("${round}|${train_stats_json}")
     candidate_model="$round_output_model"
     if [[ "$candidate_stage" == "unsup" ]]; then
       candidate_stage="unsup+supervised"
@@ -603,6 +628,10 @@ b_syn_recall = float(base_syn.get('recall_at_70', 0.0))
 c_syn_recall = float(cand_syn.get('recall_at_70', 0.0))
 b_ant_recall = float(base_ant.get('mid_score_recall_40_60', 0.0))
 c_ant_recall = float(cand_ant.get('mid_score_recall_40_60', 0.0))
+b_ant_strict_recall = float(base_ant.get('mid_score_recall_45_55', 0.0))
+c_ant_strict_recall = float(cand_ant.get('mid_score_recall_45_55', 0.0))
+b_ant_strict_recall = float(base_ant.get('mid_score_recall_45_55', 0.0))
+c_ant_strict_recall = float(cand_ant.get('mid_score_recall_45_55', 0.0))
 hard_negative_ok = True
 if int(base_hard.get('count', 0)) > 0 and int(cand_hard.get('count', 0)) > 0:
   hard_negative_ok = c_hard_mae <= (b_hard_mae - min_hard_mae)
@@ -610,8 +639,10 @@ synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
 antonym_mid_recall_ok = True
+antonym_strict_mid_recall_ok = True
 if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
   antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
+  antonym_strict_mid_recall_ok = c_ant_strict_recall >= (b_ant_strict_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
@@ -619,7 +650,7 @@ total_match = re.search(r'total=(\d+)', reg)
 total = int(total_match.group(1)) if total_match else -1
 reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok and antonym_strict_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -650,6 +681,9 @@ print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'base_antonym_mid_recall_40_60={b_ant_recall:.2f}')
 print(f'cand_antonym_mid_recall_40_60={c_ant_recall:.2f}')
 print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'base_antonym_mid_recall_45_55={b_ant_strict_recall:.2f}')
+print(f'cand_antonym_mid_recall_45_55={c_ant_strict_recall:.2f}')
+print(f'antonym_strict_mid_recall_ok={antonym_strict_mid_recall_ok}')
 print(f'regression_passed={passed}')
 print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')
@@ -738,7 +772,10 @@ for group in groups:
     elif group == "hard_negative":
         extra = f"low@30 {b.get('low_score_precision_at_30', '-')} -> {c.get('low_score_precision_at_30', '-')}"
     elif group == "antonym":
-        extra = f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}"
+        extra = (
+            f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}; "
+            f"strict@45-55 {b.get('mid_score_recall_45_55', '-')} -> {c.get('mid_score_recall_45_55', '-')}"
+        )
     lines.append(
         f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
         f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
@@ -853,6 +890,67 @@ with out.open("a", encoding="utf-8") as file:
 PY
 }
 
+append_train_stats() {
+  local title="$1"
+  local stats_json="$2"
+  local out="$3"
+  if [[ ! -f "$stats_json" ]]; then
+    return 0
+  fi
+  TRAIN_STATS_TITLE="$title" TRAIN_STATS_JSON="$stats_json" TRAIN_STATS_REPORT_OUT="$out" "$PYTHON_BIN" - <<'PY'
+import json, os
+from pathlib import Path
+
+title = os.environ["TRAIN_STATS_TITLE"]
+stats = json.loads(Path(os.environ["TRAIN_STATS_JSON"]).read_text(encoding="utf-8"))
+out = Path(os.environ["TRAIN_STATS_REPORT_OUT"])
+
+lines = [
+    "",
+    f"## {title}",
+    "",
+    "| item | value |",
+    "|------|-------|",
+]
+for key in (
+    "source_rows",
+    "train_examples_after_repeat",
+    "cosent_examples_after_repeat",
+    "cosent_exclude_tags",
+    "cosent_excluded_rows",
+    "cosent_excluded_examples_after_repeat",
+    "midpoint_tags",
+    "midpoint_repeat_boost",
+    "midpoint_examples_after_repeat",
+    "contrastive_examples_after_repeat",
+    "hard_negative_rows",
+    "antonym_mid_rows",
+    "antonym_mid_examples_after_repeat",
+    "min_tag_rows",
+    "pinned_high_value_rows",
+    "protected_positive_rows",
+    "full_angle_coverage_rows",
+):
+    value = stats.get(key, "-")
+    if isinstance(value, (dict, list)):
+        value = json.dumps(value, ensure_ascii=False, sort_keys=True)
+    lines.append(f"| {key} | {value} |")
+
+lines.extend([
+    "",
+    "### Selected Tag Counts",
+    "",
+    "| tag | count |",
+    "|-----|-------|",
+])
+for tag, count in sorted((stats.get("tag_counts") or {}).items(), key=lambda item: (-item[1], item[0]))[:20]:
+    lines.append(f"| {tag} | {count} |")
+
+with out.open("a", encoding="utf-8") as file:
+    file.write("\n".join(lines) + "\n")
+PY
+}
+
 append_device_log_excerpt() {
   local out="$1"
   {
@@ -860,7 +958,12 @@ append_device_log_excerpt() {
     echo "## 设备日志摘录"
     echo ""
     echo '```text'
-    grep -Ei '(^|\s)(SEM_DEVICE|TRAIN_DEVICE|device=|using device|retry with SEM_DEVICE=cpu|ACCELERATE_USE_CPU|mps|cuda|cpu)(\s|$|=|:)' "$LOG_FILE" | tail -n 40 || true
+    if [[ -f "$LOG_FILE" ]]; then
+      grep -Ei '(^|\s)(SEM_DEVICE|TRAIN_DEVICE|device=|using device|retry with SEM_DEVICE=cpu|ACCELERATE_USE_CPU|mps|cuda|cpu)(\s|$|=|:)' "$LOG_FILE" | tail -n 40 || true
+    else
+      echo "matching tmp log missing: $LOG_FILE"
+      echo "see launchd stdout/stderr logs for device evidence"
+    fi
     echo '```'
   } >> "$out"
 }
@@ -917,6 +1020,10 @@ done
   echo "| sup_lr | $SUP_LEARNING_RATE |"
   echo "| sup_angle_mode | $SUP_ANGLE_MODE |"
   echo "| sup_loss_mode | $SUP_LOSS_MODE |"
+  echo "| sup_min_tag_rows | $SUP_MIN_TAG_ROWS |"
+  echo "| sup_cosent_exclude_tags | $SUP_COSENT_EXCLUDE_TAGS |"
+  echo "| sup_midpoint_tags | $SUP_MIDPOINT_TAGS |"
+  echo "| sup_midpoint_repeat_boost | $SUP_MIDPOINT_REPEAT_BOOST |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
   echo ""
   echo "## 晋升门控"
@@ -948,6 +1055,14 @@ for build_stats_json in "$WORK_DIR"/nightly_build_stats_"${STAMP}"_r*.json; do
   stats_round="${stats_base##*_r}"
   stats_round="${stats_round%.json}"
   append_build_stats "训练数据分布 Round $stats_round" "$build_stats_json" "$PROMOTION_REPORT"
+done
+
+for train_stats_json in "$WORK_DIR"/nightly_train_stats_"${STAMP}"_r*.json; do
+  [[ -f "$train_stats_json" ]] || continue
+  stats_base="$(basename "$train_stats_json")"
+  stats_round="${stats_base##*_r}"
+  stats_round="${stats_round%.json}"
+  append_train_stats "实际训练抽样 Round $stats_round" "$train_stats_json" "$PROMOTION_REPORT"
 done
 
 if [[ "$DRY_RUN" == "1" ]]; then
@@ -1064,8 +1179,10 @@ synonym_recall_ok = True
 if int(base_syn.get('count', 0)) > 0 and int(cand_syn.get('count', 0)) > 0:
   synonym_recall_ok = c_syn_recall >= (b_syn_recall + min_syn_recall)
 antonym_mid_recall_ok = True
+antonym_strict_mid_recall_ok = True
 if int(base_ant.get('count', 0)) > 0 and int(cand_ant.get('count', 0)) > 0:
   antonym_mid_recall_ok = c_ant_recall >= (b_ant_recall + min_antonym_recall)
+  antonym_strict_mid_recall_ok = c_ant_strict_recall >= (b_ant_strict_recall + min_antonym_recall)
 
 match = re.search(r'passed=(\d+)', reg)
 passed = int(match.group(1)) if match else -1
@@ -1073,7 +1190,7 @@ total_match = re.search(r'total=(\d+)', reg)
 total = int(total_match.group(1)) if total_match else -1
 reg_ok = total > 0 and passed == total
 
-accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok
+accepted = mae_ok and acc_ok and reg_ok and hard_negative_ok and synonym_recall_ok and antonym_mid_recall_ok and antonym_strict_mid_recall_ok
 if require_no_degrade_all:
   accepted = accepted and no_degrade_all
 if require_strict_improvement:
@@ -1096,6 +1213,9 @@ print(f'synonym_recall_ok={synonym_recall_ok}')
 print(f'project_antonym_mid_recall_40_60={b_ant_recall:.2f}')
 print(f'best_antonym_mid_recall_40_60={c_ant_recall:.2f}')
 print(f'antonym_mid_recall_ok={antonym_mid_recall_ok}')
+print(f'project_antonym_mid_recall_45_55={b_ant_strict_recall:.2f}')
+print(f'best_antonym_mid_recall_45_55={c_ant_strict_recall:.2f}')
+print(f'antonym_strict_mid_recall_ok={antonym_strict_mid_recall_ok}')
 print(f'regression_passed={passed}')
 print(f'regression_total={total}')
 print(f'regression_ok={reg_ok}')

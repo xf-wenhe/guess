@@ -1,0 +1,44 @@
+{
+  "schema_version": 1,
+  "purpose": "Maintained semantic training and nightly operation script inventory.",
+  "current_entrypoints": [
+    "nightly_train_v26.sh",
+    "nightly_next_morning_triage_v26.py",
+    "check_nightly_launchd_v26.py",
+    "analyze_nightly_report_v26.py",
+    "compare_recent_nightly_reports_v26.py",
+    "semantic_training_todo_status.py",
+    "validate_semantic_script_manifest.py",
+    "preflight_v26.sh"
+  ],
+  "nightly_pipeline": [
+    "build_nightly_semantic_sets.py",
+    "train_v28c_mse_contrastive.py",
+    "eval_v26_gold.py",
+    "run_regression_pairs_v23.py",
+    "guard_hint_answer_overlap_v1.py"
+  ],
+  "review_data_loop": [
+    "extract_score_trace_review_candidates.py",
+    "extract_nightly_worst_case_review_candidates.py",
+    "validate_review_candidates.py",
+    "merge_error_review_into_gold_v1.py",
+    "build_relabel_candidates_from_review_v1.py",
+    "apply_suggested_relabels_by_bucket_v1.py"
+  ],
+  "source_dataset_builders": [
+    "build_v26_gold_and_unsup.py",
+    "build_v27_hard_mining_csv.py",
+    "build_v27_semreal_train_csv.py",
+    "build_v28c_balanced_train.py"
+  ],
+  "manual_or_historical": [
+    "install_nightly_10pm_daemon.sh",
+    "uninstall_nightly_10pm_daemon.sh",
+    "pretrain_v26_unsupervised.py"
+  ],
+  "removed_obsolete": [
+    "train_v28_phoenix_finetune.py",
+    "train_v28b_phoenix_finetune.py"
+  ]
+}

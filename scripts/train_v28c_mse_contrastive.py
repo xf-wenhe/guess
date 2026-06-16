@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 TRAIN_CSV = Path(os.getenv("SEM_TRAIN_CSV", "data/train_v28c_balanced.csv"))
 BASE_MODEL = os.getenv("SEM_BASE_MODEL", "models/bge-m3-finetuned-v27-semreal-anchor")
 OUTPUT_MODEL = os.getenv("SEM_OUTPUT_MODEL", "models/bge-m3-finetuned-v28c-phoenix")
+TRAIN_STATS_JSON = os.getenv("SEM_TRAIN_STATS_JSON", "").strip()
 EPOCHS = int(os.getenv("SEM_EPOCHS", "2"))
 BATCH_SIZE = int(os.getenv("SEM_BATCH_SIZE", "8"))
 LEARNING_RATE = float(os.getenv("SEM_LR", os.getenv("SEM_LEARNING_RATE", "8e-6")))
@@ -36,6 +37,9 @@ HARD_NEG_BOOST = float(os.getenv("SEM_HARD_NEG_BOOST", "2.0"))
 MAX_REPEAT = int(os.getenv("SEM_MAX_REPEAT", "5"))
 ANGLE_MODE = os.getenv("SEM_ANGLE_MODE", "cycle").strip().lower()
 LOSS_MODE = os.getenv("SEM_LOSS_MODE", "mixed").strip().lower()
+COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").strip()
+MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
+MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
 CONTRASTIVE_MARGIN = float(os.getenv("SEM_CONTRASTIVE_MARGIN", "0.5"))
 CONTRASTIVE_POS_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_POS_THRESHOLD", "0.7"))
 CONTRASTIVE_NEG_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_NEG_THRESHOLD", "0.3"))
@@ -48,6 +52,7 @@ PIN_HIGH_VALUE_ROWS = os.getenv("SEM_PIN_HIGH_VALUE_ROWS", "1").strip().lower() 
 PIN_WEIGHT_THRESHOLD = float(os.getenv("SEM_PIN_WEIGHT_THRESHOLD", "3.0"))
 MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = int(os.getenv("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", "0"))
 MIN_TRAIN_EXAMPLES = int(os.getenv("SEM_MIN_TRAIN_EXAMPLES", "200"))
+MIN_TAG_ROWS_SPEC = os.getenv("SEM_MIN_TAG_ROWS", "antonym_mid:45").strip()
 
 ANGLES = [
     "从含义角度看：",
@@ -71,6 +76,7 @@ HARD_NEG_TAGS = {
 
 TAG_REPEAT_BOOSTS = {
     "alias_synonym_high": 1.5,
+    "antonym_mid": 2.0,
     "near_synonym_high": 1.5,
     "hint_like_high": 1.5,
     "same_category_mid": 1.5,
@@ -82,6 +88,36 @@ CONTRASTIVE_POSITIVE_TAGS = {
     "alias_synonym_high",
     "near_synonym_high",
     "hint_like_high",
+}
+
+
+def parse_min_tag_rows(spec: str) -> dict[str, int]:
+    quotas: dict[str, int] = {}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item or ":" not in item:
+            continue
+        tag, raw_count = item.split(":", 1)
+        tag = tag.strip()
+        try:
+            count = int(raw_count.strip())
+        except ValueError:
+            continue
+        if tag and count > 0:
+            quotas[tag] = count
+    return quotas
+
+
+MIN_TAG_ROWS = parse_min_tag_rows(MIN_TAG_ROWS_SPEC)
+COSENT_EXCLUDE_TAGS = {
+    item.strip()
+    for item in COSENT_EXCLUDE_TAGS_SPEC.split(",")
+    if item.strip()
+}
+MIDPOINT_TAGS = {
+    item.strip()
+    for item in MIDPOINT_TAGS_SPEC.split(",")
+    if item.strip()
 }
 
 
@@ -127,6 +163,24 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
         rng.shuffle(pinned)
         return pinned[:limit]
 
+    selected = list(pinned)
+    if MIN_TAG_ROWS:
+        rows_by_tag: dict[str, list[dict]] = {}
+        for row in pool:
+            rows_by_tag.setdefault(row["tag"], []).append(row)
+        for tag_rows in rows_by_tag.values():
+            rng.shuffle(tag_rows)
+        for tag, minimum in MIN_TAG_ROWS.items():
+            if len(selected) >= limit:
+                break
+            current = sum(1 for row in selected if row["tag"] == tag)
+            need = max(0, min(minimum - current, limit - len(selected)))
+            if need <= 0:
+                continue
+            selected.extend(rows_by_tag.get(tag, [])[:need])
+            rows_by_tag[tag] = rows_by_tag.get(tag, [])[need:]
+        pool = [row for tag_rows in rows_by_tag.values() for row in tag_rows]
+
     buckets: dict[tuple[str, str], list[dict]] = {}
     for row in pool:
         bucket_key = (row["tag"] or "unknown", score_bin(row["score"]))
@@ -134,7 +188,6 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
     for bucket_rows in buckets.values():
         rng.shuffle(bucket_rows)
 
-    selected = list(pinned)
     bucket_names = sorted(
         buckets,
         key=lambda key: (0 if key[0] in HARD_NEG_TAGS else 1, key[0], key[1]),
@@ -171,7 +224,10 @@ def contrastive_label(row: dict) -> float | None:
     return None
 
 
-def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[InputExample], dict]:
+def load_examples(
+    path: Path,
+    seed: int,
+) -> tuple[list[InputExample], list[InputExample], list[InputExample], list[InputExample], dict]:
     rows = []
     with path.open("r", encoding="utf-8", newline="") as file:
         reader = csv.DictReader(file)
@@ -217,7 +273,9 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
     rows = stratified_limit_rows(rows, MAX_TRAIN_ROWS, seed)
 
     examples = []
+    cosent_examples = []
     contrastive_examples = []
+    midpoint_examples = []
     for row_idx, row in enumerate(rows):
         for _ in range(row["repeat"]):
             repeat_idx = len(examples)
@@ -232,12 +290,19 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
                 angle = ANGLES[(row_idx + repeat_idx) % len(ANGLES)]
                 answer_text = f"{angle}{row['answer']}"
                 input_text = f"{angle}{row['user_input']}"
-            examples.append(
-                InputExample(
-                    texts=[answer_text, input_text],
-                    label=row["score"],
-                )
+            example = InputExample(
+                texts=[answer_text, input_text],
+                label=row["score"],
             )
+            examples.append(example)
+            if row["tag"] not in COSENT_EXCLUDE_TAGS:
+                cosent_examples.append(example)
+            if row["tag"] in MIDPOINT_TAGS:
+                midpoint_repeat = max(1, int(round(MIDPOINT_REPEAT_BOOST)))
+                midpoint_examples.extend(
+                    InputExample(texts=list(example.texts), label=example.label)
+                    for _ in range(midpoint_repeat)
+                )
             binary_label = contrastive_label(row)
             if binary_label is not None:
                 contrastive_examples.append(
@@ -247,7 +312,9 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
                     )
                 )
     rng.shuffle(examples)
+    rng.shuffle(cosent_examples)
     rng.shuffle(contrastive_examples)
+    rng.shuffle(midpoint_examples)
 
     tag_counts = Counter(row["tag"] for row in rows)
     contrastive_tag_counts = Counter()
@@ -260,20 +327,34 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
     score_buckets = Counter((int(row["score"] * 100) // 10) * 10 for row in rows)
     hard_count = sum(1 for row in rows if row["tag"] in HARD_NEG_TAGS)
     protected_count = sum(1 for row in rows if row["tag"] in TAG_REPEAT_BOOSTS)
+    antonym_mid_count = sum(1 for row in rows if row["tag"] == "antonym_mid")
+    antonym_mid_repeats = sum(row["repeat"] for row in rows if row["tag"] == "antonym_mid")
+    cosent_excluded_rows = sum(1 for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
+    cosent_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
     pinned_count = sum(1 for row in rows if is_high_value_row(row))
     angle_covered_count = sum(1 for row in rows if row["repeat"] >= len(ANGLES))
     stats = {
         "source_rows_before_limit": source_rows_before_limit,
         "source_rows": len(rows),
         "train_examples_after_repeat": len(examples),
+        "cosent_examples_after_repeat": len(cosent_examples),
+        "cosent_exclude_tags": sorted(COSENT_EXCLUDE_TAGS),
+        "cosent_excluded_rows": cosent_excluded_rows,
+        "cosent_excluded_examples_after_repeat": cosent_excluded_examples,
+        "midpoint_tags": sorted(MIDPOINT_TAGS),
+        "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
+        "midpoint_examples_after_repeat": len(midpoint_examples),
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
+        "min_tag_rows": MIN_TAG_ROWS,
         "contrastive_pos_threshold": CONTRASTIVE_POS_THRESHOLD,
         "contrastive_neg_threshold": CONTRASTIVE_NEG_THRESHOLD,
         "contrastive_label_counts": dict(contrastive_label_counts),
         "contrastive_tag_counts": dict(contrastive_tag_counts.most_common(30)),
         "hard_negative_rows": hard_count,
         "hard_negative_ratio": round(hard_count / max(len(rows), 1), 6),
+        "antonym_mid_rows": antonym_mid_count,
+        "antonym_mid_examples_after_repeat": antonym_mid_repeats,
         "protected_positive_rows": protected_count,
         "pinned_high_value_rows": pinned_count,
         "full_angle_coverage_rows": angle_covered_count,
@@ -281,7 +362,7 @@ def load_examples(path: Path, seed: int) -> tuple[list[InputExample], list[Input
         "tag_counts": dict(tag_counts.most_common(30)),
         "score_buckets": {str(k): v for k, v in sorted(score_buckets.items())},
     }
-    return examples, contrastive_examples, stats
+    return examples, cosent_examples, contrastive_examples, midpoint_examples, stats
 
 
 def fit_with_explicit_cpu(
@@ -340,9 +421,11 @@ def main() -> None:
         raise SystemExit(f"missing: {TRAIN_CSV}")
 
     device = resolve_device()
-    examples, contrastive_examples, stats = load_examples(TRAIN_CSV, SEED)
+    examples, cosent_examples, contrastive_examples, midpoint_examples, stats = load_examples(TRAIN_CSV, SEED)
     if len(examples) < MIN_TRAIN_EXAMPLES:
         raise SystemExit(f"not enough training examples (<{MIN_TRAIN_EXAMPLES})")
+    if LOSS_MODE in {"cosent", "mixed", "mixed_contrastive"} and not cosent_examples:
+        raise SystemExit("CoSENT objective has no examples after SEM_COSENT_EXCLUDE_TAGS filtering")
 
     print(f"base_model={BASE_MODEL}")
     print(f"output_model={OUTPUT_MODEL}")
@@ -350,6 +433,11 @@ def main() -> None:
     print(f"epochs={EPOCHS} batch_size={BATCH_SIZE} lr={LEARNING_RATE}")
     print(f"warmup_ratio={WARMUP_RATIO} seed={SEED} scale={SCALE}")
     print(f"hard_neg_boost={HARD_NEG_BOOST} max_repeat={MAX_REPEAT} angle_mode={ANGLE_MODE} loss_mode={LOSS_MODE}")
+    print(f"cosent_exclude_tags={','.join(sorted(COSENT_EXCLUDE_TAGS)) or '-'}")
+    print(
+        f"midpoint_tags={','.join(sorted(MIDPOINT_TAGS)) or '-'} "
+        f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST}"
+    )
     print(
         "contrastive_margin="
         f"{CONTRASTIVE_MARGIN} contrastive_pos_threshold={CONTRASTIVE_POS_THRESHOLD} "
@@ -358,21 +446,39 @@ def main() -> None:
     print(f"pin_high_value_rows={PIN_HIGH_VALUE_ROWS} pin_weight_threshold={PIN_WEIGHT_THRESHOLD}")
     print(f"min_angle_repeat_for_high_value={MIN_ANGLE_REPEAT_FOR_HIGH_VALUE}")
     print("train_stats=" + json.dumps(stats, ensure_ascii=False))
+    if TRAIN_STATS_JSON:
+        stats_path = Path(TRAIN_STATS_JSON)
+        stats_path.parent.mkdir(parents=True, exist_ok=True)
+        stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     model = SentenceTransformer(
         BASE_MODEL,
         device=device,
         local_files_only=True,
     )
-    train_loader = DataLoader(
+    cosent_loader = DataLoader(
+        cosent_examples,
+        shuffle=True,
+        batch_size=BATCH_SIZE,
+        num_workers=0,
+        pin_memory=False,
+    )
+    examples_loader = DataLoader(
         examples,
         shuffle=True,
         batch_size=BATCH_SIZE,
         num_workers=0,
         pin_memory=False,
     )
+    midpoint_loader = DataLoader(
+        midpoint_examples,
+        shuffle=True,
+        batch_size=BATCH_SIZE,
+        num_workers=0,
+        pin_memory=False,
+    )
     if LOSS_MODE == "cosine":
-        train_objectives = [(train_loader, CosineSimilarityLoss(model=model))]
+        train_objectives = [(examples_loader, CosineSimilarityLoss(model=model))]
     elif LOSS_MODE == "mixed":
         cosine_loader = DataLoader(
             list(examples),
@@ -382,9 +488,11 @@ def main() -> None:
             pin_memory=False,
         )
         train_objectives = [
-            (train_loader, CoSENTLoss(model=model, scale=SCALE)),
+            (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
             (cosine_loader, CosineSimilarityLoss(model=model)),
         ]
+        if midpoint_examples:
+            train_objectives.append((midpoint_loader, CosineSimilarityLoss(model=model)))
     elif LOSS_MODE == "mixed_contrastive":
         if not contrastive_examples:
             raise SystemExit("mixed_contrastive requires at least one positive or negative contrastive example")
@@ -403,12 +511,14 @@ def main() -> None:
             pin_memory=False,
         )
         train_objectives = [
-            (train_loader, CoSENTLoss(model=model, scale=SCALE)),
+            (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
             (cosine_loader, CosineSimilarityLoss(model=model)),
             (contrastive_loader, OnlineContrastiveLoss(model=model, margin=CONTRASTIVE_MARGIN)),
         ]
+        if midpoint_examples:
+            train_objectives.append((midpoint_loader, CosineSimilarityLoss(model=model)))
     else:
-        train_objectives = [(train_loader, CoSENTLoss(model=model, scale=SCALE))]
+        train_objectives = [(cosent_loader, CoSENTLoss(model=model, scale=SCALE))]
 
     total_steps = sum(len(loader) for loader, _ in train_objectives) * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
@@ -447,6 +557,9 @@ def main() -> None:
         "total_steps": total_steps,
         "scale": SCALE,
         "loss_mode": LOSS_MODE,
+        "cosent_exclude_tags": sorted(COSENT_EXCLUDE_TAGS),
+        "midpoint_tags": sorted(MIDPOINT_TAGS),
+        "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
         "contrastive_margin": CONTRASTIVE_MARGIN,
         "contrastive_scope": CONTRASTIVE_SCOPE,
         "hard_neg_boost": HARD_NEG_BOOST,

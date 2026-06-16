@@ -84,6 +84,117 @@ def review_validation_paths(root: Path, review_output: Path) -> list[Path]:
     return unique
 
 
+def launchd_log_text(health: dict[str, object]) -> str:
+    texts: list[str] = []
+    for key in ("stdout_log", "stderr_log"):
+        raw_path = str(health.get(key) or "")
+        if not raw_path:
+            continue
+        path = Path(raw_path)
+        candidates = [path, *sorted(path.parent.glob(path.name + ".*.bak"))]
+        for candidate in candidates:
+            if candidate.exists():
+                texts.append(candidate.read_text(encoding="utf-8", errors="replace"))
+    return "\n".join(texts)
+
+
+def launchd_device_evidence(health: dict[str, object]) -> dict[str, object]:
+    return analyze_nightly_report_v26.parse_log_devices(launchd_log_text(health))
+
+
+def parse_int(value: object) -> int | None:
+    try:
+        return int(str(value).strip())
+    except (TypeError, ValueError):
+        return None
+
+
+def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
+    warnings = [str(item) for item in health.get("warnings", [])]
+    report_predates_install = any("predates current launchd install" in item for item in warnings)
+    expected_exclude = str(health.get("sup_cosent_exclude_tags") or "").strip()
+    expected_midpoint = str(health.get("sup_midpoint_tags") or "antonym_mid").strip()
+    rows = analysis.get("train_sampling") or []
+    issues: list[str] = []
+
+    if report_predates_install:
+        return {
+            "ok": True,
+            "skipped": True,
+            "reason": "latest real report predates current launchd install",
+            "expected_cosent_exclude_tags": expected_exclude,
+            "expected_midpoint_tags": expected_midpoint,
+            "issues": issues,
+        }
+
+    if expected_exclude == "antonym_mid":
+        if not rows:
+            issues.append("missing train_sampling rows in latest report")
+        for row in rows:
+            round_id = row.get("round", "?")
+            tags = str(row.get("cosent_exclude_tags") or "")
+            antonym_examples = parse_int(row.get("antonym_mid_examples_after_repeat"))
+            excluded_examples = parse_int(row.get("cosent_excluded_examples_after_repeat"))
+            if "antonym_mid" not in tags:
+                issues.append(f"round {round_id}: cosent_exclude_tags missing antonym_mid")
+            if antonym_examples is not None and excluded_examples is not None:
+                if excluded_examples < antonym_examples:
+                    issues.append(
+                        f"round {round_id}: cosent_excluded_examples_after_repeat "
+                        f"{excluded_examples} < antonym_mid_examples_after_repeat {antonym_examples}"
+                    )
+            else:
+                issues.append(f"round {round_id}: missing cosent exclusion count")
+
+    if expected_midpoint == "antonym_mid":
+        if not rows:
+            issues.append("missing train_sampling rows in latest report")
+        for row in rows:
+            round_id = row.get("round", "?")
+            tags = str(row.get("midpoint_tags") or "")
+            antonym_examples = parse_int(row.get("antonym_mid_examples_after_repeat"))
+            midpoint_examples = parse_int(row.get("midpoint_examples_after_repeat"))
+            if "antonym_mid" not in tags:
+                issues.append(f"round {round_id}: midpoint_tags missing antonym_mid")
+            if antonym_examples is not None and midpoint_examples is not None:
+                if midpoint_examples < antonym_examples:
+                    issues.append(
+                        f"round {round_id}: midpoint_examples_after_repeat "
+                        f"{midpoint_examples} < antonym_mid_examples_after_repeat {antonym_examples}"
+                    )
+            else:
+                issues.append(f"round {round_id}: missing midpoint anchor count")
+
+    return {
+        "ok": not issues,
+        "skipped": False,
+        "reason": "",
+        "expected_cosent_exclude_tags": expected_exclude,
+        "expected_midpoint_tags": expected_midpoint,
+        "issues": issues,
+    }
+
+
+def triage_status(
+    health: dict[str, object],
+    analysis: dict[str, object],
+    strategy_checks: dict[str, object],
+) -> tuple[str, int]:
+    if not health.get("ok"):
+        return "launchd_unhealthy", 2
+    if health.get("run_log_after_latest_schedule"):
+        return "nightly_started_waiting_for_report", 0
+    if health.get("missed_latest_schedule"):
+        return "missed_schedule", 3
+    if not analysis.get("three_rounds_ok"):
+        return "waiting_for_next_real_three_round_report", 0
+    if strategy_checks.get("skipped"):
+        return "waiting_for_next_real_strategy_report", 0
+    if not strategy_checks.get("ok"):
+        return "semantic_strategy_failed", 4
+    return "ok", 0
+
+
 def build_triage(args: argparse.Namespace) -> dict[str, object]:
     root = args.root.resolve()
     nightly_root = root / ".nightly"
@@ -104,6 +215,15 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
     health = check_nightly_launchd_v26.check(root, args.home)
     report_path = analyze_nightly_report_v26.choose_report(nightly_root, explicit=None, include_dry_run=False)
     analysis = analyze_nightly_report_v26.build_summary(report_path, nightly_root, include_dry_run=False)
+    if analysis.get("actual_device_inferred") == "unknown":
+        device = launchd_device_evidence(health)
+        if device.get("actual_device_inferred") != "unknown":
+            analysis.update(device)
+    if not analysis.get("gate_status"):
+        gate_status = analyze_nightly_report_v26.parse_gate_status(launchd_log_text(health))
+        if gate_status.get("gate_status"):
+            analysis.update(gate_status)
+    strategy_checks = semantic_strategy_checks(health, analysis)
 
     review_rows = 0
     review_stats: dict[str, object] = {"rows": 0, "source_counts": {}, "status_counts": {}, "severity_counts": {}}
@@ -156,18 +276,7 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
         "pending_items": todo.get("pending_items", [])[:10],
     }
 
-    status = "ok"
-    exit_code = 0
-    if not health.get("ok"):
-        status = "launchd_unhealthy"
-        exit_code = 2
-    elif health.get("run_log_after_latest_schedule"):
-        status = "nightly_started_waiting_for_report"
-    elif health.get("missed_latest_schedule"):
-        status = "missed_schedule"
-        exit_code = 3
-    elif not analysis.get("three_rounds_ok"):
-        status = "waiting_for_next_real_three_round_report"
+    status, exit_code = triage_status(health, analysis, strategy_checks)
 
     return {
         "status": status,
@@ -183,12 +292,15 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
             "used_gpu_or_mps": analysis.get("used_gpu_or_mps"),
             "cpu_fallback_seen": analysis.get("cpu_fallback_seen"),
             "best_round": analysis.get("best_round"),
+            "gate_status_available": bool(analysis.get("gate_status")),
             "failed_gates": analysis.get("failed_gates"),
             "group_regressions": analysis.get("group_regressions"),
             "bucket_confusions": analysis.get("bucket_confusions"),
+            "train_sampling": analysis.get("train_sampling"),
             "antonym_group": analysis.get("antonym_group"),
         },
         "todo": todo_summary,
+        "strategy_checks": strategy_checks,
         "review_output": review_output,
         "review_rows": review_rows,
         "review_summary": review_stats,
@@ -202,11 +314,13 @@ def print_human(payload: dict[str, object]) -> None:
     health = payload["health"]
     analysis = payload["analysis"]
     todo = payload["todo"]
+    strategy = payload["strategy_checks"]
     print(f"status={payload['status']}")
     print(f"launchd_ok={health['ok']}")
     print(f"missed_latest_schedule={health['missed_latest_schedule']}")
     print(f"wrapper_loaded={health['wrapper_loaded']}")
     print(f"nightly_total_runs={health['nightly_total_runs']}")
+    print(f"sup_cosent_exclude_tags={health.get('sup_cosent_exclude_tags')}")
     print(f"latest_run_log={health['latest_run_log']}")
     print(f"run_log_after_latest_schedule={health['run_log_after_latest_schedule']}")
     print(f"latest_real_report={health['latest_real_report']}")
@@ -224,6 +338,8 @@ def print_human(payload: dict[str, object]) -> None:
         print(f"best_round={analysis['best_round']}")
     if analysis["failed_gates"]:
         print("failed_gates=" + ",".join(analysis["failed_gates"]))
+    elif not analysis.get("gate_status_available"):
+        print("failed_gates=(unavailable: matching gate log not found)")
     if analysis["group_regressions"]:
         names = [item.get("group", "") for item in analysis["group_regressions"][:8]]
         print("regressed_groups=" + ",".join(names))
@@ -238,10 +354,31 @@ def print_human(payload: dict[str, object]) -> None:
                 f"tags={item.get('top_tags')} groups={item.get('top_groups')} "
                 f"examples={item.get('examples')}"
             )
+    if analysis.get("train_sampling"):
+        print("train_sampling:")
+        for item in analysis["train_sampling"][:5]:
+            print(
+                "- "
+                f"round={item.get('round')} "
+                f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
+                f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
+                f"midpoint_examples={item.get('midpoint_examples_after_repeat', '-')} "
+                f"midpoint_tags={item.get('midpoint_tags', '-')} "
+                f"min_tag_rows={item.get('min_tag_rows', '-')}"
+            )
     if analysis["antonym_group"]:
         print(f"antonym_group={analysis['antonym_group']}")
     else:
         print("antonym_group=(missing)")
+    print(f"strategy_checks_ok={strategy['ok']}")
+    if strategy.get("skipped"):
+        print(f"strategy_checks_skipped={strategy.get('reason')}")
+    if strategy.get("issues"):
+        print("strategy_check_issues:")
+        for item in strategy["issues"]:
+            print(f"- {item}")
     print(f"review_output={payload['review_output']}")
     print(f"review_rows={payload['review_rows']}")
     print(f"review_source_counts={payload['review_source_counts']}")
@@ -269,6 +406,7 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     health = payload["health"]
     analysis = payload["analysis"]
     todo = payload["todo"]
+    strategy = payload["strategy_checks"]
     lines = [
         "# Nightly Next-Morning Triage",
         "",
@@ -279,6 +417,7 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
         f"- run_log_after_latest_schedule: `{health['run_log_after_latest_schedule']}`",
         f"- wrapper_loaded: `{health['wrapper_loaded']}`",
         f"- nightly_total_runs: `{health['nightly_total_runs']}`",
+        f"- sup_cosent_exclude_tags: `{health.get('sup_cosent_exclude_tags')}`",
         f"- latest_real_report: `{health['latest_real_report']}`",
         f"- report: `{analysis['report']}`",
         f"- three_rounds_ok: `{analysis['three_rounds_ok']}`",
@@ -299,6 +438,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     failed = analysis.get("failed_gates") or []
     if failed:
         lines.extend(f"- `{item}`" for item in failed)
+    elif not analysis.get("gate_status_available"):
+        lines.append("- unavailable: matching gate log was not found; use regressed groups and bucket confusions below")
     else:
         lines.append("- no failed gates detected")
 
@@ -326,12 +467,38 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     else:
         lines.append("- none")
 
+    lines.extend(["", "## Train Sampling", ""])
+    sampling = analysis.get("train_sampling") or []
+    if sampling:
+        for item in sampling[:10]:
+            lines.append(
+                "- "
+                f"round `{item.get('round', '')}`: "
+                f"antonym_mid_rows `{item.get('antonym_mid_rows', '-')}`, "
+                f"antonym_mid_examples `{item.get('antonym_mid_examples_after_repeat', '-')}`, "
+                f"cosent_excluded_examples `{item.get('cosent_excluded_examples_after_repeat', '-')}`, "
+                f"cosent_exclude_tags `{item.get('cosent_exclude_tags', '-')}`, "
+                f"min_tag_rows `{item.get('min_tag_rows', '-')}`"
+            )
+    else:
+        lines.append("- unavailable: report has no actual training sampling section")
+
     lines.extend(["", "## Antonym", ""])
     antonym = analysis.get("antonym_group")
     if antonym:
         lines.append(f"- `{antonym}`")
     else:
         lines.append("- antonym group missing")
+
+    lines.extend(["", "## Strategy Checks", ""])
+    lines.append(f"- ok: `{strategy.get('ok')}`")
+    lines.append(f"- expected_cosent_exclude_tags: `{strategy.get('expected_cosent_exclude_tags')}`")
+    lines.append(f"- expected_midpoint_tags: `{strategy.get('expected_midpoint_tags')}`")
+    if strategy.get("skipped"):
+        lines.append(f"- skipped: `{strategy.get('reason')}`")
+    issues = strategy.get("issues") or []
+    if issues:
+        lines.extend(f"- issue: `{item}`" for item in issues)
 
     lines.extend(["", "## Goal TODO", ""])
     pending_items = todo.get("pending_items") or []
