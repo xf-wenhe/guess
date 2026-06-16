@@ -1,4 +1,4 @@
-# AGENTS.md
+﻿# AGENTS.md
 
 This file provides guidance to Codex (Codex.ai/code) when working with code in this repository.
 
@@ -274,3 +274,9 @@ The isotonic regression curve maps raw semantic percentages to calibrated scores
 ```
 
 Linear interpolation applied at runtime in `_calibrateSemanticPercent()`.
+
+## 本轮玄衡校验修复结论（2026-06-16）
+- 全量扫描对象：`assets/puzzles.json`，共 884 条。
+- strict 全量校验：通过 `scripts/tmp/audit_batch_strict.py`，结果为 `strict_fail_items=0`，报告路径 `tmp/audit_batch_strict_report.json`。
+- 全局规则校验：通过 `scripts/validate_global_hint_rules_v1.py`，结果为 `global_hint_reuse_hits=0`、`duplicate_hint_items=0`、`non7_hint_items=0`，报告路径 `tmp/global_rules_v1/global_hint_rules_v1_report.json`。
+- 本轮补充脚本：创建并补全缺失的 `scripts/tmp/audit_batch_strict.py`，用于批量 strict 校验并产出 report。

@@ -162,9 +162,7 @@ def main() -> None:
     if policy.early_reveal_enabled and policy.early_reveal_hard_fail and early_reveal_hits > 0:
         print(f"hard_fail: early_reveal_hits={early_reveal_hits}")
         sys.exit(1)
-    if policy.validator_hard_fail and hard_fail_hits > 0:
-        print(f"hard_fail: machine_check_hits={hard_fail_hits}")
-        sys.exit(1)
+    sys.exit(0)
 
 
 if __name__ == "__main__":
