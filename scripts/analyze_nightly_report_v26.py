@@ -56,8 +56,47 @@ def choose_report(nightly_root: Path, explicit: str | None, include_dry_run: boo
 def find_log(nightly_root: Path, stamp: str) -> Path | None:
     if not stamp:
         return None
-    path = nightly_root / "data" / "tmp" / f"nightly_train_v26_{stamp}.log"
-    return path if path.exists() else None
+    candidates = [
+        nightly_root / "data" / "tmp" / f"nightly_train_v26_{stamp}.log",
+        ROOT / "tmp" / f"nightly_train_v26_{stamp}.log",
+    ]
+    for path in candidates:
+        if path.exists():
+            return path
+
+    if nightly_root.resolve() == DEFAULT_NIGHTLY_ROOT.resolve():
+        launchd_dir = Path.home() / ".guess_nightly" / "logs"
+        for path in sorted(
+            launchd_dir.glob("launchd_nightly_v26.*.log*"),
+            key=lambda item: item.stat().st_mtime,
+            reverse=True,
+        ):
+            text = read_text(path)
+            if stamp in text:
+                return path
+    return None
+
+
+def read_log_for_stamp(path: Path | None, stamp: str) -> str:
+    if not path:
+        return ""
+    text = read_text(path)
+    if not stamp or path.name.startswith("nightly_train_v26_"):
+        return text
+
+    start_markers = [
+        f"nightly_train_v26_{stamp}.log",
+        f"Nightly Promotion Report - {stamp}",
+    ]
+    starts = [text.find(marker) for marker in start_markers if text.find(marker) >= 0]
+    if not starts:
+        return text
+
+    start = min(starts)
+    next_run = text.find("\n[nightly] log=", start + 1)
+    if next_run < 0:
+        return text[start:]
+    return text[start:next_run]
 
 
 def parse_key_value_table(text: str, title: str) -> dict[str, str]:
@@ -279,7 +318,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     text = read_text(report)
     stamp = report_stamp(report)
     log_path = find_log(nightly_root, stamp)
-    log_text = read_text(log_path) if log_path else ""
+    log_text = read_log_for_stamp(log_path, stamp)
     device_text = "\n".join(part for part in (log_text, text) if part)
     config = parse_key_value_table(text, "运行配置")
     gates = parse_key_value_table(text, "晋升门控")
@@ -402,6 +441,8 @@ def print_human(summary: dict[str, object]) -> None:
                 f"round={item.get('round')} "
                 f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
                 f"min_tag_rows={item.get('min_tag_rows', '-')}"
             )
 

@@ -150,6 +150,21 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append(
             f"NIGHTLY_SUP_MIN_TAG_ROWS is {env.get('NIGHTLY_SUP_MIN_TAG_ROWS')!r}, expected 'antonym_mid:45'"
         )
+    if env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS") != "antonym_mid":
+        warnings.append(
+            "NIGHTLY_SUP_COSENT_EXCLUDE_TAGS is "
+            f"{env.get('NIGHTLY_SUP_COSENT_EXCLUDE_TAGS')!r}, expected 'antonym_mid'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_TAGS") != "antonym_mid":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_TAGS is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_TAGS')!r}, expected 'antonym_mid'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST") != "2.0":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST')!r}, expected '2.0'"
+        )
     hour = calendar.get("Hour")
     minute = calendar.get("Minute")
     if hour != 23 or minute != 0:
@@ -225,6 +240,9 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
         "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
+        "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
+        "sup_midpoint_tags": env.get("NIGHTLY_SUP_MIDPOINT_TAGS"),
+        "sup_midpoint_repeat_boost": env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST"),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
@@ -251,6 +269,9 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
     print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
+    print(f"sup_cosent_exclude_tags={payload['sup_cosent_exclude_tags']}")
+    print(f"sup_midpoint_tags={payload['sup_midpoint_tags']}")
+    print(f"sup_midpoint_repeat_boost={payload['sup_midpoint_repeat_boost']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:

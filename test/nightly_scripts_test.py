@@ -1,4 +1,5 @@
 import csv
+import importlib.util
 import json
 import os
 import stat
@@ -7,6 +8,7 @@ import sys
 import tempfile
 import textwrap
 import unittest
+import warnings
 from datetime import datetime
 from pathlib import Path
 
@@ -18,6 +20,7 @@ WORST_CASE_EXTRACT_SCRIPT = REPO_ROOT / "scripts" / "extract_nightly_worst_case_
 BUILD_NIGHTLY_SETS_SCRIPT = REPO_ROOT / "scripts" / "build_nightly_semantic_sets.py"
 REGRESSION_PAIRS_PATH = REPO_ROOT / "data" / "regression_pairs_v23.json"
 ANALYZE_NIGHTLY_REPORT_SCRIPT = REPO_ROOT / "scripts" / "analyze_nightly_report_v26.py"
+COMPARE_NIGHTLY_REPORTS_SCRIPT = REPO_ROOT / "scripts" / "compare_recent_nightly_reports_v26.py"
 CHECK_NIGHTLY_LAUNCHD_SCRIPT = REPO_ROOT / "scripts" / "check_nightly_launchd_v26.py"
 NEXT_MORNING_TRIAGE_SCRIPT = REPO_ROOT / "scripts" / "nightly_next_morning_triage_v26.py"
 TODO_STATUS_SCRIPT = REPO_ROOT / "scripts" / "semantic_training_todo_status.py"
@@ -76,6 +79,84 @@ class NightlyScriptsTest(unittest.TestCase):
         pending_text = "\n".join(item["text"] for item in payload["pending_items"])
         self.assertIn("At least one real candidate passes strict gates", pending_text)
         self.assertIn("Wait for the next real nightly report", pending_text)
+
+    def test_next_morning_triage_strategy_check_validates_cosent_exclusion_counts(self):
+        spec = importlib.util.spec_from_file_location(
+            "nightly_next_morning_triage_v26",
+            NEXT_MORNING_TRIAGE_SCRIPT,
+        )
+        self.assertIsNotNone(spec)
+        triage = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(triage)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        health = {
+            "warnings": [],
+            "sup_cosent_exclude_tags": "antonym_mid",
+            "sup_midpoint_tags": "antonym_mid",
+        }
+        analysis = {
+            "train_sampling": [
+                {
+                    "round": "1",
+                    "antonym_mid_examples_after_repeat": "153",
+                    "cosent_exclude_tags": '["antonym_mid"]',
+                    "cosent_excluded_examples_after_repeat": "153",
+                    "midpoint_tags": '["antonym_mid"]',
+                    "midpoint_examples_after_repeat": "306",
+                }
+            ]
+        }
+        ok = triage.semantic_strategy_checks(health, analysis)
+        self.assertTrue(ok["ok"])
+        self.assertFalse(ok["skipped"])
+
+        analysis["train_sampling"][0]["cosent_excluded_examples_after_repeat"] = "10"
+        bad = triage.semantic_strategy_checks(health, analysis)
+        self.assertFalse(bad["ok"])
+        self.assertIn("cosent_excluded_examples_after_repeat", bad["issues"][0])
+        analysis["train_sampling"][0]["cosent_excluded_examples_after_repeat"] = "153"
+        analysis["train_sampling"][0]["midpoint_examples_after_repeat"] = "10"
+        bad_midpoint = triage.semantic_strategy_checks(health, analysis)
+        self.assertFalse(bad_midpoint["ok"])
+        self.assertIn("midpoint_examples_after_repeat", bad_midpoint["issues"][0])
+        self.assertEqual(
+            triage.triage_status(
+                {"ok": True, "missed_latest_schedule": False, "run_log_after_latest_schedule": False},
+                {"three_rounds_ok": True},
+                bad,
+            ),
+            ("semantic_strategy_failed", 4),
+        )
+        self.assertEqual(
+            triage.triage_status(
+                {"ok": True, "missed_latest_schedule": True, "run_log_after_latest_schedule": False},
+                {"three_rounds_ok": True},
+                bad,
+            ),
+            ("missed_schedule", 3),
+        )
+        skipped = triage.semantic_strategy_checks(
+            {
+                "warnings": ["latest real report predates current launchd install; wait for next 23:00 run"],
+                "sup_cosent_exclude_tags": "antonym_mid",
+            },
+            analysis,
+        )
+        self.assertTrue(skipped["ok"])
+        self.assertTrue(skipped["skipped"])
+        self.assertEqual(
+            triage.triage_status(
+                {"ok": True, "missed_latest_schedule": False, "run_log_after_latest_schedule": False},
+                {"three_rounds_ok": True},
+                skipped,
+            ),
+            ("waiting_for_next_real_strategy_report", 0),
+        )
 
     def test_preflight_runs_semantic_script_manifest_check_first(self):
         source = PREFLIGHT_SCRIPT.read_text(encoding="utf-8")
@@ -143,6 +224,10 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>mixed</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIN_TAG_ROWS</key>", plist)
             self.assertIn("<string>antonym_mid:45</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key>", plist)
+            self.assertIn("<string>antonym_mid</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_TAGS</key>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
             self.assertIn("<key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>", plist)
             self.assertIn("<string>0.3</string>", plist)
@@ -226,6 +311,8 @@ class NightlyScriptsTest(unittest.TestCase):
                       <dict>
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
                       <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
@@ -304,6 +391,8 @@ class NightlyScriptsTest(unittest.TestCase):
                       <dict>
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
                       <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
@@ -384,6 +473,8 @@ class NightlyScriptsTest(unittest.TestCase):
                       <dict>
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
                       <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
@@ -460,6 +551,8 @@ class NightlyScriptsTest(unittest.TestCase):
                       <dict>
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
                       <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
@@ -506,6 +599,10 @@ class NightlyScriptsTest(unittest.TestCase):
                     | hard_negative_rows | 66 |
                     | antonym_mid_rows | 51 |
                     | antonym_mid_examples_after_repeat | 153 |
+                    | cosent_exclude_tags | ["antonym_mid"] |
+                    | cosent_excluded_examples_after_repeat | 153 |
+                    | midpoint_tags | ["antonym_mid"] |
+                    | midpoint_examples_after_repeat | 306 |
                     | min_tag_rows | {"antonym_mid": 45} |
                     """
                 ),
@@ -554,6 +651,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["analysis"]["bucket_confusions"][0]["top_tags"], "alias_synonym_high:3")
             self.assertEqual(payload["analysis"]["train_sampling"][0]["antonym_mid_rows"], "51")
             self.assertEqual(payload["analysis"]["train_sampling"][0]["antonym_mid_examples_after_repeat"], "153")
+            self.assertEqual(payload["analysis"]["train_sampling"][0]["cosent_excluded_examples_after_repeat"], "153")
+            self.assertTrue(payload["strategy_checks"]["ok"])
+            self.assertFalse(payload["strategy_checks"]["skipped"])
             self.assertEqual(payload["review_source_counts"]["nightly_bucket_confusion"], 1)
             self.assertEqual(payload["review_summary"]["status_counts"]["pending"], 1)
             self.assertEqual(payload["review_summary"]["severity_counts"]["medium"], 1)
@@ -572,6 +672,10 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("`80-100->60-80`", md)
             self.assertIn("## Train Sampling", md)
             self.assertIn("antonym_mid_rows `51`", md)
+            self.assertIn("cosent_excluded_examples `153`", md)
+            self.assertIn("## Strategy Checks", md)
+            self.assertIn("expected_cosent_exclude_tags: `antonym_mid`", md)
+            self.assertIn("expected_midpoint_tags: `antonym_mid`", md)
             self.assertIn("alias_synonym_high:3", md)
             self.assertIn("source_counts:", md)
             self.assertIn("status_counts:", md)
@@ -619,6 +723,8 @@ class NightlyScriptsTest(unittest.TestCase):
                       <dict>
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
                       <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
@@ -774,6 +880,8 @@ class NightlyScriptsTest(unittest.TestCase):
                     | hard_negative_rows | 66 |
                     | antonym_mid_rows | 51 |
                     | antonym_mid_examples_after_repeat | 153 |
+                    | cosent_exclude_tags | ["antonym_mid"] |
+                    | cosent_excluded_examples_after_repeat | 153 |
                     | min_tag_rows | {"antonym_mid": 45} |
                     """
                 ),
@@ -825,6 +933,165 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["train_sampling"][0]["round"], "1")
             self.assertEqual(payload["train_sampling"][0]["antonym_mid_rows"], "51")
             self.assertEqual(payload["train_sampling"][0]["antonym_mid_examples_after_repeat"], "153")
+            self.assertEqual(payload["train_sampling"][0]["cosent_excluded_examples_after_repeat"], "153")
+
+    def test_compare_recent_nightly_reports_summarizes_multi_night_trends(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            nightly = Path(tmp) / ".nightly"
+            reports = nightly / "reports"
+            logs = nightly / "data" / "tmp"
+            reports.mkdir(parents=True)
+            logs.mkdir(parents=True)
+
+            dry_run = reports / "nightly_promotion_20260615_120000.md"
+            dry_run.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260615_120000
+
+                    **总轮次**: 3
+
+                    ## 运行配置
+
+                    | item | value |
+                    |------|-------|
+                    | dry_run | 1 |
+
+                    **结果**: DRY_RUN - 未实际晋升
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            latest = reports / "nightly_promotion_20260614_230003.md"
+            latest.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260614_230003
+
+                    **总轮次**: 3
+
+                    ## 运行配置
+
+                    | item | value |
+                    |------|-------|
+                    | dry_run | 0 |
+                    | requested_device | auto |
+                    | train_profile | daily |
+                    | sup_rows | 300 |
+                    | sup_loss_mode | mixed |
+                    | sup_min_tag_rows | antonym_mid:45 |
+                    | sup_cosent_exclude_tags | antonym_mid |
+
+                    ## 各轮结果
+
+                    | 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |
+                    |------|-------|----------|----------|----------|----------|--------|----------|
+                    | 1 | supervised | - | 6.9 | - | 68.0 | False | False |
+                    | 2 | supervised | - | 6.6 | - | 69.5 | True | False |
+                    | 3 | supervised | - | 6.8 | - | 68.8 | True | False |
+
+                    **结果**: 无轮次通过门控，未晋升
+
+                    ## 拒绝诊断 Round 2 (supervised)
+
+                    | group | base_mae | cand_mae | base_acc | cand_acc | extra |
+                    |-------|----------|----------|----------|----------|-------|
+                    | antonym | 15.0 | 22.5 | 50.0 | 0.0 | mid@40-60 50.0 -> 0.0; strict@45-55 50.0 -> 0.0 |
+
+                    ## 实际训练抽样 Round 2
+
+                    | item | value |
+                    |------|-------|
+                    | antonym_mid_rows | 50 |
+                    | antonym_mid_examples_after_repeat | 150 |
+                    | cosent_exclude_tags | ["antonym_mid"] |
+                    | cosent_excluded_examples_after_repeat | 150 |
+                    | min_tag_rows | {"antonym_mid": 45} |
+                    """
+                ),
+                encoding="utf-8",
+            )
+            (logs / "nightly_train_v26_20260614_230003.log").write_text(
+                "TRAIN_DEVICE=auto\n"
+                "train_v28c: device=mps\n"
+                "acc_ok=False\n"
+                "antonym_strict_mid_recall_ok=False\n"
+                "regression_ok=False\n"
+                "accepted=False\n",
+                encoding="utf-8",
+            )
+
+            older = reports / "nightly_promotion_20260613_230005.md"
+            older.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260613_230005
+
+                    **总轮次**: 3
+
+                    ## 运行配置
+
+                    | item | value |
+                    |------|-------|
+                    | dry_run | 0 |
+                    | requested_device | auto |
+                    | train_profile | daily |
+                    | sup_rows | 300 |
+                    | sup_loss_mode | mixed |
+                    | sup_min_tag_rows | antonym_mid:45 |
+
+                    ## 各轮结果
+
+                    | 轮次 | stage | base_mae | cand_mae | base_acc | cand_acc | reg_ok | accepted |
+                    |------|-------|----------|----------|----------|----------|--------|----------|
+                    | 1 | supervised | - | 7.1 | - | 67.0 | True | False |
+                    | 2 | supervised | - | 6.7 | - | 68.0 | True | False |
+                    | 3 | supervised | - | 6.9 | - | 67.5 | True | False |
+
+                    **结果**: 无轮次通过门控，未晋升
+                    """
+                ),
+                encoding="utf-8",
+            )
+
+            for offset, path in enumerate((older, latest, dry_run), start=1):
+                stamp = datetime(2026, 6, 15, 12, offset, 0).timestamp()
+                os.utime(path, (stamp, stamp))
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(COMPARE_NIGHTLY_REPORTS_SCRIPT),
+                    "--nightly-root",
+                    str(nightly),
+                    "--limit",
+                    "2",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["report_count"], 2)
+            rows = payload["reports"]
+            self.assertEqual(rows[0]["stamp"], "20260614_230003")
+            self.assertEqual(rows[0]["actual_device_inferred"], "mps")
+            self.assertTrue(rows[0]["used_gpu_or_mps"])
+            self.assertTrue(rows[0]["three_rounds_ok"])
+            self.assertEqual(rows[0]["best_round"], "2")
+            self.assertEqual(rows[0]["best_cand_mae"], "6.6")
+            self.assertEqual(rows[0]["sup_cosent_exclude_tags"], "antonym_mid")
+            self.assertEqual(rows[0]["antonym_mid_rows"], "50")
+            self.assertEqual(rows[0]["cosent_excluded_examples_after_repeat"], "150")
+            self.assertEqual(
+                rows[0]["failed_gates"],
+                ["acc_ok", "antonym_strict_mid_recall_ok", "regression_ok"],
+            )
+            self.assertEqual(rows[1]["stamp"], "20260613_230005")
 
     def test_nightly_dry_run_runs_three_rounds_and_copies_round_base_from_project_model(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -963,6 +1230,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("实际训练抽样 Round 1", promotion_text)
             self.assertIn("| antonym_mid_rows | 51 |", promotion_text)
             self.assertIn("| antonym_mid_examples_after_repeat | 153 |", promotion_text)
+            self.assertIn("| cosent_excluded_examples_after_repeat | 153 |", promotion_text)
             self.assertIn("| min_tag_rows | {\"antonym_mid\": 45} |", promotion_text)
             self.assertIn("拒绝诊断 Round 1", promotion_text)
             self.assertIn("hard_negative", promotion_text)
@@ -1300,6 +1568,8 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("protected_positive_rows", source)
         self.assertIn("antonym_mid_examples_after_repeat", source)
         self.assertIn('SEM_MIN_TAG_ROWS", "antonym_mid:45"', source)
+        self.assertIn('SEM_COSENT_EXCLUDE_TAGS", "antonym_mid"', source)
+        self.assertIn("cosent_excluded_examples_after_repeat", source)
         self.assertIn("SEM_TRAIN_STATS_JSON", source)
         self.assertIn("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", source)
         self.assertIn("full_angle_coverage_rows", source)
@@ -1311,6 +1581,66 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("SEM_CONTRASTIVE_SCOPE", source)
         self.assertIn("CONTRASTIVE_POSITIVE_TAGS", source)
         self.assertIn("contrastive_label_counts", source)
+        self.assertIn("SEM_MIDPOINT_TAGS", source)
+        self.assertIn("midpoint_examples_after_repeat", source)
+
+    def test_supervised_trainer_excludes_antonym_mid_from_cosent_and_adds_midpoint_anchor(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n"
+                "医生,大夫,alias_synonym_high,90,1.0,review\n"
+                "飞机,轮船,same_category_but_far,22,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            previous_midpoint_boost = trainer.MIDPOINT_REPEAT_BOOST
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                trainer.MIDPOINT_REPEAT_BOOST = 2.0
+                examples, cosent_examples, contrastive_examples, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+                trainer.MIDPOINT_REPEAT_BOOST = previous_midpoint_boost
+
+            self.assertEqual(stats["antonym_mid_rows"], 1)
+            self.assertEqual(stats["antonym_mid_examples_after_repeat"], 3)
+            self.assertEqual(stats["cosent_excluded_rows"], 1)
+            self.assertEqual(stats["cosent_excluded_examples_after_repeat"], 3)
+            self.assertEqual(stats["cosent_exclude_tags"], ["antonym_mid"])
+            self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
+            self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
+            self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
+            self.assertEqual(len(examples), 7)
+            self.assertEqual(len(cosent_examples), 4)
+            self.assertEqual(len(contrastive_examples), 4)
+            self.assertEqual(len(midpoint_examples), 6)
+            self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in examples))
+            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosent_examples))
+            self.assertTrue(all(abs(example.label - 0.5) < 1e-9 for example in midpoint_examples))
 
     def _prepare_fake_repo(self, root: Path) -> None:
         (root / "scripts").mkdir(parents=True)
@@ -1422,7 +1752,14 @@ if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_
         pathlib.Path(env['SEM_TRAIN_STATS_JSON']).write_text(json.dumps({
             'source_rows': 300,
             'train_examples_after_repeat': 579,
-            'contrastive_examples': 66,
+            'cosent_examples_after_repeat': 426,
+            'cosent_exclude_tags': ['antonym_mid'],
+            'cosent_excluded_rows': 51,
+            'cosent_excluded_examples_after_repeat': 153,
+            'midpoint_tags': ['antonym_mid'],
+            'midpoint_repeat_boost': 2.0,
+            'midpoint_examples_after_repeat': 306,
+            'contrastive_examples_after_repeat': 66,
             'hard_negative_rows': 66,
             'antonym_mid_rows': 51,
             'antonym_mid_examples_after_repeat': 153,
@@ -1526,6 +1863,7 @@ if script == '-' or script == '':
             f.write('| item | value |\\n')
             f.write('| antonym_mid_rows | ' + str(stats.get('antonym_mid_rows')) + ' |\\n')
             f.write('| antonym_mid_examples_after_repeat | ' + str(stats.get('antonym_mid_examples_after_repeat')) + ' |\\n')
+            f.write('| cosent_excluded_examples_after_repeat | ' + str(stats.get('cosent_excluded_examples_after_repeat')) + ' |\\n')
             f.write('| min_tag_rows | ' + json.dumps(stats.get('min_tag_rows'), ensure_ascii=False, sort_keys=True) + ' |\\n')
             f.write('\\n### Selected Tag Counts\\n')
             f.write('| tag | count |\\n')

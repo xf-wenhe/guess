@@ -6,6 +6,7 @@
     "nightly_next_morning_triage_v26.py",
     "check_nightly_launchd_v26.py",
     "analyze_nightly_report_v26.py",
+    "compare_recent_nightly_reports_v26.py",
     "semantic_training_todo_status.py",
     "validate_semantic_script_manifest.py",
     "preflight_v26.sh"

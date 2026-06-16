@@ -170,6 +170,9 @@ SUP_MAX_REPEAT="${NIGHTLY_SUP_MAX_REPEAT:-$DEFAULT_SUP_MAX_REPEAT}"
 SUP_ANGLE_MODE="${NIGHTLY_SUP_ANGLE_MODE:-cycle}"
 SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
 SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
+SUP_COSENT_EXCLUDE_TAGS="${NIGHTLY_SUP_COSENT_EXCLUDE_TAGS:-antonym_mid}"
+SUP_MIDPOINT_TAGS="${NIGHTLY_SUP_MIDPOINT_TAGS:-antonym_mid}"
+SUP_MIDPOINT_REPEAT_BOOST="${NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST:-2.0}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
@@ -231,7 +234,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -439,6 +442,9 @@ run_single_round() {
       SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
       SEM_LOSS_MODE=$SUP_LOSS_MODE \
       SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+      SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
+      SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
+      SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
       SEM_TRAIN_STATS_JSON=$train_stats_json \
       SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
       SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
@@ -466,6 +472,9 @@ run_single_round() {
           SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
           SEM_LOSS_MODE=$SUP_LOSS_MODE \
           SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+          SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
+          SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
+          SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
           SEM_TRAIN_STATS_JSON=$train_stats_json \
           SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
           SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
@@ -906,7 +915,14 @@ lines = [
 for key in (
     "source_rows",
     "train_examples_after_repeat",
-    "contrastive_examples",
+    "cosent_examples_after_repeat",
+    "cosent_exclude_tags",
+    "cosent_excluded_rows",
+    "cosent_excluded_examples_after_repeat",
+    "midpoint_tags",
+    "midpoint_repeat_boost",
+    "midpoint_examples_after_repeat",
+    "contrastive_examples_after_repeat",
     "hard_negative_rows",
     "antonym_mid_rows",
     "antonym_mid_examples_after_repeat",
@@ -1005,6 +1021,9 @@ done
   echo "| sup_angle_mode | $SUP_ANGLE_MODE |"
   echo "| sup_loss_mode | $SUP_LOSS_MODE |"
   echo "| sup_min_tag_rows | $SUP_MIN_TAG_ROWS |"
+  echo "| sup_cosent_exclude_tags | $SUP_COSENT_EXCLUDE_TAGS |"
+  echo "| sup_midpoint_tags | $SUP_MIDPOINT_TAGS |"
+  echo "| sup_midpoint_repeat_boost | $SUP_MIDPOINT_REPEAT_BOOST |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
   echo ""
   echo "## 晋升门控"

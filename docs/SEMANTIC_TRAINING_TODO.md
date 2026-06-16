@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-12 13:00 CST
+Last updated: 2026-06-15 11:00 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -177,7 +177,15 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Add `scripts/semantic_script_manifest.json` and tests so the maintained semantic script inventory is machine-checkable before future cleanup.
 - [x] Add `scripts/validate_semantic_script_manifest.py` so the semantic script inventory can be checked without remembering a unit-test name.
 - [x] Run the semantic script inventory validator from `scripts/preflight_v26.sh` so deployment checks cover script cleanup drift.
-- [ ] Wait for the next real nightly report to verify the new `antonym_mid:45` sampling quota and strict 45-55 recovery.
+- [x] Read the 2026-06-12 through 2026-06-14 real nightly reports and verify they ran three MPS/GPU rounds with `antonym_mid:45` actually sampled.
+- [x] Change the default mixed supervised objective so `antonym_mid` stays in cosine regression but is excluded from CoSENT ranking.
+- [x] Show CoSENT exclusion counts in analyzer and next-morning triage so the next report proves the new antonym objective path.
+- [x] Add a behavior test proving `antonym_mid` remains in overall/cosine training examples but is removed from CoSENT examples.
+- [x] Add next-morning strategy checks so reports after the new install must prove `antonym_mid` was excluded from CoSENT.
+- [x] Make next-morning triage fail with `semantic_strategy_failed` if a fresh report does not prove the CoSENT antonym exclusion strategy.
+- [x] Add a recent-report comparison command so several real nightlies can be checked together for GPU/MPS, three-round stability, failed gates, antonym 50% behavior, and CoSENT exclusion evidence.
+- [x] Make next-morning triage report `waiting_for_next_real_strategy_report` when the latest real report predates the newly installed strategy.
+- [ ] Wait for the next real nightly report to verify `NIGHTLY_SUP_MIDPOINT_TAGS=antonym_mid` plus CoSENT exclusion recovers strict 45-55 antonym behavior.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
 - [ ] Promote only after strict gates pass.

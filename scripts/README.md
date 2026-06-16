@@ -13,6 +13,7 @@ Use these first; they are the maintained path for the local semantic model loop.
 | Morning status, latest report, gates, GPU/MPS evidence, review queue | `python3 scripts/nightly_next_morning_triage_v26.py --write-review-csv --markdown-output .nightly/reports/next_morning_triage_$(date +%Y%m%d).md` |
 | LaunchAgent health only | `python3 scripts/check_nightly_launchd_v26.py` |
 | Latest promotion report only | `python3 scripts/analyze_nightly_report_v26.py` |
+| Recent promotion report trend | `python3 scripts/compare_recent_nightly_reports_v26.py --limit 7` |
 | Live goal checklist | `python3 scripts/semantic_training_todo_status.py` |
 | Semantic script inventory check | `python3 scripts/validate_semantic_script_manifest.py` |
 | Manual dry-run of nightly wiring | `NIGHTLY_DRY_RUN=1 NIGHTLY_ENFORCE_FREE_SPACE_CHECK=0 bash scripts/nightly_train_v26.sh` |
@@ -27,13 +28,15 @@ The normal unattended route is the user LaunchAgent installed by `install_nightl
 - `build_nightly_semantic_sets.py`
   Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration. Antonym rows are normalized to `antonym_mid`, score `50`, range `45-55`, with protected sample weights.
 - `train_v28c_mse_contrastive.py`
-  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, and optional multi-angle coverage for high-value rows.
+  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, dedicated midpoint anchors for `antonym_mid`, and optional multi-angle coverage for high-value rows.
 - `eval_v26_gold.py`
   Evaluates model/calibration metrics and emits group metrics plus worst cases, including antonym 40-60 and stricter 45-55 mid-score recall.
 - `run_regression_pairs_v23.py`
   Fixed semantic regression gate, including antonym/opposite pairs that must score in the 45-55 semantic range.
 - `analyze_nightly_report_v26.py`
   Summarizes the latest non-dry-run promotion report, GPU/MPS evidence, failed gates, regressed groups, and antonym behavior.
+- `compare_recent_nightly_reports_v26.py`
+  Compares the latest non-dry-run reports in one view so multi-night trends are visible: three-round status, GPU/MPS evidence, best candidate metrics, failed gates, antonym 50% behavior, and CoSENT exclusion sampling.
 - `check_nightly_launchd_v26.py`
   Verifies the active macOS LaunchAgent wrapper, three-run config, antonym gate env, current stderr health, and latest scheduled-run/report status.
 - `nightly_next_morning_triage_v26.py`
