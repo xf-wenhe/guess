@@ -184,6 +184,8 @@ def triage_status(
         return "launchd_unhealthy", 2
     if health.get("run_log_after_latest_schedule"):
         return "nightly_started_waiting_for_report", 0
+    if health.get("partial_run_after_latest_schedule"):
+        return "nightly_partial_run_no_report", 3
     if health.get("missed_latest_schedule"):
         return "missed_schedule", 3
     if not analysis.get("three_rounds_ok"):
@@ -323,6 +325,8 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"sup_cosent_exclude_tags={health.get('sup_cosent_exclude_tags')}")
     print(f"latest_run_log={health['latest_run_log']}")
     print(f"run_log_after_latest_schedule={health['run_log_after_latest_schedule']}")
+    print(f"latest_partial_run_artifact={health.get('latest_partial_run_artifact', '')}")
+    print(f"partial_run_after_latest_schedule={health.get('partial_run_after_latest_schedule', False)}")
     print(f"latest_real_report={health['latest_real_report']}")
     print(f"report={analysis['report']}")
     print(f"three_rounds_ok={analysis['three_rounds_ok']}")
@@ -415,6 +419,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
         f"- missed_latest_schedule: `{health['missed_latest_schedule']}`",
         f"- latest_run_log: `{health['latest_run_log']}`",
         f"- run_log_after_latest_schedule: `{health['run_log_after_latest_schedule']}`",
+        f"- latest_partial_run_artifact: `{health.get('latest_partial_run_artifact', '')}`",
+        f"- partial_run_after_latest_schedule: `{health.get('partial_run_after_latest_schedule', False)}`",
         f"- wrapper_loaded: `{health['wrapper_loaded']}`",
         f"- nightly_total_runs: `{health['nightly_total_runs']}`",
         f"- sup_cosent_exclude_tags: `{health.get('sup_cosent_exclude_tags')}`",

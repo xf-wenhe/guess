@@ -118,6 +118,14 @@ cat > "$PLIST_PATH" <<PLIST
     <string>antonym_mid</string>
     <key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>
     <string>2.0</string>
+    <key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key>
+    <string>0.45</string>
+    <key>NIGHTLY_SUP_MIDPOINT_BAND_HIGH</key>
+    <string>0.55</string>
+    <key>NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT</key>
+    <string>4.0</string>
+    <key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key>
+    <string>1.0</string>
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>

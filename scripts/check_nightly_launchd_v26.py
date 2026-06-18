@@ -44,10 +44,29 @@ def latest_run_log(nightly_root: Path, include_dry_run: bool = False) -> Path | 
     return None
 
 
+def latest_partial_run_artifact(nightly_root: Path) -> Path | None:
+    tmp_dir = nightly_root / "data" / "tmp"
+    candidates = []
+    for pattern in (
+        "nightly_round_summary_*.txt",
+        "nightly_build_stats_*.json",
+        "nightly_train_stats_*.json",
+    ):
+        candidates.extend(tmp_dir.glob(pattern))
+    if not candidates:
+        return None
+    return max(candidates, key=lambda p: p.stat().st_mtime)
+
+
 def report_stamp(path: Path | None) -> str:
     if path is None:
         return ""
     match = re.search(r"(?:nightly_promotion|nightly_train_v26)_(\d{8}_\d{6})\.(?:md|log)$", path.name)
+    if not match:
+        match = re.search(
+            r"(?:nightly_round_summary|nightly_build_stats|nightly_train_stats)_(\d{8}_\d{6})(?:_r\d+)?\.(?:txt|json)$",
+            path.name,
+        )
     return match.group(1) if match else path.stem
 
 
@@ -165,6 +184,26 @@ def check(root: Path, home: Path) -> dict[str, object]:
             "NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST is "
             f"{env.get('NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST')!r}, expected '2.0'"
         )
+    if env.get("NIGHTLY_SUP_MIDPOINT_BAND_LOW") != "0.45":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_BAND_LOW is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_BAND_LOW')!r}, expected '0.45'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH") != "0.55":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_BAND_HIGH is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_BAND_HIGH')!r}, expected '0.55'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT") != "4.0":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT')!r}, expected '4.0'"
+        )
+    if env.get("NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT") != "1.0":
+        warnings.append(
+            "NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT is "
+            f"{env.get('NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT')!r}, expected '1.0'"
+        )
     hour = calendar.get("Hour")
     minute = calendar.get("Minute")
     if hour != 23 or minute != 0:
@@ -195,16 +234,23 @@ def check(root: Path, home: Path) -> dict[str, object]:
     real_report = latest_report(nightly_root, include_dry_run=False)
     dry_report = latest_report(nightly_root, include_dry_run=True)
     run_log = latest_run_log(nightly_root, include_dry_run=False)
+    partial_run = latest_partial_run_artifact(nightly_root)
     now = datetime.now()
     last_schedule = last_scheduled_time(now, hour, minute)
     real_report_mtime = mtime(real_report)
     real_report_started_at = run_log_start_time(real_report)
     run_log_mtime = mtime(run_log)
     run_log_started_at = run_log_start_time(run_log)
+    partial_run_started_at = run_log_start_time(partial_run)
     run_log_after_latest_schedule = (
         last_schedule is not None
         and run_log_started_at is not None
         and last_schedule <= run_log_started_at <= last_schedule + timedelta(hours=2)
+    )
+    partial_run_after_latest_schedule = (
+        last_schedule is not None
+        and partial_run_started_at is not None
+        and last_schedule <= partial_run_started_at <= last_schedule + timedelta(hours=2)
     )
     missed_latest_schedule = (
         last_schedule is not None
@@ -212,6 +258,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         and plist_mtime < last_schedule.timestamp()
         and (real_report_started_at is None or real_report_started_at < last_schedule)
         and not run_log_after_latest_schedule
+        and not partial_run_after_latest_schedule
     )
 
     if real_report is None:
@@ -220,6 +267,10 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append("latest real report predates current launchd install; wait for next 23:00 run")
     if run_log_after_latest_schedule and (real_report_started_at is None or real_report_started_at < last_schedule):
         warnings.append("latest scheduled 23:00 run appears to have started but no newer real report exists yet")
+    if partial_run_after_latest_schedule and not run_log_after_latest_schedule and (
+        real_report_started_at is None or real_report_started_at < last_schedule
+    ):
+        warnings.append("latest scheduled 23:00 run produced partial nightly artifacts but no newer real report exists")
     if missed_latest_schedule:
         warnings.append("latest scheduled 23:00 run has passed but no newer real report was produced")
 
@@ -237,12 +288,20 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "latest_run_log_stamp": report_stamp(run_log),
         "latest_run_log_started_at": run_log_started_at.isoformat(timespec="seconds") if run_log_started_at else "",
         "run_log_after_latest_schedule": run_log_after_latest_schedule,
+        "latest_partial_run_artifact": str(partial_run) if partial_run else "",
+        "latest_partial_run_stamp": report_stamp(partial_run),
+        "latest_partial_run_started_at": partial_run_started_at.isoformat(timespec="seconds") if partial_run_started_at else "",
+        "partial_run_after_latest_schedule": partial_run_after_latest_schedule,
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
         "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
         "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
         "sup_midpoint_tags": env.get("NIGHTLY_SUP_MIDPOINT_TAGS"),
         "sup_midpoint_repeat_boost": env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST"),
+        "sup_midpoint_band_low": env.get("NIGHTLY_SUP_MIDPOINT_BAND_LOW"),
+        "sup_midpoint_band_high": env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH"),
+        "sup_midpoint_band_weight": env.get("NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT"),
+        "sup_midpoint_center_weight": env.get("NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT"),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
@@ -266,12 +325,20 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"latest_run_log_stamp={payload['latest_run_log_stamp']}")
     print(f"latest_run_log_started_at={payload['latest_run_log_started_at']}")
     print(f"run_log_after_latest_schedule={payload['run_log_after_latest_schedule']}")
+    print(f"latest_partial_run_artifact={payload['latest_partial_run_artifact']}")
+    print(f"latest_partial_run_stamp={payload['latest_partial_run_stamp']}")
+    print(f"latest_partial_run_started_at={payload['latest_partial_run_started_at']}")
+    print(f"partial_run_after_latest_schedule={payload['partial_run_after_latest_schedule']}")
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
     print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
     print(f"sup_cosent_exclude_tags={payload['sup_cosent_exclude_tags']}")
     print(f"sup_midpoint_tags={payload['sup_midpoint_tags']}")
     print(f"sup_midpoint_repeat_boost={payload['sup_midpoint_repeat_boost']}")
+    print(f"sup_midpoint_band_low={payload['sup_midpoint_band_low']}")
+    print(f"sup_midpoint_band_high={payload['sup_midpoint_band_high']}")
+    print(f"sup_midpoint_band_weight={payload['sup_midpoint_band_weight']}")
+    print(f"sup_midpoint_center_weight={payload['sup_midpoint_center_weight']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:
