@@ -228,6 +228,14 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>antonym_mid</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_TAGS</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key>", plist)
+            self.assertIn("<string>0.45</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_BAND_HIGH</key>", plist)
+            self.assertIn("<string>0.55</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT</key>", plist)
+            self.assertIn("<string>4.0</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key>", plist)
+            self.assertIn("<string>1.0</string>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
             self.assertIn("<key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>", plist)
             self.assertIn("<string>0.3</string>", plist)
@@ -779,6 +787,106 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("todo", payload)
             self.assertGreater(payload["todo"]["total"], 0)
 
+    def test_next_morning_triage_reports_partial_run_without_report(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            home_dir = tmp_path / "home"
+            root = tmp_path / "repo"
+            resolved_root = root.resolve()
+            plist_dir = home_dir / "Library" / "LaunchAgents"
+            wrapper_dir = home_dir / ".guess_nightly"
+            reports_dir = root / ".nightly" / "reports"
+            logs_dir = root / ".nightly" / "data" / "tmp"
+            scripts_dir = root / "scripts"
+            plist_dir.mkdir(parents=True)
+            wrapper_dir.mkdir(parents=True)
+            reports_dir.mkdir(parents=True)
+            logs_dir.mkdir(parents=True)
+            scripts_dir.mkdir(parents=True)
+
+            nightly_script = resolved_root / "scripts" / "nightly_train_v26.sh"
+            nightly_script.write_text("#!/usr/bin/env bash\n", encoding="utf-8")
+            wrapper = wrapper_dir / "nightly_launcher.sh"
+            wrapper.write_text(
+                f'#!/usr/bin/env bash\ncd "{resolved_root}"\nexec /bin/bash "{nightly_script}"\n',
+                encoding="utf-8",
+            )
+            plist = plist_dir / "com.guess.nightly-train-v26.plist"
+            plist.write_text(
+                textwrap.dedent(
+                    f"""\
+                    <?xml version="1.0" encoding="UTF-8"?>
+                    <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+                    <plist version="1.0">
+                    <dict>
+                      <key>Label</key><string>com.guess.nightly-train-v26</string>
+                      <key>ProgramArguments</key>
+                      <array><string>/bin/bash</string><string>{wrapper}</string></array>
+                      <key>EnvironmentVariables</key>
+                      <dict>
+                        <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
+                        <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_TAGS</key><string>antonym_mid</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key><string>2.0</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key><string>0.45</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_BAND_HIGH</key><string>0.55</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT</key><string>4.0</string>
+                        <key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key><string>1.0</string>
+                      </dict>
+                      <key>StartCalendarInterval</key>
+                      <dict><key>Hour</key><integer>23</integer><key>Minute</key><integer>0</integer></dict>
+                    </dict>
+                    </plist>
+                    """
+                ),
+                encoding="utf-8",
+            )
+            report = reports_dir / "nightly_promotion_20260606_230000.md"
+            report.write_text(
+                textwrap.dedent(
+                    """\
+                    # Nightly Promotion Report - 20260606_230000
+
+                    **总轮次**: 3
+
+                    **结果**: 无轮次通过门控，未晋升
+                    """
+                ),
+                encoding="utf-8",
+            )
+            old_report_time = datetime(2026, 6, 6, 23, 0, 0).timestamp()
+            os.utime(report, (old_report_time, old_report_time))
+            partial = logs_dir / "nightly_train_stats_20260607_230005_r1.json"
+            partial.write_text('{"source_rows":300}\n', encoding="utf-8")
+            partial_started = datetime(2026, 6, 7, 23, 5, 0).timestamp()
+            os.utime(partial, (partial_started, partial_started))
+
+            result = subprocess.run(
+                [
+                    sys.executable,
+                    str(NEXT_MORNING_TRIAGE_SCRIPT),
+                    "--root",
+                    str(root),
+                    "--home",
+                    str(home_dir),
+                    "--now",
+                    "2026-06-08T09:00:00",
+                    "--json",
+                ],
+                cwd=REPO_ROOT,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 3, msg=result.stderr or result.stdout)
+            payload = json.loads(result.stdout)
+            self.assertEqual(payload["status"], "nightly_partial_run_no_report")
+            self.assertFalse(payload["health"]["missed_latest_schedule"])
+            self.assertTrue(payload["health"]["partial_run_after_latest_schedule"])
+            self.assertIn("partial nightly artifacts", "\n".join(payload["health"]["warnings"]))
+
     def test_regression_pairs_include_antonym_mid_checks(self):
         pairs = json.loads(REGRESSION_PAIRS_PATH.read_text(encoding="utf-8"))
         antonyms = [item for item in pairs if item.get("type") == "antonym"]
@@ -1132,12 +1240,50 @@ class NightlyScriptsTest(unittest.TestCase):
             promotion_records = sorted(reports_dir.glob("nightly_promotion_*.md"))
             self.assertTrue(promotion_records, msg=f"no promotion report found in {reports_dir}\n{output}")
             promotion_text = promotion_records[-1].read_text(encoding="utf-8")
+            run_logs = sorted((root / ".nightly" / "data" / "tmp").glob("nightly_train_v26_*.log"))
+            self.assertTrue(run_logs, msg=f"no nightly run log found\n{output}")
+            self.assertIn("[nightly] start at", run_logs[-1].read_text(encoding="utf-8"))
             self.assertIn("## 运行配置", promotion_text)
             self.assertIn("| requested_device | auto |", promotion_text)
             self.assertIn("| sup_rows | 300 |", promotion_text)
             self.assertIn("## 晋升门控", promotion_text)
             self.assertIn("| min_antonym_mid_recall_improvement | 0.0 |", promotion_text)
             self.assertIn("| regression_gate | passed == total |", promotion_text)
+
+    def test_nightly_cleans_stale_lock_before_starting_new_run(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            self._prepare_fake_repo(root)
+            self._write_round_aware_python(root / ".venv" / "bin" / "python")
+
+            lock_dir = root / ".nightly" / "data" / "tmp" / ".nightly_train_v26.lock"
+            lock_dir.mkdir(parents=True)
+            (lock_dir / "pid").write_text("999999\n", encoding="utf-8")
+
+            nightly_script_copy = root / "scripts" / "nightly_train_v26.sh"
+            nightly_script_copy.write_text(NIGHTLY_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+            nightly_script_copy.chmod(nightly_script_copy.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env["NIGHTLY_ROOT"] = str(root / ".nightly")
+            env["NIGHTLY_ENFORCE_FREE_SPACE_CHECK"] = "0"
+            env["NIGHTLY_DRY_RUN"] = "1"
+            env["NIGHTLY_TOTAL_RUNS"] = "1"
+            env["NIGHTLY_SCRIPT_ROOT"] = str(root)
+
+            result = subprocess.run(
+                ["bash", str(nightly_script_copy)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+            output = result.stdout + result.stderr
+            self.assertIn("stale lock detected", output)
+            self.assertNotIn("another training is running, skip", output)
+            self.assertFalse(lock_dir.exists())
 
     def test_nightly_promotes_best_round_records_summary_and_cleans_run_artifacts(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1583,6 +1729,11 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("contrastive_label_counts", source)
         self.assertIn("SEM_MIDPOINT_TAGS", source)
         self.assertIn("midpoint_examples_after_repeat", source)
+        self.assertIn("MidpointBandLoss", source)
+        self.assertIn('SEM_MIDPOINT_BAND_LOW", "0.45"', source)
+        self.assertIn('SEM_MIDPOINT_BAND_HIGH", "0.55"', source)
+        self.assertIn('SEM_MIDPOINT_BAND_WEIGHT", "4.0"', source)
+        self.assertIn('SEM_MIDPOINT_CENTER_WEIGHT", "1.0"', source)
 
     def test_supervised_trainer_excludes_antonym_mid_from_cosent_and_adds_midpoint_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1633,6 +1784,10 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["cosent_exclude_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
+            self.assertEqual(stats["midpoint_band_low"], 0.45)
+            self.assertEqual(stats["midpoint_band_high"], 0.55)
+            self.assertEqual(stats["midpoint_band_weight"], 4.0)
+            self.assertEqual(stats["midpoint_center_weight"], 1.0)
             self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
             self.assertEqual(len(examples), 7)
             self.assertEqual(len(cosent_examples), 4)

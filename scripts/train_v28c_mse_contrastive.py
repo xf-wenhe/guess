@@ -9,6 +9,7 @@ from collections import Counter
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from datasets import Dataset, DatasetDict
 from sentence_transformers import (
     InputExample,
@@ -40,6 +41,10 @@ LOSS_MODE = os.getenv("SEM_LOSS_MODE", "mixed").strip().lower()
 COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
+MIDPOINT_BAND_LOW = float(os.getenv("SEM_MIDPOINT_BAND_LOW", "0.45"))
+MIDPOINT_BAND_HIGH = float(os.getenv("SEM_MIDPOINT_BAND_HIGH", "0.55"))
+MIDPOINT_BAND_WEIGHT = float(os.getenv("SEM_MIDPOINT_BAND_WEIGHT", "4.0"))
+MIDPOINT_CENTER_WEIGHT = float(os.getenv("SEM_MIDPOINT_CENTER_WEIGHT", "1.0"))
 CONTRASTIVE_MARGIN = float(os.getenv("SEM_CONTRASTIVE_MARGIN", "0.5"))
 CONTRASTIVE_POS_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_POS_THRESHOLD", "0.7"))
 CONTRASTIVE_NEG_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_NEG_THRESHOLD", "0.3"))
@@ -224,6 +229,37 @@ def contrastive_label(row: dict) -> float | None:
     return None
 
 
+class MidpointBandLoss(torch.nn.Module):
+    def __init__(
+        self,
+        model: SentenceTransformer,
+        band_low: float,
+        band_high: float,
+        band_weight: float,
+        center_weight: float,
+    ) -> None:
+        super().__init__()
+        self.model = model
+        self.band_low = band_low
+        self.band_high = band_high
+        self.band_weight = band_weight
+        self.center_weight = center_weight
+
+    def forward(
+        self,
+        sentence_features: list[dict[str, torch.Tensor]],
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
+        scores = F.cosine_similarity(embeddings[0], embeddings[1])
+        labels = labels.view(-1).to(scores.device)
+        center_loss = F.mse_loss(scores, labels)
+        lower_violation = torch.relu(self.band_low - scores)
+        upper_violation = torch.relu(scores - self.band_high)
+        band_loss = (lower_violation.square() + upper_violation.square()).mean()
+        return (self.center_weight * center_loss) + (self.band_weight * band_loss)
+
+
 def load_examples(
     path: Path,
     seed: int,
@@ -343,6 +379,10 @@ def load_examples(
         "cosent_excluded_examples_after_repeat": cosent_excluded_examples,
         "midpoint_tags": sorted(MIDPOINT_TAGS),
         "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
+        "midpoint_band_low": MIDPOINT_BAND_LOW,
+        "midpoint_band_high": MIDPOINT_BAND_HIGH,
+        "midpoint_band_weight": MIDPOINT_BAND_WEIGHT,
+        "midpoint_center_weight": MIDPOINT_CENTER_WEIGHT,
         "midpoint_examples_after_repeat": len(midpoint_examples),
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
@@ -436,7 +476,10 @@ def main() -> None:
     print(f"cosent_exclude_tags={','.join(sorted(COSENT_EXCLUDE_TAGS)) or '-'}")
     print(
         f"midpoint_tags={','.join(sorted(MIDPOINT_TAGS)) or '-'} "
-        f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST}"
+        f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST} "
+        f"midpoint_band=[{MIDPOINT_BAND_LOW:.2f},{MIDPOINT_BAND_HIGH:.2f}] "
+        f"midpoint_band_weight={MIDPOINT_BAND_WEIGHT} "
+        f"midpoint_center_weight={MIDPOINT_CENTER_WEIGHT}"
     )
     print(
         "contrastive_margin="
@@ -492,7 +535,18 @@ def main() -> None:
             (cosine_loader, CosineSimilarityLoss(model=model)),
         ]
         if midpoint_examples:
-            train_objectives.append((midpoint_loader, CosineSimilarityLoss(model=model)))
+            train_objectives.append(
+                (
+                    midpoint_loader,
+                    MidpointBandLoss(
+                        model=model,
+                        band_low=MIDPOINT_BAND_LOW,
+                        band_high=MIDPOINT_BAND_HIGH,
+                        band_weight=MIDPOINT_BAND_WEIGHT,
+                        center_weight=MIDPOINT_CENTER_WEIGHT,
+                    ),
+                )
+            )
     elif LOSS_MODE == "mixed_contrastive":
         if not contrastive_examples:
             raise SystemExit("mixed_contrastive requires at least one positive or negative contrastive example")
@@ -516,7 +570,18 @@ def main() -> None:
             (contrastive_loader, OnlineContrastiveLoss(model=model, margin=CONTRASTIVE_MARGIN)),
         ]
         if midpoint_examples:
-            train_objectives.append((midpoint_loader, CosineSimilarityLoss(model=model)))
+            train_objectives.append(
+                (
+                    midpoint_loader,
+                    MidpointBandLoss(
+                        model=model,
+                        band_low=MIDPOINT_BAND_LOW,
+                        band_high=MIDPOINT_BAND_HIGH,
+                        band_weight=MIDPOINT_BAND_WEIGHT,
+                        center_weight=MIDPOINT_CENTER_WEIGHT,
+                    ),
+                )
+            )
     else:
         train_objectives = [(cosent_loader, CoSENTLoss(model=model, scale=SCALE))]
 
@@ -560,6 +625,10 @@ def main() -> None:
         "cosent_exclude_tags": sorted(COSENT_EXCLUDE_TAGS),
         "midpoint_tags": sorted(MIDPOINT_TAGS),
         "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
+        "midpoint_band_low": MIDPOINT_BAND_LOW,
+        "midpoint_band_high": MIDPOINT_BAND_HIGH,
+        "midpoint_band_weight": MIDPOINT_BAND_WEIGHT,
+        "midpoint_center_weight": MIDPOINT_CENTER_WEIGHT,
         "contrastive_margin": CONTRASTIVE_MARGIN,
         "contrastive_scope": CONTRASTIVE_SCOPE,
         "hard_neg_boost": HARD_NEG_BOOST,

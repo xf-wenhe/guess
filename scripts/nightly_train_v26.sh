@@ -77,15 +77,30 @@ LOCK_DIR="$WORK_DIR/.nightly_train_v26.lock"
 
 mkdir -p "$WORK_DIR"
 
+if [[ "${NIGHTLY_LOG_TEE:-0}" != "1" ]]; then
+  export NIGHTLY_LOG_TEE=1
+  exec > >(tee -a "$LOG_FILE") 2>&1
+fi
+
 echo "[nightly] start at $(date '+%F %T')"
 echo "[nightly] root=$ROOT_DIR"
 echo "[nightly] log=$LOG_FILE"
 
 if [[ -d "$LOCK_DIR" ]]; then
-  echo "[nightly] another training is running, skip"
-  exit 0
+  LOCK_PID_FILE="$LOCK_DIR/pid"
+  LOCK_PID=""
+  if [[ -f "$LOCK_PID_FILE" ]]; then
+    LOCK_PID="$(tr -d '[:space:]' < "$LOCK_PID_FILE" 2>/dev/null || true)"
+  fi
+  if [[ -n "$LOCK_PID" ]] && kill -0 "$LOCK_PID" 2>/dev/null; then
+    echo "[nightly] another training is running, skip"
+    exit 0
+  fi
+  echo "[nightly] stale lock detected, cleaning: $LOCK_DIR"
+  rm -rf "$LOCK_DIR"
 fi
 mkdir -p "$LOCK_DIR"
+printf '%s\n' "$$" > "$LOCK_DIR/pid"
 cleanup() {
   rm -rf "$LOCK_DIR"
 }
@@ -173,6 +188,10 @@ SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
 SUP_COSENT_EXCLUDE_TAGS="${NIGHTLY_SUP_COSENT_EXCLUDE_TAGS:-antonym_mid}"
 SUP_MIDPOINT_TAGS="${NIGHTLY_SUP_MIDPOINT_TAGS:-antonym_mid}"
 SUP_MIDPOINT_REPEAT_BOOST="${NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST:-2.0}"
+SUP_MIDPOINT_BAND_LOW="${NIGHTLY_SUP_MIDPOINT_BAND_LOW:-0.45}"
+SUP_MIDPOINT_BAND_HIGH="${NIGHTLY_SUP_MIDPOINT_BAND_HIGH:-0.55}"
+SUP_MIDPOINT_BAND_WEIGHT="${NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT:-4.0}"
+SUP_MIDPOINT_CENTER_WEIGHT="${NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT:-1.0}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
@@ -234,7 +253,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_midpoint_band_low=$SUP_MIDPOINT_BAND_LOW sup_midpoint_band_high=$SUP_MIDPOINT_BAND_HIGH sup_midpoint_band_weight=$SUP_MIDPOINT_BAND_WEIGHT sup_midpoint_center_weight=$SUP_MIDPOINT_CENTER_WEIGHT sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -445,6 +464,10 @@ run_single_round() {
       SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
       SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
       SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
+      SEM_MIDPOINT_BAND_LOW=$SUP_MIDPOINT_BAND_LOW \
+      SEM_MIDPOINT_BAND_HIGH=$SUP_MIDPOINT_BAND_HIGH \
+      SEM_MIDPOINT_BAND_WEIGHT=$SUP_MIDPOINT_BAND_WEIGHT \
+      SEM_MIDPOINT_CENTER_WEIGHT=$SUP_MIDPOINT_CENTER_WEIGHT \
       SEM_TRAIN_STATS_JSON=$train_stats_json \
       SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
       SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
@@ -475,6 +498,10 @@ run_single_round() {
           SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
           SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
           SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
+          SEM_MIDPOINT_BAND_LOW=$SUP_MIDPOINT_BAND_LOW \
+          SEM_MIDPOINT_BAND_HIGH=$SUP_MIDPOINT_BAND_HIGH \
+          SEM_MIDPOINT_BAND_WEIGHT=$SUP_MIDPOINT_BAND_WEIGHT \
+          SEM_MIDPOINT_CENTER_WEIGHT=$SUP_MIDPOINT_CENTER_WEIGHT \
           SEM_TRAIN_STATS_JSON=$train_stats_json \
           SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
           SEM_CONTRASTIVE_SCOPE=$SUP_CONTRASTIVE_SCOPE \
@@ -1024,6 +1051,10 @@ done
   echo "| sup_cosent_exclude_tags | $SUP_COSENT_EXCLUDE_TAGS |"
   echo "| sup_midpoint_tags | $SUP_MIDPOINT_TAGS |"
   echo "| sup_midpoint_repeat_boost | $SUP_MIDPOINT_REPEAT_BOOST |"
+  echo "| sup_midpoint_band_low | $SUP_MIDPOINT_BAND_LOW |"
+  echo "| sup_midpoint_band_high | $SUP_MIDPOINT_BAND_HIGH |"
+  echo "| sup_midpoint_band_weight | $SUP_MIDPOINT_BAND_WEIGHT |"
+  echo "| sup_midpoint_center_weight | $SUP_MIDPOINT_CENTER_WEIGHT |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
   echo ""
   echo "## 晋升门控"
