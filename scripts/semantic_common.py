@@ -65,21 +65,102 @@ def load_calibration(path: Path) -> tuple[list[float], list[float]]:
     return [float(v) for v in payload["x_pred"]], [float(v) for v in payload["y_calibrated"]]
 
 
-def build_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
+def build_calibration(
+    pred: list[float],
+    target: list[float],
+    weights: list[float] | None = None,
+) -> dict[str, list[float]]:
     method = os.getenv("SEM_CALIBRATION_METHOD", "isotonic").strip().lower()
     if method in {"legacy", "bucket_mean", "quantile_mean"}:
-        return build_quantile_mean_calibration(pred, target)
+        return build_quantile_mean_calibration(pred, target, weights)
     if method != "isotonic":
         raise ValueError(f"unsupported SEM_CALIBRATION_METHOD={method!r}")
-    return build_isotonic_calibration(pred, target)
+    return build_isotonic_calibration(pred, target, weights)
 
 
-def build_quantile_mean_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
+def augment_masked_calibration_samples(
+    pred: list[float],
+    target: list[float],
+    weights: list[float] | None = None,
+    sample_mask: list[bool] | None = None,
+    *,
+    radius: float = 0.0,
+    steps: int = 0,
+    weight_multiplier: float = 0.0,
+) -> tuple[list[float], list[float], list[float]]:
+    pred_out = [float(value) for value in pred]
+    target_out = [float(value) for value in target]
+    if weights is None:
+        weight_out = [1.0 for _ in pred_out]
+    else:
+        weight_out = [max(1e-6, float(value)) for value in weights]
+
+    if (
+        sample_mask is None
+        or radius <= 0.0
+        or steps <= 0
+        or weight_multiplier <= 0.0
+    ):
+        return pred_out, target_out, weight_out
+    if len(sample_mask) != len(pred_out):
+        raise ValueError("sample_mask length must match pred length")
+
+    for pred_value, target_value, sample_weight, is_selected in zip(
+        pred_out[:len(sample_mask)],
+        target_out[:len(sample_mask)],
+        weight_out[:len(sample_mask)],
+        sample_mask,
+    ):
+        if not is_selected:
+            continue
+        for step in range(1, steps + 1):
+            offset = radius * float(step) / float(steps)
+            augmented_weight = max(1e-6, sample_weight * weight_multiplier / float(step))
+            pred_out.append(max(0.0, pred_value - offset))
+            target_out.append(target_value)
+            weight_out.append(augmented_weight)
+            pred_out.append(min(100.0, pred_value + offset))
+            target_out.append(target_value)
+            weight_out.append(augmented_weight)
+    return pred_out, target_out, weight_out
+
+
+def augment_midpoint_calibration_samples(
+    pred: list[float],
+    target: list[float],
+    weights: list[float] | None = None,
+    midpoint_mask: list[bool] | None = None,
+    *,
+    radius: float = 0.0,
+    steps: int = 0,
+    weight_multiplier: float = 0.0,
+) -> tuple[list[float], list[float], list[float]]:
+    return augment_masked_calibration_samples(
+        pred,
+        target,
+        weights,
+        midpoint_mask,
+        radius=radius,
+        steps=steps,
+        weight_multiplier=weight_multiplier,
+    )
+
+
+def build_quantile_mean_calibration(
+    pred: list[float],
+    target: list[float],
+    weights: list[float] | None = None,
+) -> dict[str, list[float]]:
     pred_arr = np.array(pred, dtype=np.float32)
     target_arr = np.array(target, dtype=np.float32)
+    if weights is None:
+        weight_arr = np.ones(len(pred_arr), dtype=np.float32)
+    else:
+        weight_arr = np.clip(np.array(weights, dtype=np.float32), 1e-6, None)
     order = np.argsort(pred_arr)
     pred_arr = pred_arr[order]
     target_arr = target_arr[order]
+    weight_arr = weight_arr[order]
 
     x: list[float] = []
     y: list[float] = []
@@ -90,32 +171,41 @@ def build_quantile_mean_calibration(pred: list[float], target: list[float]) -> d
         right = int((i + 1) * n / n_bins)
         if right <= left:
             continue
-        x.append(float(np.mean(pred_arr[left:right])))
-        y.append(float(np.mean(target_arr[left:right])))
+        x.append(float(np.average(pred_arr[left:right], weights=weight_arr[left:right])))
+        y.append(float(np.average(target_arr[left:right], weights=weight_arr[left:right])))
     if not x:
         x = [0.0, 100.0]
         y = [0.0, 100.0]
     return {"x_pred": x, "y_calibrated": y, "method": "quantile_mean"}
 
 
-def build_isotonic_calibration(pred: list[float], target: list[float]) -> dict[str, list[float]]:
+def build_isotonic_calibration(
+    pred: list[float],
+    target: list[float],
+    weights: list[float] | None = None,
+) -> dict[str, list[float]]:
     pred_arr = np.array(pred, dtype=np.float64)
     target_arr = np.clip(np.array(target, dtype=np.float64), 0.0, 100.0)
+    if weights is None:
+        weight_arr = np.ones(len(pred_arr), dtype=np.float64)
+    else:
+        weight_arr = np.clip(np.array(weights, dtype=np.float64), 1e-6, None)
     if len(pred_arr) == 0:
         return {"x_pred": [0.0, 100.0], "y_calibrated": [0.0, 100.0], "method": "isotonic"}
 
     order = np.argsort(pred_arr, kind="mergesort")
     pred_arr = pred_arr[order]
     target_arr = target_arr[order]
+    weight_arr = weight_arr[order]
 
     # Pool adjacent violators algorithm. It gives the monotonic least-squares
     # calibration curve without depending on sklearn at runtime.
     blocks: list[dict[str, float]] = []
-    for x_value, y_value in zip(pred_arr, target_arr):
+    for x_value, y_value, sample_weight in zip(pred_arr, target_arr, weight_arr):
         blocks.append({
-            "x_sum": float(x_value),
-            "y_sum": float(y_value),
-            "weight": 1.0,
+            "x_sum": float(x_value) * float(sample_weight),
+            "y_sum": float(y_value) * float(sample_weight),
+            "weight": float(sample_weight),
             "x_min": float(x_value),
             "x_max": float(x_value),
         })

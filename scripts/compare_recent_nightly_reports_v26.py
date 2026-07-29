@@ -91,6 +91,8 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "sup_rows": config.get("sup_rows"),
         "sup_loss_mode": config.get("sup_loss_mode"),
         "sup_min_tag_rows": config.get("sup_min_tag_rows"),
+        "sup_min_tag_bucket_rows": config.get("sup_min_tag_bucket_rows"),
+        "calib_support_positive_target_low": config.get("calib_support_positive_target_low"),
         "sup_cosent_exclude_tags": config.get("sup_cosent_exclude_tags"),
         "best_round": round_number,
         "best_stage": best.get("stage"),
@@ -107,7 +109,14 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "antonym_mid_examples_after_repeat": sampling.get("antonym_mid_examples_after_repeat"),
         "cosent_exclude_tags": sampling.get("cosent_exclude_tags"),
         "cosent_excluded_examples_after_repeat": sampling.get("cosent_excluded_examples_after_repeat"),
+        "priority_antonym_calib_anchor_rows": sampling.get("priority_antonym_calib_anchor_rows"),
+        "priority_antonym_calib_weight_rows": sampling.get("priority_antonym_calib_weight_rows"),
+        "antonym_calib_anchor_weight": sampling.get("antonym_calib_anchor_weight"),
+        "priority_antonym_calib_anchor_weight": sampling.get("priority_antonym_calib_anchor_weight"),
+        "gold_to_calib_rows": sampling.get("gold_to_calib_rows"),
+        "gold_to_calib_weight": sampling.get("gold_to_calib_weight"),
         "min_tag_rows": sampling.get("min_tag_rows"),
+        "min_tag_bucket_rows": sampling.get("min_tag_bucket_rows"),
     }
 
 
@@ -149,6 +158,8 @@ def print_human(comparison: dict[str, Any]) -> None:
             "  config: "
             f"profile={row['train_profile']} rows={row['sup_rows']} "
             f"loss={row['sup_loss_mode']} min_tags={row['sup_min_tag_rows']} "
+            f"bucket_min_tags={row['sup_min_tag_bucket_rows'] or '-'} "
+            f"calib_support_low={row['calib_support_positive_target_low'] or '-'} "
             f"cosent_exclude={row['sup_cosent_exclude_tags']}"
         )
         print(
@@ -162,7 +173,18 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"antonym_rows={row['antonym_mid_rows'] or '-'} "
             f"antonym_examples={row['antonym_mid_examples_after_repeat'] or '-'} "
             f"cosent_excluded={row['cosent_excluded_examples_after_repeat'] or '-'} "
-            f"cosent_exclude_tags={row['cosent_exclude_tags'] or '-'}"
+            f"cosent_exclude_tags={row['cosent_exclude_tags'] or '-'} "
+            f"min_tag_rows={row['min_tag_rows'] or '-'} "
+            f"min_tag_bucket_rows={row['min_tag_bucket_rows'] or '-'}"
+        )
+        print(
+            "  antonym_calib: "
+            f"gold_rows={row['gold_to_calib_rows'] or '-'} "
+            f"gold_weight={row['gold_to_calib_weight'] or '-'} "
+            f"priority_rows={row['priority_antonym_calib_anchor_rows'] or '-'} "
+            f"priority_weight_rows={row['priority_antonym_calib_weight_rows'] or '-'} "
+            f"base_weight={row['antonym_calib_anchor_weight'] or '-'} "
+            f"priority_weight={row['priority_antonym_calib_anchor_weight'] or '-'}"
         )
         if row["failed_gates"]:
             print("  failed_gates: " + ", ".join(str(item) for item in row["failed_gates"]))

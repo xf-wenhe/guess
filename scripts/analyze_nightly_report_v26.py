@@ -136,46 +136,25 @@ def parse_rounds(text: str) -> list[dict[str, str]]:
     return rounds
 
 
-def parse_group_sections(text: str) -> list[dict[str, str]]:
+def parse_markdown_table(section: str) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
-    for section in re.split(r"\n## ", text):
-        if not section.startswith(("拒绝诊断", "分组指标")):
+    headers: list[str] = []
+    for line in section.splitlines():
+        if not line.startswith("|") or "---" in line:
             continue
-        headers: list[str] = []
-        for line in section.splitlines():
-            if not line.startswith("|") or "---" in line:
-                continue
-            cells = [cell.strip() for cell in line.strip("|").split("|")]
-            if not headers:
-                headers = cells
-                continue
-            if len(cells) == len(headers):
-                rows.append(dict(zip(headers, cells)))
+        cells = [cell.strip() for cell in line.strip("|").split("|")]
+        if not headers:
+            headers = cells
+            continue
+        if len(cells) == len(headers):
+            rows.append(dict(zip(headers, cells)))
     return rows
 
 
-def parse_bucket_confusion_sections(text: str) -> list[dict[str, str]]:
-    rows: list[dict[str, str]] = []
-    for section in re.split(r"\n### ", text):
-        if not section.startswith("校准桶错分 Top"):
-            continue
-        headers: list[str] = []
-        for line in section.splitlines():
-            if not line.startswith("|") or "---" in line:
-                continue
-            cells = [cell.strip() for cell in line.strip("|").split("|")]
-            if not headers:
-                headers = cells
-                continue
-            if len(cells) == len(headers):
-                rows.append(dict(zip(headers, cells)))
-    return rows
-
-
-def parse_train_sampling_sections(text: str) -> list[dict[str, str]]:
+def parse_round_item_value_sections(text: str, title_prefix: str) -> list[dict[str, str]]:
     rows: list[dict[str, str]] = []
     for section in re.split(r"\n## ", text):
-        if not section.startswith("实际训练抽样 Round "):
+        if not section.startswith(title_prefix):
             continue
         title = section.splitlines()[0].strip()
         round_match = re.search(r"Round\s+(\d+)", title)
@@ -189,6 +168,53 @@ def parse_train_sampling_sections(text: str) -> list[dict[str, str]]:
             row[cells[0]] = cells[1]
         rows.append(row)
     return rows
+
+
+def merge_round_item_value_rows(*row_lists: list[dict[str, str]]) -> list[dict[str, str]]:
+    merged: dict[str, dict[str, str]] = {}
+    for rows in row_lists:
+        for row in rows:
+            round_number = row.get("round", "")
+            if round_number not in merged:
+                merged[round_number] = {"round": round_number}
+            merged[round_number].update(row)
+    def round_sort_key(round_number: str) -> tuple[int, str]:
+        try:
+            return (0, f"{int(round_number):08d}")
+        except (TypeError, ValueError):
+            return (1, round_number)
+    return [merged[round_number] for round_number in sorted(merged, key=round_sort_key)]
+
+
+def parse_train_sampling_sections(text: str) -> list[dict[str, str]]:
+    distribution_rows = parse_round_item_value_sections(text, "训练数据分布 Round ")
+    sampling_rows = parse_round_item_value_sections(text, "实际训练抽样 Round ")
+    return merge_round_item_value_rows(distribution_rows, sampling_rows)
+
+
+def parse_round_diagnostic_sections(text: str) -> list[dict[str, object]]:
+    sections: list[dict[str, object]] = []
+    for section in re.split(r"\n## ", text):
+        if not section.startswith(("拒绝诊断 Round ", "分组指标 Round ")):
+            continue
+        title = section.splitlines()[0].strip()
+        round_match = re.search(r"Round\s+(\d+)", title)
+        round_number = round_match.group(1) if round_match else ""
+        group_rows = parse_markdown_table(section)
+        bucket_confusions: list[dict[str, str]] = []
+        for subsection in re.split(r"\n### ", section):
+            if subsection.startswith("校准桶错分 Top"):
+                bucket_confusions = parse_markdown_table(subsection)
+                break
+        sections.append(
+            {
+                "round": round_number,
+                "title": title,
+                "group_rows": group_rows,
+                "bucket_confusions": bucket_confusions,
+            }
+        )
+    return sections
 
 
 def parse_result(text: str) -> str:
@@ -323,8 +349,7 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
     config = parse_key_value_table(text, "运行配置")
     gates = parse_key_value_table(text, "晋升门控")
     rounds = parse_rounds(text)
-    groups = parse_group_sections(text)
-    bucket_confusions = parse_bucket_confusion_sections(text)
+    diagnostics = parse_round_diagnostic_sections(text)
     train_sampling = parse_train_sampling_sections(text)
     result = parse_result(text)
     dry_run = "DRY_RUN" in text or config.get("dry_run") == "1"
@@ -338,6 +363,32 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
         if best_mae is None or mae < best_mae:
             best_mae = mae
             best_round = item
+
+    all_groups: list[dict[str, str]] = []
+    all_bucket_confusions: list[dict[str, str]] = []
+    for item in diagnostics:
+        all_groups.extend(item.get("group_rows", []))
+        all_bucket_confusions.extend(item.get("bucket_confusions", []))
+
+    best_round_number = ""
+    if isinstance(best_round, dict):
+        best_round_number = str(best_round.get("轮次") or best_round.get("round") or "")
+    best_diagnostics = next(
+        (
+            item for item in diagnostics
+            if item.get("round") == best_round_number
+        ),
+        None,
+    )
+    selected_groups = list(best_diagnostics.get("group_rows", [])) if isinstance(best_diagnostics, dict) else []
+    if not selected_groups:
+        selected_groups = all_groups
+    selected_bucket_confusions = (
+        list(best_diagnostics.get("bucket_confusions", []))
+        if isinstance(best_diagnostics, dict) else []
+    )
+    if not selected_bucket_confusions:
+        selected_bucket_confusions = all_bucket_confusions
 
     device = parse_log_devices(device_text)
     gate_status = parse_gate_status(log_text)
@@ -361,11 +412,14 @@ def build_summary(report: Path, nightly_root: Path, include_dry_run: bool) -> di
         "gates": gates,
         "rounds": rounds,
         "best_round": best_round,
-        "groups": groups,
+        "best_round_diagnostics": best_diagnostics,
+        "groups": selected_groups,
+        "all_groups": all_groups,
         "train_sampling": train_sampling,
-        "group_regressions": parse_group_regressions(groups),
-        "bucket_confusions": bucket_confusions,
-        "antonym_group": next((row for row in groups if row.get("group") == "antonym"), None),
+        "group_regressions": parse_group_regressions(selected_groups),
+        "bucket_confusions": selected_bucket_confusions,
+        "all_bucket_confusions": all_bucket_confusions,
+        "antonym_group": next((row for row in selected_groups if row.get("group") == "antonym"), None),
         "recent_failure_lines": failures,
         "selected_with_include_dry_run": include_dry_run,
     }
@@ -443,7 +497,8 @@ def print_human(summary: dict[str, object]) -> None:
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
                 f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
-                f"min_tag_rows={item.get('min_tag_rows', '-')}"
+                f"min_tag_rows={item.get('min_tag_rows', '-')} "
+                f"min_tag_bucket_rows={item.get('min_tag_bucket_rows', '-')}"
             )
 
     antonym = summary.get("antonym_group")

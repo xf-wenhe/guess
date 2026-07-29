@@ -9,6 +9,7 @@ import tempfile
 import textwrap
 import unittest
 import warnings
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 
@@ -98,6 +99,8 @@ class NightlyScriptsTest(unittest.TestCase):
             "warnings": [],
             "sup_cosent_exclude_tags": "antonym_mid",
             "sup_midpoint_tags": "antonym_mid",
+            "sup_min_tag_bucket_rows": "same_category_mid@40-59:20,same_category_mid@60-79:12",
+            "calib_support_positive_target_low": "60",
         }
         analysis = {
             "train_sampling": [
@@ -108,6 +111,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     "cosent_excluded_examples_after_repeat": "153",
                     "midpoint_tags": '["antonym_mid"]',
                     "midpoint_examples_after_repeat": "306",
+                    "min_tag_bucket_rows": '{"same_category_mid@40-59": 20, "same_category_mid@60-79": 12}',
                 }
             ]
         }
@@ -124,6 +128,11 @@ class NightlyScriptsTest(unittest.TestCase):
         bad_midpoint = triage.semantic_strategy_checks(health, analysis)
         self.assertFalse(bad_midpoint["ok"])
         self.assertIn("midpoint_examples_after_repeat", bad_midpoint["issues"][0])
+        analysis["train_sampling"][0]["midpoint_examples_after_repeat"] = "306"
+        analysis["train_sampling"][0]["min_tag_bucket_rows"] = '{"same_category_mid@40-59": 12}'
+        bad_bucket_rows = triage.semantic_strategy_checks(health, analysis)
+        self.assertFalse(bad_bucket_rows["ok"])
+        self.assertIn("min_tag_bucket_rows", bad_bucket_rows["issues"][-1])
         self.assertEqual(
             triage.triage_status(
                 {"ok": True, "missed_latest_schedule": False, "run_log_after_latest_schedule": False},
@@ -144,6 +153,8 @@ class NightlyScriptsTest(unittest.TestCase):
             {
                 "warnings": ["latest real report predates current launchd install; wait for next 23:00 run"],
                 "sup_cosent_exclude_tags": "antonym_mid",
+                "sup_min_tag_bucket_rows": "same_category_mid@40-59:20,same_category_mid@60-79:12",
+                "calib_support_positive_target_low": "60",
             },
             analysis,
         )
@@ -224,6 +235,12 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>mixed</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIN_TAG_ROWS</key>", plist)
             self.assertIn("<string>antonym_mid:45</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key>", plist)
+            self.assertIn(
+                "<string>same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18</string>",
+                plist,
+            )
+            self.assertIn("<key>NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key>", plist)
             self.assertIn("<string>antonym_mid</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_TAGS</key>", plist)
@@ -236,6 +253,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>4.0</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key>", plist)
             self.assertIn("<string>1.0</string>", plist)
+            self.assertIn("<key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key>", plist)
+            self.assertIn("<string>60</string>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
             self.assertIn("<key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>", plist)
             self.assertIn("<string>0.3</string>", plist)
@@ -280,6 +299,12 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["nightly_total_runs"], "3")
             self.assertEqual(payload["antonym_gate"], "0.0")
             self.assertEqual(payload["sup_min_tag_rows"], "antonym_mid:45")
+            self.assertEqual(
+                payload["sup_min_tag_bucket_rows"],
+                "same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18",
+            )
+            self.assertEqual(payload["sup_min_angle_repeat_tag_buckets"], "")
+            self.assertEqual(payload["calib_support_positive_target_low"], "60")
             self.assertFalse(payload["missed_latest_schedule"])
 
     def test_check_nightly_launchd_warns_after_missed_schedule(self):
@@ -320,6 +345,8 @@ class NightlyScriptsTest(unittest.TestCase):
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
                         <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key><string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>
+                        <key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key><string>60</string>
                         <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
@@ -400,6 +427,7 @@ class NightlyScriptsTest(unittest.TestCase):
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
                         <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key><string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>
                         <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
@@ -482,6 +510,7 @@ class NightlyScriptsTest(unittest.TestCase):
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
                         <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key><string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>
                         <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
@@ -560,6 +589,7 @@ class NightlyScriptsTest(unittest.TestCase):
                         <key>NIGHTLY_TOTAL_RUNS</key><string>3</string>
                         <key>NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT</key><string>0.0</string>
                         <key>NIGHTLY_SUP_MIN_TAG_ROWS</key><string>antonym_mid:45</string>
+                        <key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key><string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>
                         <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key><string>antonym_mid</string>
                       </dict>
                       <key>StartCalendarInterval</key>
@@ -609,9 +639,12 @@ class NightlyScriptsTest(unittest.TestCase):
                     | antonym_mid_examples_after_repeat | 153 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 153 |
+                    | priority_antonym_calib_anchor_rows | 7 |
+                    | priority_antonym_calib_weight_rows | 4 |
                     | midpoint_tags | ["antonym_mid"] |
                     | midpoint_examples_after_repeat | 306 |
                     | min_tag_rows | {"antonym_mid": 45} |
+                    | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
                     """
                 ),
                 encoding="utf-8",
@@ -660,6 +693,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["analysis"]["train_sampling"][0]["antonym_mid_rows"], "51")
             self.assertEqual(payload["analysis"]["train_sampling"][0]["antonym_mid_examples_after_repeat"], "153")
             self.assertEqual(payload["analysis"]["train_sampling"][0]["cosent_excluded_examples_after_repeat"], "153")
+            self.assertEqual(payload["analysis"]["train_sampling"][0]["priority_antonym_calib_anchor_rows"], "7")
+            self.assertEqual(payload["analysis"]["train_sampling"][0]["priority_antonym_calib_weight_rows"], "4")
             self.assertTrue(payload["strategy_checks"]["ok"])
             self.assertFalse(payload["strategy_checks"]["skipped"])
             self.assertEqual(payload["review_source_counts"]["nightly_bucket_confusion"], 1)
@@ -681,9 +716,13 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("## Train Sampling", md)
             self.assertIn("antonym_mid_rows `51`", md)
             self.assertIn("cosent_excluded_examples `153`", md)
+            self.assertIn("priority_antonym_calib_rows `7`", md)
+            self.assertIn("priority_antonym_weight_rows `4`", md)
             self.assertIn("## Strategy Checks", md)
             self.assertIn("expected_cosent_exclude_tags: `antonym_mid`", md)
             self.assertIn("expected_midpoint_tags: `antonym_mid`", md)
+            self.assertIn("expected_min_tag_bucket_rows: `same_category_mid@40-59:20,same_category_mid@60-79:12`", md)
+            self.assertIn("expected_calib_support_positive_target_low:", md)
             self.assertIn("alias_synonym_high:3", md)
             self.assertIn("source_counts:", md)
             self.assertIn("status_counts:", md)
@@ -948,6 +987,8 @@ class NightlyScriptsTest(unittest.TestCase):
                     | dry_run | 0 |
                     | requested_device | auto |
                     | sup_rows | 300 |
+                    | sup_min_tag_bucket_rows | same_category_mid@40-59:20,same_category_mid@60-79:12 |
+                    | calib_support_positive_target_low | 60 |
 
                     ## 晋升门控
 
@@ -990,7 +1031,46 @@ class NightlyScriptsTest(unittest.TestCase):
                     | antonym_mid_examples_after_repeat | 153 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 153 |
+                    | priority_antonym_calib_anchor_rows | 7 |
+                    | priority_antonym_calib_weight_rows | 4 |
                     | min_tag_rows | {"antonym_mid": 45} |
+                    | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
+
+                    ## 训练数据分布 Round 2
+
+                    | item | value |
+                    |------|-------|
+                    | gold_to_calib_rows | 1 |
+                    | gold_to_calib_weight | 10 |
+                    | priority_antonym_calib_anchor_rows | 9 |
+                    | priority_antonym_calib_weight_rows | 4 |
+
+                    ## 拒绝诊断 Round 2 (supervised)
+
+                    | group | base_mae | cand_mae | base_acc | cand_acc | extra |
+                    |-------|----------|----------|----------|----------|-------|
+                    | antonym | 2.0 | 4.8 | 100.0 | 100.0 | mid@40-60 100.0 -> 100.0; strict@45-55 100.0 -> 100.0 |
+                    | same_category | 6.0 | 7.0 | 60.0 | 58.0 |  |
+
+                    ### 校准桶错分 Top
+
+                    | target_bucket | predicted_bucket | base_count | cand_count | cand_avg_error | top_tags | top_groups | examples |
+                    |---------------|------------------|------------|------------|----------------|----------|------------|----------|
+                    | 40-60 | 20-40 | 2 | 4 | 6.2 | same_category_mid:4 | same_category:4 | 钢琴->黑白键 |
+
+                    ## 实际训练抽样 Round 2
+
+                    | item | value |
+                    |------|-------|
+                    | source_rows | 300 |
+                    | train_examples_after_repeat | 580 |
+                    | hard_negative_rows | 65 |
+                    | antonym_mid_rows | 50 |
+                    | antonym_mid_examples_after_repeat | 150 |
+                    | cosent_exclude_tags | ["antonym_mid"] |
+                    | cosent_excluded_examples_after_repeat | 150 |
+                    | min_tag_rows | {"antonym_mid": 45} |
+                    | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
                     """
                 ),
                 encoding="utf-8",
@@ -1032,16 +1112,28 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["actual_device_inferred"], "mps")
             self.assertTrue(payload["used_gpu_or_mps"])
             self.assertEqual(payload["best_round"]["轮次"], "2")
+            self.assertEqual(payload["best_round_diagnostics"]["round"], "2")
             self.assertEqual(payload["antonym_group"]["group"], "antonym")
+            self.assertEqual(payload["antonym_group"]["cand_mae"], "4.8")
             self.assertEqual(payload["failed_gates"], ["mae_ok"])
-            self.assertEqual(payload["group_regressions"][0]["group"], "same_category")
-            self.assertEqual(payload["bucket_confusions"][0]["target_bucket"], "80-100")
-            self.assertEqual(payload["bucket_confusions"][0]["predicted_bucket"], "60-80")
-            self.assertEqual(payload["bucket_confusions"][0]["top_groups"], "synonym_alias:3")
+            self.assertEqual(payload["group_regressions"][0]["group"], "antonym")
+            self.assertEqual(payload["bucket_confusions"][0]["target_bucket"], "40-60")
+            self.assertEqual(payload["bucket_confusions"][0]["predicted_bucket"], "20-40")
+            self.assertEqual(payload["bucket_confusions"][0]["top_groups"], "same_category:4")
             self.assertEqual(payload["train_sampling"][0]["round"], "1")
             self.assertEqual(payload["train_sampling"][0]["antonym_mid_rows"], "51")
             self.assertEqual(payload["train_sampling"][0]["antonym_mid_examples_after_repeat"], "153")
             self.assertEqual(payload["train_sampling"][0]["cosent_excluded_examples_after_repeat"], "153")
+            self.assertEqual(payload["train_sampling"][0]["priority_antonym_calib_anchor_rows"], "7")
+            self.assertEqual(payload["train_sampling"][0]["priority_antonym_calib_weight_rows"], "4")
+            self.assertEqual(
+                payload["train_sampling"][0]["min_tag_bucket_rows"],
+                '{"same_category_mid@40-59": 20, "same_category_mid@60-79": 12}',
+            )
+            round2_sampling = next(item for item in payload["train_sampling"] if item["round"] == "2")
+            self.assertEqual(round2_sampling["gold_to_calib_rows"], "1")
+            self.assertEqual(round2_sampling["gold_to_calib_weight"], "10")
+            self.assertEqual(round2_sampling["priority_antonym_calib_anchor_rows"], "9")
 
     def test_compare_recent_nightly_reports_summarizes_multi_night_trends(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1089,6 +1181,8 @@ class NightlyScriptsTest(unittest.TestCase):
                     | sup_rows | 300 |
                     | sup_loss_mode | mixed |
                     | sup_min_tag_rows | antonym_mid:45 |
+                    | sup_min_tag_bucket_rows | same_category_mid@40-59:20,same_category_mid@60-79:12 |
+                    | calib_support_positive_target_low | 60 |
                     | sup_cosent_exclude_tags | antonym_mid |
 
                     ## 各轮结果
@@ -1107,6 +1201,17 @@ class NightlyScriptsTest(unittest.TestCase):
                     |-------|----------|----------|----------|----------|-------|
                     | antonym | 15.0 | 22.5 | 50.0 | 0.0 | mid@40-60 50.0 -> 0.0; strict@45-55 50.0 -> 0.0 |
 
+                    ## 训练数据分布 Round 2
+
+                    | item | value |
+                    |------|-------|
+                    | gold_to_calib_rows | 1 |
+                    | gold_to_calib_weight | 10 |
+                    | priority_antonym_calib_anchor_rows | 7 |
+                    | priority_antonym_calib_weight_rows | 4 |
+                    | antonym_calib_anchor_weight | 10 |
+                    | priority_antonym_calib_anchor_weight | 13 |
+
                     ## 实际训练抽样 Round 2
 
                     | item | value |
@@ -1116,6 +1221,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 150 |
                     | min_tag_rows | {"antonym_mid": 45} |
+                    | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
                     """
                 ),
                 encoding="utf-8",
@@ -1193,8 +1299,23 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(rows[0]["best_round"], "2")
             self.assertEqual(rows[0]["best_cand_mae"], "6.6")
             self.assertEqual(rows[0]["sup_cosent_exclude_tags"], "antonym_mid")
+            self.assertEqual(
+                rows[0]["sup_min_tag_bucket_rows"],
+                "same_category_mid@40-59:20,same_category_mid@60-79:12",
+            )
+            self.assertEqual(rows[0]["calib_support_positive_target_low"], "60")
             self.assertEqual(rows[0]["antonym_mid_rows"], "50")
             self.assertEqual(rows[0]["cosent_excluded_examples_after_repeat"], "150")
+            self.assertEqual(rows[0]["priority_antonym_calib_anchor_rows"], "7")
+            self.assertEqual(rows[0]["priority_antonym_calib_weight_rows"], "4")
+            self.assertEqual(rows[0]["antonym_calib_anchor_weight"], "10")
+            self.assertEqual(rows[0]["priority_antonym_calib_anchor_weight"], "13")
+            self.assertEqual(rows[0]["gold_to_calib_rows"], "1")
+            self.assertEqual(rows[0]["gold_to_calib_weight"], "10")
+            self.assertEqual(
+                rows[0]["min_tag_bucket_rows"],
+                '{"same_category_mid@40-59": 20, "same_category_mid@60-79": 12}',
+            )
             self.assertEqual(
                 rows[0]["failed_gates"],
                 ["acc_ok", "antonym_strict_mid_recall_ok", "regression_ok"],
@@ -1378,6 +1499,10 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("| antonym_mid_examples_after_repeat | 153 |", promotion_text)
             self.assertIn("| cosent_excluded_examples_after_repeat | 153 |", promotion_text)
             self.assertIn("| min_tag_rows | {\"antonym_mid\": 45} |", promotion_text)
+            self.assertIn(
+                "| min_tag_bucket_rows | {\"same_category_mid@40-59\": 20, \"same_category_mid@60-79\": 12} |",
+                promotion_text,
+            )
             self.assertIn("拒绝诊断 Round 1", promotion_text)
             self.assertIn("hard_negative", promotion_text)
             self.assertIn("synonym_alias", promotion_text)
@@ -1614,12 +1739,14 @@ class NightlyScriptsTest(unittest.TestCase):
             base_train_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
                 "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "刘备,猫咪,hard_negative_low,10,1.0\n"
                 "香蕉,苹果,same_category_mid,55,1.0\n",
                 encoding="utf-8",
             )
             train_patch_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
                 "香蕉,苹果,same_category_but_far,25,4.0\n"
+                "刘备,猫咪,hard_negative_low,10,4.0\n"
                 "开心,伤心,antonym_low,10,4.0\n",
                 encoding="utf-8",
             )
@@ -1652,6 +1779,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
                     "SEM_BUILD_STATS_JSON": str(stats_out),
                     "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
                 }
             )
 
@@ -1670,8 +1798,11 @@ class NightlyScriptsTest(unittest.TestCase):
                     return {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
 
             holdout_pair = ("猫咪", "刘备")
+            reverse_holdout_pair = ("刘备", "猫咪")
             self.assertNotIn(holdout_pair, read_pairs(train_out))
+            self.assertNotIn(reverse_holdout_pair, read_pairs(train_out))
             self.assertNotIn(holdout_pair, read_pairs(calib_out))
+            self.assertNotIn(reverse_holdout_pair, read_pairs(calib_out))
             self.assertIn(holdout_pair, read_pairs(eval_out))
             self.assertIn(("香蕉", "苹果"), read_pairs(train_out))
             self.assertIn(("开心", "伤心"), read_pairs(train_out))
@@ -1690,10 +1821,1185 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(required_antonym_row["relation_tag"], "antonym_mid")
             self.assertEqual(required_antonym_row["score_0_100"], "50")
             self.assertEqual(required_antonym_row["sample_weight"], "4.0000")
+            extra_required_antonym_row = next(
+                row for row in train_rows if (row["answer"], row["user_input"]) == ("永恒", "瞬间")
+            )
+            self.assertEqual(extra_required_antonym_row["reviewer"], "required_antonym_patch")
+            self.assertEqual(extra_required_antonym_row["relation_tag"], "antonym_mid")
+            self.assertEqual(extra_required_antonym_row["score_0_100"], "50")
+            emotion_required_antonym_row = next(
+                row for row in train_rows if (row["answer"], row["user_input"]) == ("欣喜", "郁闷")
+            )
+            self.assertEqual(emotion_required_antonym_row["reviewer"], "required_antonym_patch")
+            self.assertEqual(emotion_required_antonym_row["relation_tag"], "antonym_mid")
+            self.assertEqual(emotion_required_antonym_row["score_0_100"], "50")
+            self.assertFalse(any((row["answer"], row["user_input"]) == ("高兴", "伤心") for row in train_rows))
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["fixed_holdout"], 1)
-            self.assertEqual(stats["train_patch"], 7)
+            self.assertEqual(stats["train_patch"], 10)
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
             self.assertGreaterEqual(stats["train_gold"], 1)
+
+    def test_build_nightly_semantic_sets_filters_base_rows_that_conflict_with_curated_gold_bidirectionally(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            scored_path = tmp_path / "scored.csv"
+            extra_gold_path = tmp_path / "extra_gold.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"钢琴","category":"乐器","hints":["黑白键"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "钢琴,小提琴,same_category_mid,40,1.0,base_train\n"
+                "小提琴,钢琴,same_category_mid,40,1.0,base_train\n"
+                "猫咪,刘备,hard_negative_low,10,1.0,base_train\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n",
+                encoding="utf-8",
+            )
+            extra_gold_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "钢琴,小提琴,same_category_but_far,30,manual_review\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": str(extra_gold_path),
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            all_rows = []
+            for path in (train_out, calib_out, eval_out):
+                with path.open("r", encoding="utf-8") as file:
+                    all_rows.extend(list(csv.DictReader(file)))
+
+            pair_rows = [
+                row
+                for row in all_rows
+                if {row["answer"], row["user_input"]} == {"钢琴", "小提琴"}
+            ]
+            self.assertTrue(pair_rows)
+            self.assertFalse(any(row["reviewer"] == "base_train" for row in pair_rows))
+            self.assertFalse(any(row["score_0_100"] == "40" for row in pair_rows))
+            self.assertTrue(any(row["score_0_100"] == "30" for row in pair_rows))
+
+    def test_build_nightly_semantic_sets_prevents_train_eval_overlap_for_scored_pairs_already_in_base_train(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"欣赏","category":"情感","hints":["观察"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "欣赏,欣慰,same_category_mid,60,1.0,scored_user_input\n"
+                "掉线,连接断,hint_like_high,80,1.0,scored_user_input\n"
+                "猫咪,刘备,hard_negative_low,10,1.0,base_train\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "欣赏,欣慰,same_category_mid,60,scored_user_input\n"
+                "温馨,依恋,same_category_mid,60,scored_user_input\n"
+                "羡慕,惊讶,same_category_mid,60,scored_user_input\n"
+                "愤懑,敬佩,same_category_mid,60,scored_user_input\n"
+                "掉线,连接断,hint_like_high,80,scored_user_input\n"
+                "停下,不再动,hint_like_high,80,scored_user_input\n"
+                "海洋,潮汐,hint_like_high,80,scored_user_input\n"
+                "泡澡,热水,hint_like_high,80,scored_user_input\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                    "SEM_SEED": "1",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            with eval_out.open("r", encoding="utf-8") as file:
+                eval_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+
+            self.assertEqual(train_pairs & eval_pairs, set())
+            self.assertIn(("欣赏", "欣慰"), eval_pairs)
+            self.assertNotIn(("欣赏", "欣慰"), train_pairs)
+            self.assertNotIn(("掉线", "连接断"), eval_pairs & train_pairs)
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["train_eval_exact_overlap"], 0)
+            self.assertEqual(stats["train_eval_symmetric_overlap"], 0)
+            self.assertEqual(stats["eval_calib_exact_overlap"], 0)
+            self.assertEqual(stats["unexpected_train_calib_exact_overlap"], 0)
+
+    def test_build_nightly_semantic_sets_keeps_bidirectional_pairs_in_single_split(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"开心","category":"情感","hints":["心情很好"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "开心,高兴,near_synonym_high,80,manual_gold_v26\n"
+                "高兴,开心,near_synonym_high,80,manual_gold_v26\n"
+                "孔明,诸葛亮,alias_synonym_high,85,manual_gold_v26\n"
+                "诸葛亮,孔明,alias_synonym_high,85,manual_gold_v26\n"
+                "不知道,总结,hard_negative_low,10,manual_gold_v26\n"
+                "总结,不知道,hard_negative_low,10,manual_gold_v26\n"
+                "你个der,猫咪,hard_negative_low,10,manual_gold_v26\n"
+                "猫咪,你个der,hard_negative_low,10,manual_gold_v26\n"
+                "停下,不再动,hint_like_high,80,scored_user_input\n"
+                "掉线,连接断,hint_like_high,80,scored_user_input\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                    "SEM_SEED": "3",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            split_rows = {}
+            for split_name, path in (
+                ("train", train_out),
+                ("calib", calib_out),
+                ("eval", eval_out),
+            ):
+                with path.open("r", encoding="utf-8") as file:
+                    split_rows[split_name] = list(csv.DictReader(file))
+
+            def containing_splits(pair_set):
+                return {
+                    split_name
+                    for split_name, rows in split_rows.items()
+                    if any({row["answer"], row["user_input"]} == pair_set for row in rows)
+                }
+
+            self.assertEqual(len(containing_splits({"开心", "高兴"})), 1)
+            self.assertEqual(len(containing_splits({"孔明", "诸葛亮"})), 1)
+            self.assertEqual(len(containing_splits({"不知道", "总结"})), 1)
+            self.assertEqual(len(containing_splits({"你个der", "猫咪"})), 1)
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["train_eval_symmetric_overlap"], 0)
+            self.assertEqual(stats["eval_calib_symmetric_overlap"], 0)
+            self.assertEqual(stats["unexpected_train_calib_exact_overlap"], 0)
+
+    def test_build_nightly_semantic_sets_excludes_suggested_relabel_noise_rows_by_default(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            extra_gold_path = tmp_path / "extra_gold.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"死神","category":"动漫","hints":["斩魄刀"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "猫咪,刘备,hard_negative_low,10,1.0,base_train\n",
+                encoding="utf-8",
+            )
+            extra_gold_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer,sample_weight\n"
+                "死神,鬼灭之刃,near_synonym_high,82,suggested_relabel_ab_v1,0.8\n"
+                "医生,大夫,near_synonym_high,80,manual_review,1.0\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(extra_gold_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            all_rows = []
+            for path in (train_out, calib_out, eval_out, pool_out):
+                with path.open("r", encoding="utf-8") as file:
+                    all_rows.extend(list(csv.DictReader(file)))
+
+            self.assertFalse(
+                any((row["answer"], row["user_input"]) == ("死神", "鬼灭之刃") for row in all_rows)
+            )
+            self.assertTrue(
+                any((row["answer"], row["user_input"]) == ("医生", "大夫") for row in all_rows)
+            )
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["excluded_reviewer_rows"], 1)
+            self.assertEqual(stats["excluded_reviewer_counts"], {"suggested_relabel_ab_v1": 1})
+
+    def test_build_nightly_semantic_sets_reserves_non_holdout_antonym_gold_rows_for_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            holdout_path = tmp_path / "holdout.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"高兴","category":"情感","hints":["心情很好"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            holdout_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "高兴,难过,antonym_mid,50,error_review_v1\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "虚无,存在,antonym_mid,50,semantic_error_review_template_v1\n"
+                "学校,校园,related_mid,55,scored_user_input\n"
+                "苹果,水果,related_mid,55,scored_user_input\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": str(holdout_path),
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                    "SEM_EVAL_TO_CALIB_ANCHOR_WEIGHT": "6.0",
+                    "SEM_SEED": "6",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            with eval_out.open("r", encoding="utf-8") as file:
+                eval_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+
+            self.assertIn(("虚无", "存在"), calib_pairs)
+            self.assertNotIn(("虚无", "存在"), eval_pairs)
+            self.assertIn(("高兴", "难过"), eval_pairs)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            reserved_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("虚无", "存在")
+            )
+            self.assertEqual(reserved_row["sample_weight"], "6.0000")
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["gold_to_calib_tags"], ["antonym_mid"])
+            self.assertEqual(stats["gold_to_calib_rows"], 1)
+            self.assertEqual(stats["gold_to_calib_weight"], 6.0)
+            self.assertEqual(stats["eval_to_calib_tags"], ["antonym_mid"])
+            self.assertEqual(stats["eval_to_calib_rows"], 0)
+            self.assertEqual(stats["eval_antonym_rows"], 1)
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 3)
+            self.assertEqual(stats["calib_antonym_rows"], 4)
+
+    def test_build_nightly_semantic_sets_can_mirror_required_holdout_family_proxy_rows_to_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            holdout_path = tmp_path / "holdout.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"高兴","category":"情感","hints":["心情很好"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            holdout_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "高兴,难过,antonym_mid,50,error_review_v1\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "学校,校园,related_mid,55\n"
+                "苹果,水果,related_mid,55\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": "",
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": str(holdout_path),
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "10.0",
+                    "SEM_PRIORITY_ANTONYM_CALIB_ANCHOR_WEIGHT": "13.0",
+                    "SEM_SEED": "6",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            proxy_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "伤心")
+            )
+            self.assertEqual(proxy_row["reviewer"], "required_antonym_proxy_calib")
+            self.assertEqual(proxy_row["sample_weight"], "13.0000")
+
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            self.assertNotIn(("高兴", "伤心"), train_pairs)
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 3)
+            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 0)
+            self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
+            self.assertEqual(stats["calib_antonym_rows"], 3)
+
+    def test_build_nightly_semantic_sets_can_reserve_antonym_patch_rows_for_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "开心,伤心,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "快乐,痛苦,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "古代,现代,antonym_mid,50,4.0,required_antonym_patch\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n"
+                "苹果,水果,related_mid,55\n"
+                "老师,教师,near_synonym_high,85\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            reserved = {("开心", "伤心"), ("快乐", "痛苦")}
+            self.assertEqual(len(reserved & calib_pairs), 1)
+            self.assertEqual(len(reserved & train_pairs), 2)
+            self.assertIn(("古代", "现代"), train_pairs)
+            self.assertNotIn(("古代", "现代"), calib_pairs)
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            reserved_row = next(row for row in calib_rows if (row["answer"], row["user_input"]) in reserved)
+            self.assertEqual(reserved_row["sample_weight"], "6.0000")
+            self.assertIn((reserved_row["answer"], reserved_row["user_input"]), train_pairs)
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
+            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 0)
+            self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
+            self.assertEqual(stats["calib_antonym_rows"], 1)
+
+    def test_build_nightly_semantic_sets_prioritizes_v2_antonym_patch_rows_for_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "开心,伤心,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n"
+                "苹果,水果,related_mid,55\n"
+                "老师,教师,near_synonym_high,85\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            reserved_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
+            )
+            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "难过"))
+            self.assertEqual(reserved_row["reviewer"], "nightly_patch_v2")
+            self.assertEqual(reserved_row["sample_weight"], "6.0000")
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            self.assertIn(("高兴", "难过"), train_pairs)
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
+            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
+
+    def test_build_nightly_semantic_sets_prioritizes_regression_antonym_pairs_within_v2_calibration(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "欣喜,郁闷,antonym_mid,50,4.0,nightly_patch_v2\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n"
+                "白天,黑夜,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            reserved_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
+            )
+            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "难过"))
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            self.assertIn(("高兴", "难过"), train_pairs)
+
+    def test_build_nightly_semantic_sets_prioritizes_emotion_family_proxy_for_holdout_antonym(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "快乐,痛苦,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "高兴,悲伤,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "开心,伤心,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "开心,难过,antonym_mid,50,4.0,nightly_patch_v1\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            reserved_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "悲伤")
+            )
+            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "悲伤"))
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            self.assertIn(("高兴", "悲伤"), train_pairs)
+
+    def test_build_nightly_semantic_sets_patch_rows_override_duplicate_supervised_gold_pairs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            extra_gold_path = tmp_path / "extra_gold.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n",
+                encoding="utf-8",
+            )
+            extra_gold_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,难过,antonym_mid,50,2.5,error_review_v1\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": str(extra_gold_path),
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            anchor_rows = [
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
+            ]
+            self.assertEqual(len(anchor_rows), 1)
+            self.assertEqual(anchor_rows[0]["reviewer"], "nightly_patch_v2")
+            self.assertEqual(anchor_rows[0]["sample_weight"], "6.0000")
+            with train_out.open("r", encoding="utf-8") as file:
+                train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
+            self.assertIn(("高兴", "难过"), train_pairs)
+
+            with eval_out.open("r", encoding="utf-8") as file:
+                eval_rows = list(csv.DictReader(file))
+            self.assertFalse(
+                any((row["answer"], row["user_input"]) == ("高兴", "难过") for row in eval_rows)
+            )
+
+    def test_build_nightly_semantic_sets_patch_rows_override_reverse_direction_supervised_gold_pairs(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            extra_gold_path = tmp_path / "extra_gold.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"北京","category":"城市","hints":["首都"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "上海,北京,same_category_but_far,28,3.0,nightly_patch_v1\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "学校,校园,related_mid,60\n",
+                encoding="utf-8",
+            )
+            extra_gold_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "北京,上海,same_category_but_far,28,1.0,semantic_error_review_template_v1\n"
+                "天津,重庆,same_category_but_far,28,1.0,semantic_error_review_template_v1\n"
+                "广州,深圳,same_category_but_far,28,1.0,semantic_error_review_template_v1\n"
+                "南京,杭州,same_category_but_far,28,1.0,semantic_error_review_template_v1\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": str(extra_gold_path),
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "0",
+                    "SEM_SEED": "20260304",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            for path in (train_out, calib_out, eval_out):
+                with path.open("r", encoding="utf-8") as file:
+                    rows = list(csv.DictReader(file))
+                self.assertFalse(
+                    any({row["answer"], row["user_input"]} == {"北京", "上海"} and row["reviewer"] == "semantic_error_review_template_v1" for row in rows)
+                )
+
+            with train_out.open("r", encoding="utf-8") as file:
+                train_rows = list(csv.DictReader(file))
+            self.assertTrue(
+                any((row["answer"], row["user_input"]) == ("上海", "北京") and row["reviewer"] == "nightly_patch_v1" for row in train_rows)
+            )
+
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["train_eval_symmetric_overlap"], 0)
+            self.assertEqual(stats["eval_calib_symmetric_overlap"], 0)
+            self.assertEqual(stats["unexpected_train_calib_exact_overlap"], 0)
+
+    def test_build_nightly_semantic_sets_uses_priority_calibration_weight_for_target_antonym_families(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"猫咪","category":"动物","hints":["会抓老鼠"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,悲伤,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "快乐,痛苦,antonym_mid,50,4.0,nightly_patch_v1\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "医生,大夫,near_synonym_high,80\n"
+                "火,水,same_category_but_far,18\n"
+                "学校,校园,related_mid,60\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": "",
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "2",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                    "SEM_PRIORITY_ANTONYM_CALIB_ANCHOR_WEIGHT": "9.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            boosted = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "悲伤")
+            )
+            baseline = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("快乐", "痛苦")
+            )
+            self.assertEqual(boosted["sample_weight"], "9.0000")
+            self.assertEqual(baseline["sample_weight"], "6.0000")
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["priority_antonym_calib_weight_rows"], 1)
+            self.assertEqual(stats["antonym_calib_anchor_weight"], 6.0)
+            self.assertEqual(stats["priority_antonym_calib_anchor_weight"], 9.0)
 
     def test_supervised_trainer_boosts_real_failure_hard_negative_tags_without_antonyms(self):
         source = (REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py").read_text(encoding="utf-8")
@@ -1714,10 +3020,18 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("protected_positive_rows", source)
         self.assertIn("antonym_mid_examples_after_repeat", source)
         self.assertIn('SEM_MIN_TAG_ROWS", "antonym_mid:45"', source)
+        self.assertIn("SEM_MIN_TAG_BUCKET_ROWS", source)
         self.assertIn('SEM_COSENT_EXCLUDE_TAGS", "antonym_mid"', source)
+        self.assertIn('SEM_COSINE_EXCLUDE_TAGS", "antonym_mid"', source)
         self.assertIn("cosent_excluded_examples_after_repeat", source)
+        self.assertIn("cosine_excluded_examples_after_repeat", source)
         self.assertIn("SEM_TRAIN_STATS_JSON", source)
         self.assertIn("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", source)
+        self.assertIn("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", source)
+        self.assertIn("SEM_REQUIRED_ANTONYM_MIN_ANGLE_REPEAT", source)
+        self.assertIn("SEM_PRIORITY_ANTONYM_MIN_ANGLE_REPEAT", source)
+        self.assertIn("required_antonym_examples_after_repeat", source)
+        self.assertIn("priority_antonym_examples_after_repeat", source)
         self.assertIn("full_angle_coverage_rows", source)
         self.assertIn("SEM_LOSS_MODE", source)
         self.assertIn("CosineSimilarityLoss", source)
@@ -1761,27 +3075,36 @@ class NightlyScriptsTest(unittest.TestCase):
             previous_max_rows = trainer.MAX_TRAIN_ROWS
             previous_max_repeat = trainer.MAX_REPEAT
             previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
             previous_midpoint_tags = trainer.MIDPOINT_TAGS
             previous_midpoint_boost = trainer.MIDPOINT_REPEAT_BOOST
+            previous_priority_repeat = trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT
             try:
                 trainer.MAX_TRAIN_ROWS = 0
                 trainer.MAX_REPEAT = 3
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_REPEAT_BOOST = 2.0
-                examples, cosent_examples, contrastive_examples, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+                trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = 0
+                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
                 trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
                 trainer.MIDPOINT_TAGS = previous_midpoint_tags
                 trainer.MIDPOINT_REPEAT_BOOST = previous_midpoint_boost
+                trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = previous_priority_repeat
 
             self.assertEqual(stats["antonym_mid_rows"], 1)
             self.assertEqual(stats["antonym_mid_examples_after_repeat"], 3)
             self.assertEqual(stats["cosent_excluded_rows"], 1)
             self.assertEqual(stats["cosent_excluded_examples_after_repeat"], 3)
             self.assertEqual(stats["cosent_exclude_tags"], ["antonym_mid"])
+            self.assertEqual(stats["cosine_excluded_rows"], 1)
+            self.assertEqual(stats["cosine_excluded_examples_after_repeat"], 3)
+            self.assertEqual(stats["cosine_exclude_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
             self.assertEqual(stats["midpoint_band_low"], 0.45)
@@ -1791,11 +3114,325 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
             self.assertEqual(len(examples), 7)
             self.assertEqual(len(cosent_examples), 4)
+            self.assertEqual(len(cosine_examples), 4)
             self.assertEqual(len(contrastive_examples), 4)
             self.assertEqual(len(midpoint_examples), 6)
             self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in examples))
             self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosent_examples))
+            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosine_examples))
             self.assertTrue(all(abs(example.label - 0.5) < 1e-9 for example in midpoint_examples))
+
+    def test_supervised_trainer_gives_priority_antonym_patch_rows_full_angle_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n"
+                "医生,大夫,alias_synonym_high,90,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_priority_repeat = trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT
+            previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = len(trainer.ANGLES)
+                trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                examples, cosent_examples, cosine_examples, _, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = previous_priority_repeat
+                trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+
+            self.assertEqual(stats["priority_antonym_rows"], 1)
+            self.assertEqual(stats["priority_antonym_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertEqual(stats["antonym_mid_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertGreaterEqual(stats["full_angle_coverage_rows"], 1)
+            self.assertEqual(len(cosent_examples), 2)
+            self.assertEqual(len(cosine_examples), 2)
+            self.assertEqual(len(midpoint_examples), len(trainer.ANGLES) * 2)
+            self.assertEqual(len(examples), len(trainer.ANGLES) + 2)
+
+    def test_supervised_trainer_gives_required_antonym_rows_full_angle_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "永恒,瞬间,antonym_mid,50,4.0,required_antonym_patch\n"
+                "医生,大夫,alias_synonym_high,90,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_required_repeat = trainer.REQUIRED_ANTONYM_MIN_ANGLE_REPEAT
+            previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.REQUIRED_ANTONYM_MIN_ANGLE_REPEAT = len(trainer.ANGLES)
+                trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                examples, cosent_examples, cosine_examples, _, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.REQUIRED_ANTONYM_MIN_ANGLE_REPEAT = previous_required_repeat
+                trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+
+            self.assertEqual(stats["required_antonym_rows"], 1)
+            self.assertEqual(stats["required_antonym_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertGreaterEqual(stats["full_angle_coverage_rows"], 1)
+            self.assertEqual(stats["antonym_mid_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertEqual(len(cosent_examples), 2)
+            self.assertEqual(len(cosine_examples), 2)
+            self.assertEqual(len(midpoint_examples), len(trainer.ANGLES) * 2)
+            self.assertEqual(len(examples), len(trainer.ANGLES) + 2)
+
+    def test_supervised_trainer_pins_regression_pairs_during_max_row_sampling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            rows = [
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer",
+                "火影,海贼王,same_category_mid,45,1.0,category_graded_script",
+                "海贼王,火影,same_category_mid,45,1.0,category_graded_script",
+            ]
+            for idx in range(30):
+                rows.append(
+                    f"填充词{idx},干扰词{idx},hard_negative_low,15,1.0,review"
+                )
+            train_csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_regression_keys = trainer.REGRESSION_PAIR_KEYS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 4
+                trainer.MAX_REPEAT = 1
+                trainer.REGRESSION_PAIR_KEYS = {("海贼王", "火影")}
+                trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.REGRESSION_PAIR_KEYS = previous_regression_keys
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+
+            selected_examples = {
+                tuple(text.split("：", 1)[-1] for text in example.texts)
+                for example in examples
+            }
+            self.assertIn(("火影", "海贼王"), selected_examples)
+            self.assertIn(("海贼王", "火影"), selected_examples)
+            self.assertEqual(stats["source_rows"], 4)
+            self.assertEqual(stats["regression_protected_rows"], 2)
+            self.assertGreaterEqual(stats["pinned_high_value_rows"], 2)
+
+    def test_supervised_trainer_parses_tag_bucket_min_rows(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        parsed = trainer.parse_min_tag_bucket_rows(
+            "same_category_mid@40-59:12, hint_like_high@80-100:8, broken, antonym_mid@oops:5"
+        )
+
+        self.assertEqual(
+            parsed,
+            {
+                ("same_category_mid", "40-59"): 12,
+                ("hint_like_high", "80-100"): 8,
+            },
+        )
+
+    def test_supervised_trainer_prioritizes_min_tag_bucket_rows_during_sampling(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            rows = ["answer,user_input,relation_tag,score_0_100,sample_weight,reviewer"]
+            for idx in range(5):
+                rows.append(f"低分同类{idx},干扰{idx},same_category_mid,30,1.0,review")
+            for idx in range(2):
+                rows.append(f"中分同类{idx},中分近义{idx},same_category_mid,55,1.0,review")
+            for idx in range(2):
+                rows.append(f"高分同类{idx},高分近义{idx},same_category_mid,70,1.0,review")
+            for idx in range(6):
+                rows.append(f"负样本{idx},反例{idx},hard_negative_low,10,1.0,review")
+            train_csv.write_text("\n".join(rows) + "\n", encoding="utf-8")
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_angle_mode = trainer.ANGLE_MODE
+            previous_min_tag_rows = trainer.MIN_TAG_ROWS
+            previous_min_tag_bucket_rows = trainer.MIN_TAG_BUCKET_ROWS
+            try:
+                trainer.MAX_TRAIN_ROWS = 4
+                trainer.MAX_REPEAT = 1
+                trainer.ANGLE_MODE = "none"
+                trainer.MIN_TAG_ROWS = {}
+                trainer.MIN_TAG_BUCKET_ROWS = {
+                    ("same_category_mid", "40-59"): 2,
+                    ("same_category_mid", "60-79"): 2,
+                }
+                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.ANGLE_MODE = previous_angle_mode
+                trainer.MIN_TAG_ROWS = previous_min_tag_rows
+                trainer.MIN_TAG_BUCKET_ROWS = previous_min_tag_bucket_rows
+
+            label_counts = Counter(example.label for example in examples)
+            self.assertEqual(stats["source_rows"], 4)
+            self.assertEqual(
+                stats["min_tag_bucket_rows"],
+                {
+                    "same_category_mid@40-59": 2,
+                    "same_category_mid@60-79": 2,
+                },
+            )
+            self.assertEqual(label_counts[0.55], 2)
+            self.assertEqual(label_counts[0.7], 2)
+
+    def test_supervised_trainer_enforces_min_angle_repeat_tag_buckets(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "副本,开荒,same_category_mid,70,1.0,review\n"
+                "升级,组队,same_category_mid,60,1.0,review\n"
+                "白露,地表湿,hint_like_high,80,1.0,review\n"
+                "飞机,轮船,same_category_but_far,22,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_angle_mode = trainer.ANGLE_MODE
+            previous_min_angle_repeat_for_high_value = trainer.MIN_ANGLE_REPEAT_FOR_HIGH_VALUE
+            previous_min_angle_repeat_tag_buckets = trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.ANGLE_MODE = "cycle"
+                trainer.MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = 0
+                trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS = {
+                    ("same_category_mid", "60-79"): 4,
+                }
+                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.ANGLE_MODE = previous_angle_mode
+                trainer.MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = previous_min_angle_repeat_for_high_value
+                trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS = previous_min_angle_repeat_tag_buckets
+
+            label_counts = Counter(example.label for example in examples)
+            self.assertEqual(stats["source_rows"], 4)
+            self.assertEqual(
+                stats["min_angle_repeat_tag_buckets"],
+                {"same_category_mid@60-79": 4},
+            )
+            self.assertEqual(
+                stats["tag_bucket_angle_repeat_rows"],
+                {"same_category_mid@60-79": 2},
+            )
+            self.assertEqual(
+                stats["tag_bucket_angle_repeat_examples_after_repeat"],
+                {"same_category_mid@60-79": 8},
+            )
+            self.assertEqual(label_counts[0.7], 4)
+            self.assertEqual(label_counts[0.6], 4)
+            self.assertEqual(label_counts[0.8], 2)
+            self.assertEqual(label_counts[0.22], 2)
 
     def _prepare_fake_repo(self, root: Path) -> None:
         (root / "scripts").mkdir(parents=True)
@@ -1919,6 +3556,7 @@ if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_
             'antonym_mid_rows': 51,
             'antonym_mid_examples_after_repeat': 153,
             'min_tag_rows': {'antonym_mid': 45},
+            'min_tag_bucket_rows': {'same_category_mid@40-59': 20, 'same_category_mid@60-79': 12},
             'tag_counts': {'antonym_mid': 51, 'hard_negative_low': 66},
         }, ensure_ascii=False), encoding='utf-8')
     out_dir = pathlib.Path(env['SEM_OUTPUT_MODEL'])
@@ -2020,6 +3658,7 @@ if script == '-' or script == '':
             f.write('| antonym_mid_examples_after_repeat | ' + str(stats.get('antonym_mid_examples_after_repeat')) + ' |\\n')
             f.write('| cosent_excluded_examples_after_repeat | ' + str(stats.get('cosent_excluded_examples_after_repeat')) + ' |\\n')
             f.write('| min_tag_rows | ' + json.dumps(stats.get('min_tag_rows'), ensure_ascii=False, sort_keys=True) + ' |\\n')
+            f.write('| min_tag_bucket_rows | ' + json.dumps(stats.get('min_tag_bucket_rows'), ensure_ascii=False, sort_keys=True) + ' |\\n')
             f.write('\\n### Selected Tag Counts\\n')
             f.write('| tag | count |\\n')
             f.write('| antonym_mid | ' + str((stats.get('tag_counts') or {}).get('antonym_mid')) + ' |\\n')

@@ -169,6 +169,15 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append(
             f"NIGHTLY_SUP_MIN_TAG_ROWS is {env.get('NIGHTLY_SUP_MIN_TAG_ROWS')!r}, expected 'antonym_mid:45'"
         )
+    expected_bucket_rows = (
+        "same_category_mid@40-59:20,same_category_mid@60-79:12,"
+        "hint_like_high@60-79:18,hint_like_high@80-100:18"
+    )
+    if env.get("NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS") != expected_bucket_rows:
+        warnings.append(
+            "NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS is "
+            f"{env.get('NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS')!r}, expected {expected_bucket_rows!r}"
+        )
     if env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS") != "antonym_mid":
         warnings.append(
             "NIGHTLY_SUP_COSENT_EXCLUDE_TAGS is "
@@ -295,6 +304,8 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
         "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
+        "sup_min_tag_bucket_rows": env.get("NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS"),
+        "sup_min_angle_repeat_tag_buckets": env.get("NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS"),
         "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
         "sup_midpoint_tags": env.get("NIGHTLY_SUP_MIDPOINT_TAGS"),
         "sup_midpoint_repeat_boost": env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST"),
@@ -302,6 +313,7 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "sup_midpoint_band_high": env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH"),
         "sup_midpoint_band_weight": env.get("NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT"),
         "sup_midpoint_center_weight": env.get("NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT"),
+        "calib_support_positive_target_low": env.get("NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW"),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
@@ -332,6 +344,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
     print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
+    print(f"sup_min_angle_repeat_tag_buckets={payload['sup_min_angle_repeat_tag_buckets']}")
     print(f"sup_cosent_exclude_tags={payload['sup_cosent_exclude_tags']}")
     print(f"sup_midpoint_tags={payload['sup_midpoint_tags']}")
     print(f"sup_midpoint_repeat_boost={payload['sup_midpoint_repeat_boost']}")
@@ -339,6 +352,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"sup_midpoint_band_high={payload['sup_midpoint_band_high']}")
     print(f"sup_midpoint_band_weight={payload['sup_midpoint_band_weight']}")
     print(f"sup_midpoint_center_weight={payload['sup_midpoint_center_weight']}")
+    print(f"calib_support_positive_target_low={payload['calib_support_positive_target_low']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:

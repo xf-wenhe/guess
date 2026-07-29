@@ -26,6 +26,7 @@ TRAIN_CSV = Path(os.getenv("SEM_TRAIN_CSV", "data/train_v28c_balanced.csv"))
 BASE_MODEL = os.getenv("SEM_BASE_MODEL", "models/bge-m3-finetuned-v27-semreal-anchor")
 OUTPUT_MODEL = os.getenv("SEM_OUTPUT_MODEL", "models/bge-m3-finetuned-v28c-phoenix")
 TRAIN_STATS_JSON = os.getenv("SEM_TRAIN_STATS_JSON", "").strip()
+REGRESSION_PAIRS_PATH = Path(os.getenv("SEM_REGRESSION_PAIRS_PATH", "data/regression_pairs_v23.json"))
 EPOCHS = int(os.getenv("SEM_EPOCHS", "2"))
 BATCH_SIZE = int(os.getenv("SEM_BATCH_SIZE", "8"))
 LEARNING_RATE = float(os.getenv("SEM_LR", os.getenv("SEM_LEARNING_RATE", "8e-6")))
@@ -39,6 +40,7 @@ MAX_REPEAT = int(os.getenv("SEM_MAX_REPEAT", "5"))
 ANGLE_MODE = os.getenv("SEM_ANGLE_MODE", "cycle").strip().lower()
 LOSS_MODE = os.getenv("SEM_LOSS_MODE", "mixed").strip().lower()
 COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").strip()
+COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "antonym_mid").strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
 MIDPOINT_BAND_LOW = float(os.getenv("SEM_MIDPOINT_BAND_LOW", "0.45"))
@@ -58,6 +60,8 @@ PIN_WEIGHT_THRESHOLD = float(os.getenv("SEM_PIN_WEIGHT_THRESHOLD", "3.0"))
 MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = int(os.getenv("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", "0"))
 MIN_TRAIN_EXAMPLES = int(os.getenv("SEM_MIN_TRAIN_EXAMPLES", "200"))
 MIN_TAG_ROWS_SPEC = os.getenv("SEM_MIN_TAG_ROWS", "antonym_mid:45").strip()
+MIN_TAG_BUCKET_ROWS_SPEC = os.getenv("SEM_MIN_TAG_BUCKET_ROWS", "").strip()
+MIN_ANGLE_REPEAT_TAG_BUCKETS_SPEC = os.getenv("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", "").strip()
 
 ANGLES = [
     "从含义角度看：",
@@ -66,6 +70,12 @@ ANGLES = [
     "从特征角度看：",
     "从关联角度看：",
 ]
+REQUIRED_ANTONYM_MIN_ANGLE_REPEAT = int(
+    os.getenv("SEM_REQUIRED_ANTONYM_MIN_ANGLE_REPEAT", str(len(ANGLES)))
+)
+PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = int(
+    os.getenv("SEM_PRIORITY_ANTONYM_MIN_ANGLE_REPEAT", str(len(ANGLES)))
+)
 
 HARD_NEG_TAGS = {
     "collocation_not_equivalent",
@@ -113,10 +123,39 @@ def parse_min_tag_rows(spec: str) -> dict[str, int]:
     return quotas
 
 
+def parse_min_tag_bucket_rows(spec: str) -> dict[tuple[str, str], int]:
+    quotas: dict[tuple[str, str], int] = {}
+    valid_buckets = {"0-19", "20-39", "40-59", "60-79", "80-100"}
+    for item in spec.split(","):
+        item = item.strip()
+        if not item or ":" not in item or "@" not in item:
+            continue
+        tag_bucket, raw_count = item.split(":", 1)
+        tag, bucket = tag_bucket.split("@", 1)
+        tag = tag.strip()
+        bucket = bucket.strip()
+        if not tag or bucket not in valid_buckets:
+            continue
+        try:
+            count = int(raw_count.strip())
+        except ValueError:
+            continue
+        if count > 0:
+            quotas[(tag, bucket)] = count
+    return quotas
+
+
 MIN_TAG_ROWS = parse_min_tag_rows(MIN_TAG_ROWS_SPEC)
+MIN_TAG_BUCKET_ROWS = parse_min_tag_bucket_rows(MIN_TAG_BUCKET_ROWS_SPEC)
+MIN_ANGLE_REPEAT_TAG_BUCKETS = parse_min_tag_bucket_rows(MIN_ANGLE_REPEAT_TAG_BUCKETS_SPEC)
 COSENT_EXCLUDE_TAGS = {
     item.strip()
     for item in COSENT_EXCLUDE_TAGS_SPEC.split(",")
+    if item.strip()
+}
+COSINE_EXCLUDE_TAGS = {
+    item.strip()
+    for item in COSINE_EXCLUDE_TAGS_SPEC.split(",")
     if item.strip()
 }
 MIDPOINT_TAGS = {
@@ -124,6 +163,45 @@ MIDPOINT_TAGS = {
     for item in MIDPOINT_TAGS_SPEC.split(",")
     if item.strip()
 }
+
+
+def canonical_pair(left: str, right: str) -> tuple[str, str]:
+    return tuple(sorted((left, right)))
+
+
+def load_regression_pair_keys(path: Path) -> set[tuple[str, str]]:
+    if not path.exists():
+        return set()
+    try:
+        payload = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return set()
+
+    keys: set[tuple[str, str]] = set()
+    if not isinstance(payload, list):
+        return keys
+    for item in payload:
+        if not isinstance(item, dict):
+            continue
+        pair = item.get("pair")
+        if not isinstance(pair, list) or len(pair) != 2:
+            continue
+        left = str(pair[0]).strip()
+        right = str(pair[1]).strip()
+        if left and right:
+            keys.add(canonical_pair(left, right))
+    return keys
+
+
+REGRESSION_PAIR_KEYS = load_regression_pair_keys(REGRESSION_PAIRS_PATH)
+
+
+def is_required_antonym_row(tag: str, reviewer: str) -> bool:
+    return tag == "antonym_mid" and reviewer == "required_antonym_patch"
+
+
+def is_priority_antonym_row(tag: str, reviewer: str) -> bool:
+    return tag == "antonym_mid" and reviewer.startswith("nightly_patch")
 
 
 def resolve_device() -> str:
@@ -158,7 +236,7 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
     pool = []
     if PIN_HIGH_VALUE_ROWS:
         for row in rows:
-            if row["sample_weight"] >= PIN_WEIGHT_THRESHOLD or row["reviewer"].startswith("nightly_patch"):
+            if is_high_value_row(row):
                 pinned.append(row)
             else:
                 pool.append(row)
@@ -169,6 +247,27 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
         return pinned[:limit]
 
     selected = list(pinned)
+    if MIN_TAG_BUCKET_ROWS:
+        rows_by_tag_bucket: dict[tuple[str, str], list[dict]] = {}
+        for row in pool:
+            rows_by_tag_bucket.setdefault((row["tag"], score_bin(row["score"])), []).append(row)
+        for bucket_rows in rows_by_tag_bucket.values():
+            rng.shuffle(bucket_rows)
+        for key, minimum in MIN_TAG_BUCKET_ROWS.items():
+            if len(selected) >= limit:
+                break
+            current = sum(
+                1
+                for row in selected
+                if row["tag"] == key[0] and score_bin(row["score"]) == key[1]
+            )
+            need = max(0, min(minimum - current, limit - len(selected)))
+            if need <= 0:
+                continue
+            selected.extend(rows_by_tag_bucket.get(key, [])[:need])
+            rows_by_tag_bucket[key] = rows_by_tag_bucket.get(key, [])[need:]
+        pool = [row for bucket_rows in rows_by_tag_bucket.values() for row in bucket_rows]
+
     if MIN_TAG_ROWS:
         rows_by_tag: dict[str, list[dict]] = {}
         for row in pool:
@@ -207,7 +306,11 @@ def stratified_limit_rows(rows: list[dict], limit: int, seed: int) -> list[dict]
 
 
 def is_high_value_row(row: dict) -> bool:
-    return row["sample_weight"] >= PIN_WEIGHT_THRESHOLD or row["reviewer"].startswith("nightly_patch")
+    return (
+        row["sample_weight"] >= PIN_WEIGHT_THRESHOLD
+        or row["reviewer"].startswith("nightly_patch")
+        or canonical_pair(row["answer"], row["user_input"]) in REGRESSION_PAIR_KEYS
+    )
 
 
 def contrastive_label(row: dict) -> float | None:
@@ -287,10 +390,20 @@ def load_examples(
             reviewer = (row.get("reviewer") or "").strip()
             boost = HARD_NEG_BOOST if tag in HARD_NEG_TAGS else TAG_REPEAT_BOOSTS.get(tag, 1.0)
             repeat = max(1, min(MAX_REPEAT, int(round(sample_weight * boost))))
+            if ANGLE_MODE != "none" and REQUIRED_ANTONYM_MIN_ANGLE_REPEAT > 0:
+                if is_required_antonym_row(tag, reviewer):
+                    repeat = max(repeat, min(len(ANGLES), REQUIRED_ANTONYM_MIN_ANGLE_REPEAT))
+            if ANGLE_MODE != "none" and PRIORITY_ANTONYM_MIN_ANGLE_REPEAT > 0:
+                if is_priority_antonym_row(tag, reviewer):
+                    repeat = max(repeat, min(len(ANGLES), PRIORITY_ANTONYM_MIN_ANGLE_REPEAT))
             if ANGLE_MODE != "none" and MIN_ANGLE_REPEAT_FOR_HIGH_VALUE > 0:
                 min_angle_repeat = min(len(ANGLES), MIN_ANGLE_REPEAT_FOR_HIGH_VALUE)
                 if sample_weight >= PIN_WEIGHT_THRESHOLD or reviewer.startswith("nightly_patch") or tag in TAG_REPEAT_BOOSTS:
                     repeat = max(repeat, min_angle_repeat)
+            if ANGLE_MODE != "none" and MIN_ANGLE_REPEAT_TAG_BUCKETS:
+                bucket_min_repeat = MIN_ANGLE_REPEAT_TAG_BUCKETS.get((tag, score_bin(score)), 0)
+                if bucket_min_repeat > 0:
+                    repeat = max(repeat, min(len(ANGLES), bucket_min_repeat))
             rows.append(
                 {
                     "answer": answer,
@@ -310,6 +423,7 @@ def load_examples(
 
     examples = []
     cosent_examples = []
+    cosine_examples = []
     contrastive_examples = []
     midpoint_examples = []
     for row_idx, row in enumerate(rows):
@@ -333,6 +447,8 @@ def load_examples(
             examples.append(example)
             if row["tag"] not in COSENT_EXCLUDE_TAGS:
                 cosent_examples.append(example)
+            if row["tag"] not in COSINE_EXCLUDE_TAGS:
+                cosine_examples.append(example)
             if row["tag"] in MIDPOINT_TAGS:
                 midpoint_repeat = max(1, int(round(MIDPOINT_REPEAT_BOOST)))
                 midpoint_examples.extend(
@@ -349,6 +465,7 @@ def load_examples(
                 )
     rng.shuffle(examples)
     rng.shuffle(cosent_examples)
+    rng.shuffle(cosine_examples)
     rng.shuffle(contrastive_examples)
     rng.shuffle(midpoint_examples)
 
@@ -365,10 +482,41 @@ def load_examples(
     protected_count = sum(1 for row in rows if row["tag"] in TAG_REPEAT_BOOSTS)
     antonym_mid_count = sum(1 for row in rows if row["tag"] == "antonym_mid")
     antonym_mid_repeats = sum(row["repeat"] for row in rows if row["tag"] == "antonym_mid")
+    required_antonym_count = sum(1 for row in rows if is_required_antonym_row(row["tag"], row["reviewer"]))
+    required_antonym_repeats = sum(
+        row["repeat"] for row in rows if is_required_antonym_row(row["tag"], row["reviewer"])
+    )
+    priority_antonym_count = sum(1 for row in rows if is_priority_antonym_row(row["tag"], row["reviewer"]))
+    priority_antonym_repeats = sum(
+        row["repeat"] for row in rows if is_priority_antonym_row(row["tag"], row["reviewer"])
+    )
     cosent_excluded_rows = sum(1 for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
     cosent_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
+    cosine_excluded_rows = sum(1 for row in rows if row["tag"] in COSINE_EXCLUDE_TAGS)
+    cosine_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSINE_EXCLUDE_TAGS)
     pinned_count = sum(1 for row in rows if is_high_value_row(row))
+    regression_protected_count = sum(
+        1
+        for row in rows
+        if canonical_pair(row["answer"], row["user_input"]) in REGRESSION_PAIR_KEYS
+    )
     angle_covered_count = sum(1 for row in rows if row["repeat"] >= len(ANGLES))
+    tag_bucket_angle_repeat_rows = {
+        f"{tag}@{bucket}": sum(
+            1
+            for row in rows
+            if row["tag"] == tag and score_bin(row["score"]) == bucket
+        )
+        for tag, bucket in sorted(MIN_ANGLE_REPEAT_TAG_BUCKETS)
+    }
+    tag_bucket_angle_repeat_examples = {
+        f"{tag}@{bucket}": sum(
+            row["repeat"]
+            for row in rows
+            if row["tag"] == tag and score_bin(row["score"]) == bucket
+        )
+        for tag, bucket in sorted(MIN_ANGLE_REPEAT_TAG_BUCKETS)
+    }
     stats = {
         "source_rows_before_limit": source_rows_before_limit,
         "source_rows": len(rows),
@@ -377,6 +525,10 @@ def load_examples(
         "cosent_exclude_tags": sorted(COSENT_EXCLUDE_TAGS),
         "cosent_excluded_rows": cosent_excluded_rows,
         "cosent_excluded_examples_after_repeat": cosent_excluded_examples,
+        "cosine_examples_after_repeat": len(cosine_examples),
+        "cosine_exclude_tags": sorted(COSINE_EXCLUDE_TAGS),
+        "cosine_excluded_rows": cosine_excluded_rows,
+        "cosine_excluded_examples_after_repeat": cosine_excluded_examples,
         "midpoint_tags": sorted(MIDPOINT_TAGS),
         "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
         "midpoint_band_low": MIDPOINT_BAND_LOW,
@@ -387,6 +539,14 @@ def load_examples(
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
         "min_tag_rows": MIN_TAG_ROWS,
+        "min_tag_bucket_rows": {
+            f"{tag}@{bucket}": count
+            for (tag, bucket), count in sorted(MIN_TAG_BUCKET_ROWS.items())
+        },
+        "min_angle_repeat_tag_buckets": {
+            f"{tag}@{bucket}": count
+            for (tag, bucket), count in sorted(MIN_ANGLE_REPEAT_TAG_BUCKETS.items())
+        },
         "contrastive_pos_threshold": CONTRASTIVE_POS_THRESHOLD,
         "contrastive_neg_threshold": CONTRASTIVE_NEG_THRESHOLD,
         "contrastive_label_counts": dict(contrastive_label_counts),
@@ -395,14 +555,22 @@ def load_examples(
         "hard_negative_ratio": round(hard_count / max(len(rows), 1), 6),
         "antonym_mid_rows": antonym_mid_count,
         "antonym_mid_examples_after_repeat": antonym_mid_repeats,
+        "required_antonym_rows": required_antonym_count,
+        "required_antonym_examples_after_repeat": required_antonym_repeats,
+        "priority_antonym_rows": priority_antonym_count,
+        "priority_antonym_examples_after_repeat": priority_antonym_repeats,
         "protected_positive_rows": protected_count,
         "pinned_high_value_rows": pinned_count,
+        "regression_protected_rows": regression_protected_count,
+        "regression_pairs_path": str(REGRESSION_PAIRS_PATH),
         "full_angle_coverage_rows": angle_covered_count,
+        "tag_bucket_angle_repeat_rows": tag_bucket_angle_repeat_rows,
+        "tag_bucket_angle_repeat_examples_after_repeat": tag_bucket_angle_repeat_examples,
         "angle_mode": ANGLE_MODE,
         "tag_counts": dict(tag_counts.most_common(30)),
         "score_buckets": {str(k): v for k, v in sorted(score_buckets.items())},
     }
-    return examples, cosent_examples, contrastive_examples, midpoint_examples, stats
+    return examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats
 
 
 def fit_with_explicit_cpu(
@@ -461,11 +629,13 @@ def main() -> None:
         raise SystemExit(f"missing: {TRAIN_CSV}")
 
     device = resolve_device()
-    examples, cosent_examples, contrastive_examples, midpoint_examples, stats = load_examples(TRAIN_CSV, SEED)
+    examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats = load_examples(TRAIN_CSV, SEED)
     if len(examples) < MIN_TRAIN_EXAMPLES:
         raise SystemExit(f"not enough training examples (<{MIN_TRAIN_EXAMPLES})")
     if LOSS_MODE in {"cosent", "mixed", "mixed_contrastive"} and not cosent_examples:
         raise SystemExit("CoSENT objective has no examples after SEM_COSENT_EXCLUDE_TAGS filtering")
+    if LOSS_MODE in {"cosine", "mixed", "mixed_contrastive"} and not cosine_examples:
+        raise SystemExit("Cosine objective has no examples after SEM_COSINE_EXCLUDE_TAGS filtering")
 
     print(f"base_model={BASE_MODEL}")
     print(f"output_model={OUTPUT_MODEL}")
@@ -474,6 +644,7 @@ def main() -> None:
     print(f"warmup_ratio={WARMUP_RATIO} seed={SEED} scale={SCALE}")
     print(f"hard_neg_boost={HARD_NEG_BOOST} max_repeat={MAX_REPEAT} angle_mode={ANGLE_MODE} loss_mode={LOSS_MODE}")
     print(f"cosent_exclude_tags={','.join(sorted(COSENT_EXCLUDE_TAGS)) or '-'}")
+    print(f"cosine_exclude_tags={','.join(sorted(COSINE_EXCLUDE_TAGS)) or '-'}")
     print(
         f"midpoint_tags={','.join(sorted(MIDPOINT_TAGS)) or '-'} "
         f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST} "
@@ -481,6 +652,8 @@ def main() -> None:
         f"midpoint_band_weight={MIDPOINT_BAND_WEIGHT} "
         f"midpoint_center_weight={MIDPOINT_CENTER_WEIGHT}"
     )
+    print(f"required_antonym_min_angle_repeat={REQUIRED_ANTONYM_MIN_ANGLE_REPEAT}")
+    print(f"priority_antonym_min_angle_repeat={PRIORITY_ANTONYM_MIN_ANGLE_REPEAT}")
     print(
         "contrastive_margin="
         f"{CONTRASTIVE_MARGIN} contrastive_pos_threshold={CONTRASTIVE_POS_THRESHOLD} "
@@ -488,6 +661,10 @@ def main() -> None:
     )
     print(f"pin_high_value_rows={PIN_HIGH_VALUE_ROWS} pin_weight_threshold={PIN_WEIGHT_THRESHOLD}")
     print(f"min_angle_repeat_for_high_value={MIN_ANGLE_REPEAT_FOR_HIGH_VALUE}")
+    print(
+        "min_angle_repeat_tag_buckets="
+        + json.dumps(stats.get("min_angle_repeat_tag_buckets", {}), ensure_ascii=False, sort_keys=True)
+    )
     print("train_stats=" + json.dumps(stats, ensure_ascii=False))
     if TRAIN_STATS_JSON:
         stats_path = Path(TRAIN_STATS_JSON)
@@ -521,10 +698,17 @@ def main() -> None:
         pin_memory=False,
     )
     if LOSS_MODE == "cosine":
-        train_objectives = [(examples_loader, CosineSimilarityLoss(model=model))]
+        cosine_loader = DataLoader(
+            list(cosine_examples),
+            shuffle=True,
+            batch_size=BATCH_SIZE,
+            num_workers=0,
+            pin_memory=False,
+        )
+        train_objectives = [(cosine_loader, CosineSimilarityLoss(model=model))]
     elif LOSS_MODE == "mixed":
         cosine_loader = DataLoader(
-            list(examples),
+            list(cosine_examples),
             shuffle=True,
             batch_size=BATCH_SIZE,
             num_workers=0,
@@ -551,7 +735,7 @@ def main() -> None:
         if not contrastive_examples:
             raise SystemExit("mixed_contrastive requires at least one positive or negative contrastive example")
         cosine_loader = DataLoader(
-            list(examples),
+            list(cosine_examples),
             shuffle=True,
             batch_size=BATCH_SIZE,
             num_workers=0,
@@ -623,6 +807,7 @@ def main() -> None:
         "scale": SCALE,
         "loss_mode": LOSS_MODE,
         "cosent_exclude_tags": sorted(COSENT_EXCLUDE_TAGS),
+        "cosine_exclude_tags": sorted(COSINE_EXCLUDE_TAGS),
         "midpoint_tags": sorted(MIDPOINT_TAGS),
         "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
         "midpoint_band_low": MIDPOINT_BAND_LOW,
@@ -637,6 +822,7 @@ def main() -> None:
         "pin_high_value_rows": PIN_HIGH_VALUE_ROWS,
         "pin_weight_threshold": PIN_WEIGHT_THRESHOLD,
         "min_angle_repeat_for_high_value": MIN_ANGLE_REPEAT_FOR_HIGH_VALUE,
+        "required_antonym_min_angle_repeat": REQUIRED_ANTONYM_MIN_ANGLE_REPEAT,
         "min_train_examples": MIN_TRAIN_EXAMPLES,
         "seed": SEED,
         "device": device,

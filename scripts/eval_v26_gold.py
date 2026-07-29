@@ -10,6 +10,8 @@ from sentence_transformers import SentenceTransformer
 
 from semantic_common import (
     apply_calibration,
+    augment_masked_calibration_samples,
+    augment_midpoint_calibration_samples,
     build_calibration,
     build_embedding_cache,
     metric,
@@ -25,6 +27,35 @@ EVAL_CSV = Path(os.getenv('SEM_EVAL_CSV', 'data/gold_v26_eval.csv'))
 CALIB_JSON = Path(os.getenv('SEM_CALIB_JSON', 'data/semantic_calibration_v27_semreal_anchor.json'))
 DEVICE = os.getenv('SEM_DEVICE', '').strip().lower()
 ENCODE_BATCH_SIZE = int(os.getenv('SEM_ENCODE_BATCH_SIZE', '32'))
+MIDPOINT_CALIB_TAGS = {
+    item.strip()
+    for item in os.getenv('SEM_CALIB_MIDPOINT_TAGS', 'antonym_mid').split(',')
+    if item.strip()
+}
+MIDPOINT_CALIB_TARGET_LOW = float(os.getenv('SEM_CALIB_MIDPOINT_TARGET_LOW', '45'))
+MIDPOINT_CALIB_TARGET_HIGH = float(os.getenv('SEM_CALIB_MIDPOINT_TARGET_HIGH', '55'))
+MIDPOINT_CALIB_AUGMENT_RADIUS = float(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_RADIUS', '2.5'))
+MIDPOINT_CALIB_AUGMENT_STEPS = int(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_STEPS', '2'))
+MIDPOINT_CALIB_AUGMENT_WEIGHT = float(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT', '0.5'))
+SUPPORT_POSITIVE_CALIB_TAGS = {
+    item.strip()
+    for item in os.getenv(
+        'SEM_CALIB_SUPPORT_POSITIVE_TAGS',
+        'same_category_mid,hint_like_high',
+    ).split(',')
+    if item.strip()
+}
+SUPPORT_POSITIVE_CALIB_TARGET_LOW = float(os.getenv('SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW', '40'))
+SUPPORT_POSITIVE_CALIB_TARGET_HIGH = float(os.getenv('SEM_CALIB_SUPPORT_POSITIVE_TARGET_HIGH', '80'))
+SUPPORT_POSITIVE_CALIB_AUGMENT_RADIUS = float(
+    os.getenv('SEM_CALIB_SUPPORT_POSITIVE_AUGMENT_RADIUS', '2.0')
+)
+SUPPORT_POSITIVE_CALIB_AUGMENT_STEPS = int(
+    os.getenv('SEM_CALIB_SUPPORT_POSITIVE_AUGMENT_STEPS', '2')
+)
+SUPPORT_POSITIVE_CALIB_AUGMENT_WEIGHT = float(
+    os.getenv('SEM_CALIB_SUPPORT_POSITIVE_AUGMENT_WEIGHT', '0.05')
+)
 
 HARD_NEG_TAGS = {
     'function_word_low',
@@ -61,6 +92,28 @@ def read_eval_dict_rows(path: Path) -> list[dict]:
             row['_user_input'] = user_input
             row['_score'] = score
             rows.append(row)
+    return rows
+
+
+def read_scored_weighted_rows(path: Path) -> list[tuple[str, str, float, float]]:
+    rows = []
+    with path.open('r', encoding='utf-8', newline='') as file:
+        for row in csv.DictReader(file):
+            answer = (row.get('answer') or '').strip()
+            user_input = (row.get('user_input') or '').strip()
+            score_raw = (row.get('score_0_100') or '').strip()
+            if not answer or not user_input or not score_raw:
+                continue
+            try:
+                score = float(score_raw)
+            except ValueError:
+                continue
+            sample_weight_raw = (row.get('sample_weight') or '').strip()
+            try:
+                sample_weight = float(sample_weight_raw) if sample_weight_raw else 1.0
+            except ValueError:
+                sample_weight = 1.0
+            rows.append((answer, user_input, score, max(1e-6, sample_weight)))
     return rows
 
 
@@ -222,6 +275,8 @@ def main():
         raise SystemExit('missing gold calib/eval csv')
 
     calib_rows = read_scored_rows(CALIB_CSV)
+    calib_dict_rows = read_eval_dict_rows(CALIB_CSV)
+    calib_weighted_rows = read_scored_weighted_rows(CALIB_CSV)
     eval_rows = read_scored_rows(EVAL_CSV)
     if len(calib_rows) < 5 or len(eval_rows) < 5:
         raise SystemExit('gold rows too small')
@@ -239,7 +294,44 @@ def main():
 
     calib_pred = predict_scored_rows(calib_rows, cache)
     calib_target = [s for _, _, s in calib_rows]
-    calib = build_calibration(calib_pred, calib_target)
+    calib_weights = [weight for _, _, _, weight in calib_weighted_rows]
+    midpoint_mask = [
+        (
+            (row.get('relation_tag') or row.get('error_type') or '').strip() in MIDPOINT_CALIB_TAGS
+            and MIDPOINT_CALIB_TARGET_LOW <= float(row['_score']) <= MIDPOINT_CALIB_TARGET_HIGH
+        )
+        for row in calib_dict_rows
+    ]
+    support_positive_mask = [
+        (
+            (row.get('relation_tag') or row.get('error_type') or '').strip()
+            in SUPPORT_POSITIVE_CALIB_TAGS
+            and SUPPORT_POSITIVE_CALIB_TARGET_LOW <= float(row['_score']) <= SUPPORT_POSITIVE_CALIB_TARGET_HIGH
+        )
+        for row in calib_dict_rows
+    ]
+    midpoint_pred_aug, midpoint_target_aug, midpoint_weights_aug = augment_midpoint_calibration_samples(
+        calib_pred,
+        calib_target,
+        calib_weights,
+        midpoint_mask,
+        radius=MIDPOINT_CALIB_AUGMENT_RADIUS,
+        steps=MIDPOINT_CALIB_AUGMENT_STEPS,
+        weight_multiplier=MIDPOINT_CALIB_AUGMENT_WEIGHT,
+    )
+    support_pred_aug, support_target_aug, support_weights_aug = augment_masked_calibration_samples(
+        calib_pred,
+        calib_target,
+        calib_weights,
+        support_positive_mask,
+        radius=SUPPORT_POSITIVE_CALIB_AUGMENT_RADIUS,
+        steps=SUPPORT_POSITIVE_CALIB_AUGMENT_STEPS,
+        weight_multiplier=SUPPORT_POSITIVE_CALIB_AUGMENT_WEIGHT,
+    )
+    calib_pred_aug = midpoint_pred_aug + support_pred_aug[len(calib_pred):]
+    calib_target_aug = midpoint_target_aug + support_target_aug[len(calib_target):]
+    calib_weights_aug = midpoint_weights_aug + support_weights_aug[len(calib_weights):]
+    calib = build_calibration(calib_pred_aug, calib_target_aug, calib_weights_aug)
     CALIB_JSON.write_text(json.dumps(calib, ensure_ascii=False, indent=2), encoding='utf-8')
 
     eval_raw = predict_scored_rows(eval_rows, cache)
@@ -265,12 +357,34 @@ def main():
         'eval_csv': str(EVAL_CSV),
         'calib_json': str(CALIB_JSON),
         'calibration_method': calib.get('method', 'unknown'),
+        'midpoint_calibration_tags': sorted(MIDPOINT_CALIB_TAGS),
+        'midpoint_calibration_rows': sum(1 for flag in midpoint_mask if flag),
+        'midpoint_calibration_augmented_rows': len(midpoint_pred_aug) - len(calib_pred),
+        'midpoint_calibration_augment_radius': MIDPOINT_CALIB_AUGMENT_RADIUS,
+        'midpoint_calibration_augment_steps': MIDPOINT_CALIB_AUGMENT_STEPS,
+        'midpoint_calibration_augment_weight': MIDPOINT_CALIB_AUGMENT_WEIGHT,
+        'support_positive_calibration_tags': sorted(SUPPORT_POSITIVE_CALIB_TAGS),
+        'support_positive_calibration_rows': sum(1 for flag in support_positive_mask if flag),
+        'support_positive_calibration_augmented_rows': len(support_pred_aug) - len(calib_pred),
+        'support_positive_calibration_target_low': SUPPORT_POSITIVE_CALIB_TARGET_LOW,
+        'support_positive_calibration_target_high': SUPPORT_POSITIVE_CALIB_TARGET_HIGH,
+        'support_positive_calibration_augment_radius': SUPPORT_POSITIVE_CALIB_AUGMENT_RADIUS,
+        'support_positive_calibration_augment_steps': SUPPORT_POSITIVE_CALIB_AUGMENT_STEPS,
+        'support_positive_calibration_augment_weight': SUPPORT_POSITIVE_CALIB_AUGMENT_WEIGHT,
     }
 
     print(f'eval_rows={len(eval_rows)}')
     print(f'raw_mae={raw_mae:.3f} raw_bucket_acc={raw_acc:.2f}%')
     print(f'cal_mae={cal_mae:.3f} cal_bucket_acc={cal_acc:.2f}%')
     print(f"calibration_method={calib.get('method', 'unknown')}")
+    print(
+        f'midpoint_calibration_rows={sum(1 for flag in midpoint_mask if flag)} '
+        f'augmented_rows={len(midpoint_pred_aug) - len(calib_pred)}'
+    )
+    print(
+        f'support_positive_calibration_rows={sum(1 for flag in support_positive_mask if flag)} '
+        f'augmented_rows={len(support_pred_aug) - len(calib_pred)}'
+    )
     print(f'written={CALIB_JSON}')
 
     if args.json_out:

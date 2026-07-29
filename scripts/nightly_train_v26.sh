@@ -192,10 +192,13 @@ SUP_MIDPOINT_BAND_LOW="${NIGHTLY_SUP_MIDPOINT_BAND_LOW:-0.45}"
 SUP_MIDPOINT_BAND_HIGH="${NIGHTLY_SUP_MIDPOINT_BAND_HIGH:-0.55}"
 SUP_MIDPOINT_BAND_WEIGHT="${NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT:-4.0}"
 SUP_MIDPOINT_CENTER_WEIGHT="${NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT:-1.0}"
+CALIB_SUPPORT_POSITIVE_TARGET_LOW="${NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW:-60}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
 SUP_CONTRASTIVE_NEG_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD:-0.3}"
+SUP_MIN_TAG_BUCKET_ROWS="${NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS:-same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18}"
+SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS="${NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS:-}"
 MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
 MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
 MIN_ANTONYM_MID_RECALL_IMPROVEMENT="${NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT:-0.0}"
@@ -253,7 +256,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_midpoint_band_low=$SUP_MIDPOINT_BAND_LOW sup_midpoint_band_high=$SUP_MIDPOINT_BAND_HIGH sup_midpoint_band_weight=$SUP_MIDPOINT_BAND_WEIGHT sup_midpoint_center_weight=$SUP_MIDPOINT_CENTER_WEIGHT sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_min_tag_bucket_rows=$SUP_MIN_TAG_BUCKET_ROWS sup_min_angle_repeat_tag_buckets=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_midpoint_band_low=$SUP_MIDPOINT_BAND_LOW sup_midpoint_band_high=$SUP_MIDPOINT_BAND_HIGH sup_midpoint_band_weight=$SUP_MIDPOINT_BAND_WEIGHT sup_midpoint_center_weight=$SUP_MIDPOINT_CENTER_WEIGHT calib_support_positive_target_low=$CALIB_SUPPORT_POSITIVE_TARGET_LOW sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -438,6 +441,7 @@ run_single_round() {
     candidate_stage="unsup"
 
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
+      SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -461,6 +465,8 @@ run_single_round() {
       SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
       SEM_LOSS_MODE=$SUP_LOSS_MODE \
       SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+      SEM_MIN_TAG_BUCKET_ROWS=$SUP_MIN_TAG_BUCKET_ROWS \
+      SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS \
       SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
       SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
       SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
@@ -495,6 +501,8 @@ run_single_round() {
           SEM_ANGLE_MODE=$SUP_ANGLE_MODE \
           SEM_LOSS_MODE=$SUP_LOSS_MODE \
           SEM_MIN_TAG_ROWS=$SUP_MIN_TAG_ROWS \
+          SEM_MIN_TAG_BUCKET_ROWS=$SUP_MIN_TAG_BUCKET_ROWS \
+          SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS \
           SEM_COSENT_EXCLUDE_TAGS=$SUP_COSENT_EXCLUDE_TAGS \
           SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
           SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
@@ -522,6 +530,7 @@ run_single_round() {
     fi
 
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
+      SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -543,6 +552,7 @@ run_single_round() {
     candidate_model="$round_anchor_model"
     candidate_stage="anchor"
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
+      SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -891,6 +901,22 @@ lines = [
 ]
 for key in ("train_rows", "gold_pool", "train_gold", "train_patch", "calib", "eval", "fixed_holdout", "unsup_pairs"):
     lines.append(f"| {key} | {stats.get(key, '-')} |")
+for key in (
+    "antonym_calib_anchor_rows",
+    "priority_antonym_calib_anchor_rows",
+    "priority_antonym_calib_weight_rows",
+    "antonym_calib_anchor_weight",
+    "priority_antonym_calib_anchor_weight",
+    "gold_to_calib_tags",
+    "gold_to_calib_rows",
+    "gold_to_calib_weight",
+    "eval_to_calib_tags",
+    "eval_to_calib_rows",
+    "calib_antonym_rows",
+    "eval_antonym_rows",
+):
+    if key in stats:
+        lines.append(f"| {key} | {stats.get(key, '-')} |")
 
 lines.extend([
     "",
@@ -954,6 +980,10 @@ for key in (
     "antonym_mid_rows",
     "antonym_mid_examples_after_repeat",
     "min_tag_rows",
+    "min_tag_bucket_rows",
+    "min_angle_repeat_tag_buckets",
+    "tag_bucket_angle_repeat_rows",
+    "tag_bucket_angle_repeat_examples_after_repeat",
     "pinned_high_value_rows",
     "protected_positive_rows",
     "full_angle_coverage_rows",
@@ -1048,6 +1078,8 @@ done
   echo "| sup_angle_mode | $SUP_ANGLE_MODE |"
   echo "| sup_loss_mode | $SUP_LOSS_MODE |"
   echo "| sup_min_tag_rows | $SUP_MIN_TAG_ROWS |"
+  echo "| sup_min_tag_bucket_rows | $SUP_MIN_TAG_BUCKET_ROWS |"
+  echo "| sup_min_angle_repeat_tag_buckets | $SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS |"
   echo "| sup_cosent_exclude_tags | $SUP_COSENT_EXCLUDE_TAGS |"
   echo "| sup_midpoint_tags | $SUP_MIDPOINT_TAGS |"
   echo "| sup_midpoint_repeat_boost | $SUP_MIDPOINT_REPEAT_BOOST |"
@@ -1055,6 +1087,7 @@ done
   echo "| sup_midpoint_band_high | $SUP_MIDPOINT_BAND_HIGH |"
   echo "| sup_midpoint_band_weight | $SUP_MIDPOINT_BAND_WEIGHT |"
   echo "| sup_midpoint_center_weight | $SUP_MIDPOINT_CENTER_WEIGHT |"
+  echo "| calib_support_positive_target_low | $CALIB_SUPPORT_POSITIVE_TARGET_LOW |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
   echo ""
   echo "## 晋升门控"

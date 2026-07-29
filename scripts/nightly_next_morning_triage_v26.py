@@ -109,11 +109,50 @@ def parse_int(value: object) -> int | None:
         return None
 
 
+def parse_tag_bucket_spec(spec: str) -> dict[str, int]:
+    result: dict[str, int] = {}
+    for item in spec.split(","):
+        part = item.strip()
+        if not part or ":" not in part:
+            continue
+        key, raw_value = part.rsplit(":", 1)
+        key = key.strip()
+        value = parse_int(raw_value)
+        if key and value is not None:
+            result[key] = value
+    return result
+
+
+def parse_tag_bucket_json(value: object) -> dict[str, int]:
+    if isinstance(value, dict):
+        raw = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return {}
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            return {}
+        if not isinstance(parsed, dict):
+            return {}
+        raw = parsed
+
+    result: dict[str, int] = {}
+    for key, item in raw.items():
+        parsed_value = parse_int(item)
+        if parsed_value is not None:
+            result[str(key)] = parsed_value
+    return result
+
+
 def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
     warnings = [str(item) for item in health.get("warnings", [])]
     report_predates_install = any("predates current launchd install" in item for item in warnings)
     expected_exclude = str(health.get("sup_cosent_exclude_tags") or "").strip()
     expected_midpoint = str(health.get("sup_midpoint_tags") or "antonym_mid").strip()
+    expected_bucket_rows = str(health.get("sup_min_tag_bucket_rows") or "").strip()
+    expected_support_low = str(health.get("calib_support_positive_target_low") or "").strip()
     rows = analysis.get("train_sampling") or []
     issues: list[str] = []
 
@@ -124,6 +163,8 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "reason": "latest real report predates current launchd install",
             "expected_cosent_exclude_tags": expected_exclude,
             "expected_midpoint_tags": expected_midpoint,
+            "expected_min_tag_bucket_rows": expected_bucket_rows,
+            "expected_calib_support_positive_target_low": expected_support_low,
             "issues": issues,
         }
 
@@ -165,12 +206,34 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             else:
                 issues.append(f"round {round_id}: missing midpoint anchor count")
 
+    if expected_bucket_rows:
+        expected_buckets = parse_tag_bucket_spec(expected_bucket_rows)
+        if not rows:
+            issues.append("missing train_sampling rows in latest report")
+        for row in rows:
+            round_id = row.get("round", "?")
+            actual_buckets = parse_tag_bucket_json(row.get("min_tag_bucket_rows"))
+            if not actual_buckets:
+                issues.append(f"round {round_id}: missing min_tag_bucket_rows")
+                continue
+            for key, expected_count in expected_buckets.items():
+                if key not in actual_buckets:
+                    issues.append(f"round {round_id}: min_tag_bucket_rows missing {key}")
+                    continue
+                actual_count = actual_buckets[key]
+                if actual_count < expected_count:
+                    issues.append(
+                        f"round {round_id}: min_tag_bucket_rows {key} {actual_count} < expected {expected_count}"
+                    )
+
     return {
         "ok": not issues,
         "skipped": False,
         "reason": "",
         "expected_cosent_exclude_tags": expected_exclude,
         "expected_midpoint_tags": expected_midpoint,
+        "expected_min_tag_bucket_rows": expected_bucket_rows,
+        "expected_calib_support_positive_target_low": expected_support_low,
         "issues": issues,
     }
 
@@ -367,10 +430,15 @@ def print_human(payload: dict[str, object]) -> None:
                 f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"gold_to_calib_rows={item.get('gold_to_calib_rows', '-')} "
+                f"gold_to_calib_weight={item.get('gold_to_calib_weight', '-')} "
+                f"priority_antonym_calib_rows={item.get('priority_antonym_calib_anchor_rows', '-')} "
+                f"priority_antonym_weight_rows={item.get('priority_antonym_calib_weight_rows', '-')} "
                 f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
                 f"midpoint_examples={item.get('midpoint_examples_after_repeat', '-')} "
                 f"midpoint_tags={item.get('midpoint_tags', '-')} "
-                f"min_tag_rows={item.get('min_tag_rows', '-')}"
+                f"min_tag_rows={item.get('min_tag_rows', '-')} "
+                f"min_tag_bucket_rows={item.get('min_tag_bucket_rows', '-')}"
             )
     if analysis["antonym_group"]:
         print(f"antonym_group={analysis['antonym_group']}")
@@ -423,6 +491,9 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
         f"- partial_run_after_latest_schedule: `{health.get('partial_run_after_latest_schedule', False)}`",
         f"- wrapper_loaded: `{health['wrapper_loaded']}`",
         f"- nightly_total_runs: `{health['nightly_total_runs']}`",
+        f"- sup_min_tag_rows: `{health.get('sup_min_tag_rows')}`",
+        f"- sup_min_tag_bucket_rows: `{health.get('sup_min_tag_bucket_rows')}`",
+        f"- calib_support_positive_target_low: `{health.get('calib_support_positive_target_low')}`",
         f"- sup_cosent_exclude_tags: `{health.get('sup_cosent_exclude_tags')}`",
         f"- latest_real_report: `{health['latest_real_report']}`",
         f"- report: `{analysis['report']}`",
@@ -483,8 +554,13 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
                 f"antonym_mid_rows `{item.get('antonym_mid_rows', '-')}`, "
                 f"antonym_mid_examples `{item.get('antonym_mid_examples_after_repeat', '-')}`, "
                 f"cosent_excluded_examples `{item.get('cosent_excluded_examples_after_repeat', '-')}`, "
+                f"gold_to_calib_rows `{item.get('gold_to_calib_rows', '-')}`, "
+                f"gold_to_calib_weight `{item.get('gold_to_calib_weight', '-')}`, "
+                f"priority_antonym_calib_rows `{item.get('priority_antonym_calib_anchor_rows', '-')}`, "
+                f"priority_antonym_weight_rows `{item.get('priority_antonym_calib_weight_rows', '-')}`, "
                 f"cosent_exclude_tags `{item.get('cosent_exclude_tags', '-')}`, "
-                f"min_tag_rows `{item.get('min_tag_rows', '-')}`"
+                f"min_tag_rows `{item.get('min_tag_rows', '-')}`, "
+                f"min_tag_bucket_rows `{item.get('min_tag_bucket_rows', '-')}`"
             )
     else:
         lines.append("- unavailable: report has no actual training sampling section")
@@ -500,6 +576,11 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     lines.append(f"- ok: `{strategy.get('ok')}`")
     lines.append(f"- expected_cosent_exclude_tags: `{strategy.get('expected_cosent_exclude_tags')}`")
     lines.append(f"- expected_midpoint_tags: `{strategy.get('expected_midpoint_tags')}`")
+    lines.append(f"- expected_min_tag_bucket_rows: `{strategy.get('expected_min_tag_bucket_rows')}`")
+    lines.append(
+        f"- expected_calib_support_positive_target_low: "
+        f"`{strategy.get('expected_calib_support_positive_target_low')}`"
+    )
     if strategy.get("skipped"):
         lines.append(f"- skipped: `{strategy.get('reason')}`")
     issues = strategy.get("issues") or []
