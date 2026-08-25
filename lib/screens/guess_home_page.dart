@@ -18,7 +18,6 @@ import '../models/guess_models.dart';
 import '../services/embedding_service.dart';
 import '../services/local_embedding_runner.dart';
 import '../services/puzzle_repository.dart';
-import '../utils/text_utils.dart';
 import '../widgets/aurora_background.dart';
 import '../widgets/guess_hint_card.dart';
 import '../widgets/guess_history_list.dart';

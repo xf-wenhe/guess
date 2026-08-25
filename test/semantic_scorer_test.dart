@@ -87,6 +87,21 @@ void main() {
       expect(mix.finalScore, 10);
     });
 
+    test('preserves meaningful semantic midband without lexical overlap', () {
+      final mix = rules.mix(
+        semanticPercentRaw: 53.3,
+        semanticPercentCalibrated: 49.8,
+        lexical: 0,
+        guessContainsFunctionWord: false,
+        answerContainsFunctionWord: false,
+      );
+
+      expect(mix.combined, 40);
+      expect(mix.finalScore, 40);
+      expect(mix.notes, contains('semantic_midband_boundary_preserved'));
+      expect(mix.notes, isNot(contains('lexical_zero_cap10_unrelated')));
+    });
+
     test('floors near-synonym-like scores', () {
       final mix = rules.mix(
         semanticPercentRaw: 80,

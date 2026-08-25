@@ -94,6 +94,7 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "sup_min_tag_bucket_rows": config.get("sup_min_tag_bucket_rows"),
         "calib_support_positive_target_low": config.get("calib_support_positive_target_low"),
         "sup_cosent_exclude_tags": config.get("sup_cosent_exclude_tags"),
+        "sup_cosine_exclude_tags": config.get("sup_cosine_exclude_tags"),
         "best_round": round_number,
         "best_stage": best.get("stage"),
         "best_cand_mae": best.get("cand_mae"),
@@ -109,6 +110,12 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "antonym_mid_examples_after_repeat": sampling.get("antonym_mid_examples_after_repeat"),
         "cosent_exclude_tags": sampling.get("cosent_exclude_tags"),
         "cosent_excluded_examples_after_repeat": sampling.get("cosent_excluded_examples_after_repeat"),
+        "cosine_examples_after_repeat": sampling.get("cosine_examples_after_repeat"),
+        "cosine_exclude_tags": sampling.get("cosine_exclude_tags"),
+        "cosine_excluded_rows": sampling.get("cosine_excluded_rows"),
+        "cosine_excluded_examples_after_repeat": sampling.get("cosine_excluded_examples_after_repeat"),
+        "bucket_band_tags": sampling.get("bucket_band_tags"),
+        "bucket_band_examples_after_repeat": sampling.get("bucket_band_examples_after_repeat"),
         "priority_antonym_calib_anchor_rows": sampling.get("priority_antonym_calib_anchor_rows"),
         "priority_antonym_calib_weight_rows": sampling.get("priority_antonym_calib_weight_rows"),
         "antonym_calib_anchor_weight": sampling.get("antonym_calib_anchor_weight"),
@@ -160,7 +167,8 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"loss={row['sup_loss_mode']} min_tags={row['sup_min_tag_rows']} "
             f"bucket_min_tags={row['sup_min_tag_bucket_rows'] or '-'} "
             f"calib_support_low={row['calib_support_positive_target_low'] or '-'} "
-            f"cosent_exclude={row['sup_cosent_exclude_tags']}"
+            f"cosent_exclude={row['sup_cosent_exclude_tags']} "
+            f"cosine_exclude={row['sup_cosine_exclude_tags'] or '-'}"
         )
         print(
             "  antonym: "
@@ -174,6 +182,10 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"antonym_examples={row['antonym_mid_examples_after_repeat'] or '-'} "
             f"cosent_excluded={row['cosent_excluded_examples_after_repeat'] or '-'} "
             f"cosent_exclude_tags={row['cosent_exclude_tags'] or '-'} "
+            f"cosine_examples={row['cosine_examples_after_repeat'] or '-'} "
+            f"cosine_excluded={row['cosine_excluded_examples_after_repeat'] or '-'} "
+            f"cosine_exclude_tags={row['cosine_exclude_tags'] or '-'} "
+            f"bucket_band_examples={row['bucket_band_examples_after_repeat'] or '-'} "
             f"min_tag_rows={row['min_tag_rows'] or '-'} "
             f"min_tag_bucket_rows={row['min_tag_bucket_rows'] or '-'}"
         )

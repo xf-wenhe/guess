@@ -113,11 +113,13 @@ cat > "$PLIST_PATH" <<PLIST
     <key>NIGHTLY_SUP_MIN_TAG_ROWS</key>
     <string>antonym_mid:45</string>
     <key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key>
-    <string>same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18</string>
+    <string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>
     <key>NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS</key>
     <string>${NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS:-}</string>
     <key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key>
     <string>antonym_mid</string>
+    <key>NIGHTLY_SUP_COSINE_EXCLUDE_TAGS</key>
+    <string></string>
     <key>NIGHTLY_SUP_MIDPOINT_TAGS</key>
     <string>antonym_mid</string>
     <key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>
@@ -130,6 +132,10 @@ cat > "$PLIST_PATH" <<PLIST
     <string>4.0</string>
     <key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key>
     <string>1.0</string>
+    <key>NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS</key>
+    <string>${NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS:-2}</string>
+    <key>NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT</key>
+    <string>${NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT:-1.0}</string>
     <key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key>
     <string>${NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW:-60}</string>
     <key>NIGHTLY_BASE_SEED</key>

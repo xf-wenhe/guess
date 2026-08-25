@@ -28,11 +28,13 @@ class SemanticScoreRules {
   }) {
     var percent = semanticPercentCalibrated;
     final notes = <String>[];
+    var lowLexicalCalibrationCapped = false;
 
     if (lexical <= 20 && semanticPercentRaw < 70) {
       final cappedPercent = min(percent, 55.0);
       if (cappedPercent < percent) {
         percent = cappedPercent;
+        lowLexicalCalibrationCapped = true;
         notes.add('calibration_midband_cap55_low_lexical');
       }
     }
@@ -46,12 +48,11 @@ class SemanticScoreRules {
       notes.add('lexical_zero_raw_lt35_cap10');
     }
 
-    if (percent < 40) {
-      if (percent < 20) {
-        combined = min(combined, 10);
-        notes.add('semantic_unrelated_cap10');
-      }
-    } else if (lexical == 0 && percent < 70) {
+    if (percent < 20) {
+      combined = min(combined, 10);
+      notes.add('semantic_unrelated_cap10');
+    }
+    if (lexical == 0 && lowLexicalCalibrationCapped) {
       combined = min(combined, 10);
       notes.add('lexical_zero_cap10_unrelated');
     }
@@ -62,6 +63,13 @@ class SemanticScoreRules {
     }
 
     var finalScore = normalizeSimilarity(combined);
+    // A semantically meaningful zero-lexical pair can land exactly at the
+    // low-band boundary after the 80/20 blend. Preserve that 40-point signal
+    // instead of mapping it down to 20 by the generic low-score transform.
+    if (percent >= 40 && combined == 40) {
+      finalScore = 40;
+      notes.add('semantic_midband_boundary_preserved');
+    }
     if (lexical == 0 && semanticPercentRaw < 75) {
       finalScore = min(finalScore, 45);
       notes.add('final_cap45_lexical_zero_raw_lt75');

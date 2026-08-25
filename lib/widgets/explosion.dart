@@ -154,7 +154,7 @@ class _BombExplosionPainter extends CustomPainter {
 
     // ---- 后期闪烁 ----
     if (t > 0.4 && t < 0.8) {
-      final sparkleCount = 8;
+      const sparkleCount = 8;
       final sparkleT = ((t - 0.4) / 0.4).clamp(0.0, 1.0);
       final sparkleAlpha = sin(sparkleT * pi).clamp(0.0, 1.0) * 0.7;
       for (var i = 0; i < sparkleCount; i++) {

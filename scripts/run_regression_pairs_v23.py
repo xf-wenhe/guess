@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 from pathlib import Path
@@ -57,16 +59,15 @@ def normalize_similarity(value: int):
     return n
 
 
-def final_score(cal_sem: float, lexical: int):
+def final_score(cal_sem: float, lexical: int, raw_sem: float | None = None):
     combined = round(cal_sem * 0.8 + lexical * 0.2)
 
-    if lexical == 0:
-        if cal_sem < 20:
-            combined = min(combined, 10)
-        elif cal_sem < 25:
-            combined = min(combined, 12)
+    if lexical == 0 and (cal_sem < 20 or (raw_sem is not None and raw_sem < 35)):
+        combined = min(combined, 10)
 
     final = normalize_similarity(combined)
+    if cal_sem >= 40 and combined == 40:
+        final = 40
     if lexical >= 40 and cal_sem >= 20:
         final = max(final, 30)
 
@@ -151,7 +152,7 @@ def main():
         override = overrides.get(key1)
         if override is None:
             override = overrides.get(key2)
-        final = override if override is not None else final_score(cal_sem, lexical)
+        final = override if override is not None else final_score(cal_sem, lexical, raw_sem)
 
         check_basis = item.get('check_basis')
         if check_basis is None:

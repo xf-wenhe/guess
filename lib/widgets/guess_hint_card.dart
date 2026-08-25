@@ -57,7 +57,7 @@ class GuessHintCard extends StatelessWidget {
                   margin: EdgeInsets.zero,
                   decoration: BoxDecoration(
                     gradient: isCurrent
-                        ? LinearGradient(
+                        ? const LinearGradient(
                             colors: [
                               AppColors.neonAmber,
                               AppColors.neonOrange,
@@ -74,7 +74,7 @@ class GuessHintCard extends StatelessWidget {
                                 begin: Alignment.topLeft,
                                 end: Alignment.bottomRight,
                               )
-                            : LinearGradient(
+                            : const LinearGradient(
                                 colors: [
                                   AppColors.neutralGradientStart,
                                   AppColors.neutralLine,

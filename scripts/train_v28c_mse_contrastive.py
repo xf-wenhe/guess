@@ -33,6 +33,7 @@ LEARNING_RATE = float(os.getenv("SEM_LR", os.getenv("SEM_LEARNING_RATE", "8e-6")
 WARMUP_RATIO = float(os.getenv("SEM_WARMUP_RATIO", "0.1"))
 MAX_TRAIN_ROWS = int(os.getenv("SEM_MAX_TRAIN_ROWS", "0"))
 SEED = int(os.getenv("SEM_SEED", "20260515"))
+SAMPLE_SEED = int(os.getenv("SEM_SAMPLE_SEED", str(SEED)))
 DEVICE = os.getenv("SEM_DEVICE", "").strip().lower()
 SCALE = float(os.getenv("SEM_COSENT_SCALE", "20.0"))
 HARD_NEG_BOOST = float(os.getenv("SEM_HARD_NEG_BOOST", "2.0"))
@@ -40,13 +41,24 @@ MAX_REPEAT = int(os.getenv("SEM_MAX_REPEAT", "5"))
 ANGLE_MODE = os.getenv("SEM_ANGLE_MODE", "cycle").strip().lower()
 LOSS_MODE = os.getenv("SEM_LOSS_MODE", "mixed").strip().lower()
 COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").strip()
-COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "antonym_mid").strip()
+# Keep midpoint antonyms in cosine regression; only CoSENT must exclude them.
+COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "").strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
 MIDPOINT_BAND_LOW = float(os.getenv("SEM_MIDPOINT_BAND_LOW", "0.45"))
 MIDPOINT_BAND_HIGH = float(os.getenv("SEM_MIDPOINT_BAND_HIGH", "0.55"))
 MIDPOINT_BAND_WEIGHT = float(os.getenv("SEM_MIDPOINT_BAND_WEIGHT", "4.0"))
 MIDPOINT_CENTER_WEIGHT = float(os.getenv("SEM_MIDPOINT_CENTER_WEIGHT", "1.0"))
+MIDPOINT_OBJECTIVE_REPEATS = int(os.getenv("SEM_MIDPOINT_OBJECTIVE_REPEATS", "2"))
+BUCKET_BAND_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_WEIGHT", "1.0"))
+BUCKET_BAND_CENTER_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_CENTER_WEIGHT", "1.0"))
+BUCKET_BAND_TAGS_SPEC = os.getenv(
+    "SEM_BUCKET_BAND_TAGS",
+    "collocation_not_equivalent,function_word_low,function_word_vs_real_low,"
+    "hard_negative_low,hard_negative_mid,cross_category_low,cross_category_negative,"
+    "same_category_but_far,same_category_weak,same_category_mid,same_category_strong,"
+    "abstract_confusion,nonsense_low",
+).strip()
 CONTRASTIVE_MARGIN = float(os.getenv("SEM_CONTRASTIVE_MARGIN", "0.5"))
 CONTRASTIVE_POS_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_POS_THRESHOLD", "0.7"))
 CONTRASTIVE_NEG_THRESHOLD = float(os.getenv("SEM_CONTRASTIVE_NEG_THRESHOLD", "0.3"))
@@ -86,6 +98,7 @@ HARD_NEG_TAGS = {
     "cross_category_low",
     "cross_category_negative",
     "same_category_but_far",
+    "abstract_confusion",
     "nonsense_low",
 }
 
@@ -97,6 +110,12 @@ TAG_REPEAT_BOOSTS = {
     "same_category_mid": 1.5,
     "same_category_strong": 1.5,
     "related_mid": 1.25,
+}
+
+BUCKET_BAND_TAGS = {
+    item.strip()
+    for item in BUCKET_BAND_TAGS_SPEC.split(",")
+    if item.strip()
 }
 
 CONTRASTIVE_POSITIVE_TAGS = {
@@ -163,6 +182,31 @@ MIDPOINT_TAGS = {
     for item in MIDPOINT_TAGS_SPEC.split(",")
     if item.strip()
 }
+
+
+def validate_objective_scope() -> None:
+    """Keep midpoint supervision in cosine regression as well as midpoint loss."""
+    if MIDPOINT_OBJECTIVE_REPEATS < 1:
+        raise SystemExit("SEM_MIDPOINT_OBJECTIVE_REPEATS must be at least 1")
+    if "antonym_mid" in MIDPOINT_TAGS and "antonym_mid" not in COSENT_EXCLUDE_TAGS:
+        raise SystemExit(
+            "antonym_mid midpoint rows must remain excluded from the CoSENT objective"
+        )
+    overlap = sorted(MIDPOINT_TAGS & COSINE_EXCLUDE_TAGS)
+    if overlap:
+        raise SystemExit(
+            "midpoint tags must remain in the cosine objective; "
+            f"remove them from SEM_COSINE_EXCLUDE_TAGS: {','.join(overlap)}"
+        )
+
+
+def is_bucket_band_row(row: dict) -> bool:
+    """Avoid applying a generic bucket boundary to dedicated midpoint rows."""
+    return (
+        row["tag"] in BUCKET_BAND_TAGS
+        and row["tag"] not in COSINE_EXCLUDE_TAGS
+        and row["tag"] not in MIDPOINT_TAGS
+    )
 
 
 def canonical_pair(left: str, right: str) -> tuple[str, str]:
@@ -363,10 +407,58 @@ class MidpointBandLoss(torch.nn.Module):
         return (self.center_weight * center_loss) + (self.band_weight * band_loss)
 
 
+class BucketBandLoss(torch.nn.Module):
+    """Penalize predictions that leave the target score bucket.
+
+    The cosine center term reinforces the reviewed target inside the bucket. The
+    auxiliary band term also resists cross-bucket moves, which is important for
+    reviewed hard negatives and ambiguous same-category rows.
+    """
+
+    def __init__(
+        self,
+        model: SentenceTransformer,
+        band_weight: float,
+        center_weight: float = 1.0,
+    ) -> None:
+        super().__init__()
+        self.model = model
+        self.band_weight = band_weight
+        self.center_weight = center_weight
+
+    def forward(
+        self,
+        sentence_features: list[dict[str, torch.Tensor]],
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
+        scores = F.cosine_similarity(embeddings[0], embeddings[1])
+        if self.band_weight <= 0 and self.center_weight <= 0:
+            return scores.sum() * 0.0
+
+        labels = labels.view(-1).to(scores.device).clamp(0.0, 1.0)
+        bucket_index = torch.floor(labels * 5.0).to(torch.long).clamp(0, 4)
+        lower = bucket_index.to(scores.dtype) * 0.2
+        upper = (bucket_index + 1).to(scores.dtype) * 0.2
+        lower_violation = torch.relu(lower - scores)
+        upper_violation = torch.relu(scores - upper)
+        violation = lower_violation.square() + upper_violation.square()
+        center_loss = F.mse_loss(scores, labels)
+        return (self.center_weight * center_loss) + (self.band_weight * violation.mean())
+
+
 def load_examples(
     path: Path,
     seed: int,
-) -> tuple[list[InputExample], list[InputExample], list[InputExample], list[InputExample], dict]:
+) -> tuple[
+    list[InputExample],
+    list[InputExample],
+    list[InputExample],
+    list[InputExample],
+    list[InputExample],
+    list[InputExample],
+    dict,
+]:
     rows = []
     with path.open("r", encoding="utf-8", newline="") as file:
         reader = csv.DictReader(file)
@@ -426,6 +518,7 @@ def load_examples(
     cosine_examples = []
     contrastive_examples = []
     midpoint_examples = []
+    bucket_band_examples = []
     for row_idx, row in enumerate(rows):
         for _ in range(row["repeat"]):
             repeat_idx = len(examples)
@@ -455,6 +548,10 @@ def load_examples(
                     InputExample(texts=list(example.texts), label=example.label)
                     for _ in range(midpoint_repeat)
                 )
+            if is_bucket_band_row(row):
+                bucket_band_examples.append(
+                    InputExample(texts=list(example.texts), label=example.label)
+                )
             binary_label = contrastive_label(row)
             if binary_label is not None:
                 contrastive_examples.append(
@@ -468,6 +565,7 @@ def load_examples(
     rng.shuffle(cosine_examples)
     rng.shuffle(contrastive_examples)
     rng.shuffle(midpoint_examples)
+    rng.shuffle(bucket_band_examples)
 
     tag_counts = Counter(row["tag"] for row in rows)
     contrastive_tag_counts = Counter()
@@ -478,6 +576,11 @@ def load_examples(
             contrastive_tag_counts[row["tag"]] += row["repeat"]
             contrastive_label_counts[str(int(binary_label))] += row["repeat"]
     score_buckets = Counter((int(row["score"] * 100) // 10) * 10 for row in rows)
+    bucket_band_rows = sum(
+        1
+        for row in rows
+        if is_bucket_band_row(row)
+    )
     hard_count = sum(1 for row in rows if row["tag"] in HARD_NEG_TAGS)
     protected_count = sum(1 for row in rows if row["tag"] in TAG_REPEAT_BOOSTS)
     antonym_mid_count = sum(1 for row in rows if row["tag"] == "antonym_mid")
@@ -535,7 +638,13 @@ def load_examples(
         "midpoint_band_high": MIDPOINT_BAND_HIGH,
         "midpoint_band_weight": MIDPOINT_BAND_WEIGHT,
         "midpoint_center_weight": MIDPOINT_CENTER_WEIGHT,
+        "midpoint_objective_repeats": MIDPOINT_OBJECTIVE_REPEATS,
         "midpoint_examples_after_repeat": len(midpoint_examples),
+        "bucket_band_tags": sorted(BUCKET_BAND_TAGS),
+        "bucket_band_weight": BUCKET_BAND_WEIGHT,
+        "bucket_band_center_weight": BUCKET_BAND_CENTER_WEIGHT,
+        "bucket_band_rows": bucket_band_rows,
+        "bucket_band_examples_after_repeat": len(bucket_band_examples),
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
         "min_tag_rows": MIN_TAG_ROWS,
@@ -570,7 +679,15 @@ def load_examples(
         "tag_counts": dict(tag_counts.most_common(30)),
         "score_buckets": {str(k): v for k, v in sorted(score_buckets.items())},
     }
-    return examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats
+    return (
+        examples,
+        cosent_examples,
+        cosine_examples,
+        contrastive_examples,
+        midpoint_examples,
+        bucket_band_examples,
+        stats,
+    )
 
 
 def fit_with_explicit_cpu(
@@ -624,12 +741,43 @@ def fit_with_explicit_cpu(
     trainer.train()
 
 
+def round_robin_steps_per_epoch(
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+) -> int:
+    """Match SentenceTransformers' ROUND_ROBIN batch sampler update count."""
+    if not train_objectives:
+        raise ValueError("at least one training objective is required")
+    batches_per_objective = [len(data_loader) for data_loader, _ in train_objectives]
+    if any(batch_count <= 0 for batch_count in batches_per_objective):
+        raise ValueError("every training objective must contain at least one batch")
+    return min(batches_per_objective) * len(train_objectives)
+
+
+def seed_training(seed: int) -> None:
+    """Keep model and loader randomness tied to the per-round training seed."""
+    random.seed(seed)
+    torch.manual_seed(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
+
+
 def main() -> None:
+    validate_objective_scope()
     if not TRAIN_CSV.exists():
         raise SystemExit(f"missing: {TRAIN_CSV}")
 
     device = resolve_device()
-    examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats = load_examples(TRAIN_CSV, SEED)
+    seed_training(SEED)
+    (
+        examples,
+        cosent_examples,
+        cosine_examples,
+        contrastive_examples,
+        midpoint_examples,
+        bucket_band_examples,
+        stats,
+    ) = load_examples(TRAIN_CSV, SAMPLE_SEED)
+    stats["sample_seed"] = SAMPLE_SEED
     if len(examples) < MIN_TRAIN_EXAMPLES:
         raise SystemExit(f"not enough training examples (<{MIN_TRAIN_EXAMPLES})")
     if LOSS_MODE in {"cosent", "mixed", "mixed_contrastive"} and not cosent_examples:
@@ -641,7 +789,7 @@ def main() -> None:
     print(f"output_model={OUTPUT_MODEL}")
     print(f"device={device}")
     print(f"epochs={EPOCHS} batch_size={BATCH_SIZE} lr={LEARNING_RATE}")
-    print(f"warmup_ratio={WARMUP_RATIO} seed={SEED} scale={SCALE}")
+    print(f"warmup_ratio={WARMUP_RATIO} seed={SEED} sample_seed={SAMPLE_SEED} scale={SCALE}")
     print(f"hard_neg_boost={HARD_NEG_BOOST} max_repeat={MAX_REPEAT} angle_mode={ANGLE_MODE} loss_mode={LOSS_MODE}")
     print(f"cosent_exclude_tags={','.join(sorted(COSENT_EXCLUDE_TAGS)) or '-'}")
     print(f"cosine_exclude_tags={','.join(sorted(COSINE_EXCLUDE_TAGS)) or '-'}")
@@ -650,7 +798,14 @@ def main() -> None:
         f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST} "
         f"midpoint_band=[{MIDPOINT_BAND_LOW:.2f},{MIDPOINT_BAND_HIGH:.2f}] "
         f"midpoint_band_weight={MIDPOINT_BAND_WEIGHT} "
-        f"midpoint_center_weight={MIDPOINT_CENTER_WEIGHT}"
+        f"midpoint_center_weight={MIDPOINT_CENTER_WEIGHT} "
+        f"midpoint_objective_repeats={MIDPOINT_OBJECTIVE_REPEATS}"
+    )
+    print(
+        f"bucket_band_tags={','.join(sorted(BUCKET_BAND_TAGS)) or '-'} "
+        f"bucket_band_weight={BUCKET_BAND_WEIGHT} "
+        f"bucket_band_center_weight={BUCKET_BAND_CENTER_WEIGHT} "
+        f"bucket_band_examples={len(bucket_band_examples)}"
     )
     print(f"required_antonym_min_angle_repeat={REQUIRED_ANTONYM_MIN_ANGLE_REPEAT}")
     print(f"priority_antonym_min_angle_repeat={PRIORITY_ANTONYM_MIN_ANGLE_REPEAT}")
@@ -697,6 +852,13 @@ def main() -> None:
         num_workers=0,
         pin_memory=False,
     )
+    bucket_band_loader = DataLoader(
+        bucket_band_examples,
+        shuffle=True,
+        batch_size=BATCH_SIZE,
+        num_workers=0,
+        pin_memory=False,
+    )
     if LOSS_MODE == "cosine":
         cosine_loader = DataLoader(
             list(cosine_examples),
@@ -719,15 +881,27 @@ def main() -> None:
             (cosine_loader, CosineSimilarityLoss(model=model)),
         ]
         if midpoint_examples:
+            for _ in range(MIDPOINT_OBJECTIVE_REPEATS):
+                train_objectives.append(
+                    (
+                        midpoint_loader,
+                        MidpointBandLoss(
+                            model=model,
+                            band_low=MIDPOINT_BAND_LOW,
+                            band_high=MIDPOINT_BAND_HIGH,
+                            band_weight=MIDPOINT_BAND_WEIGHT,
+                            center_weight=MIDPOINT_CENTER_WEIGHT,
+                        ),
+                    )
+                )
+        if bucket_band_examples and BUCKET_BAND_WEIGHT > 0:
             train_objectives.append(
                 (
-                    midpoint_loader,
-                    MidpointBandLoss(
+                    bucket_band_loader,
+                    BucketBandLoss(
                         model=model,
-                        band_low=MIDPOINT_BAND_LOW,
-                        band_high=MIDPOINT_BAND_HIGH,
-                        band_weight=MIDPOINT_BAND_WEIGHT,
-                        center_weight=MIDPOINT_CENTER_WEIGHT,
+                        band_weight=BUCKET_BAND_WEIGHT,
+                        center_weight=BUCKET_BAND_CENTER_WEIGHT,
                     ),
                 )
             )
@@ -754,24 +928,41 @@ def main() -> None:
             (contrastive_loader, OnlineContrastiveLoss(model=model, margin=CONTRASTIVE_MARGIN)),
         ]
         if midpoint_examples:
+            for _ in range(MIDPOINT_OBJECTIVE_REPEATS):
+                train_objectives.append(
+                    (
+                        midpoint_loader,
+                        MidpointBandLoss(
+                            model=model,
+                            band_low=MIDPOINT_BAND_LOW,
+                            band_high=MIDPOINT_BAND_HIGH,
+                            band_weight=MIDPOINT_BAND_WEIGHT,
+                            center_weight=MIDPOINT_CENTER_WEIGHT,
+                        ),
+                    )
+                )
+        if bucket_band_examples and BUCKET_BAND_WEIGHT > 0:
             train_objectives.append(
                 (
-                    midpoint_loader,
-                    MidpointBandLoss(
+                    bucket_band_loader,
+                    BucketBandLoss(
                         model=model,
-                        band_low=MIDPOINT_BAND_LOW,
-                        band_high=MIDPOINT_BAND_HIGH,
-                        band_weight=MIDPOINT_BAND_WEIGHT,
-                        center_weight=MIDPOINT_CENTER_WEIGHT,
+                        band_weight=BUCKET_BAND_WEIGHT,
+                        center_weight=BUCKET_BAND_CENTER_WEIGHT,
                     ),
                 )
             )
     else:
         train_objectives = [(cosent_loader, CoSENTLoss(model=model, scale=SCALE))]
 
-    total_steps = sum(len(loader) for loader, _ in train_objectives) * EPOCHS
+    steps_per_epoch = round_robin_steps_per_epoch(train_objectives)
+    total_steps = steps_per_epoch * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
-    print(f"total_steps={total_steps} warmup_steps={warmup_steps}")
+    print(
+        f"objective_count={len(train_objectives)} "
+        f"round_robin_steps_per_epoch={steps_per_epoch} "
+        f"total_steps={total_steps} warmup_steps={warmup_steps}"
+    )
     print(f"Starting supervised {LOSS_MODE} training...")
 
     started = time.time()
@@ -803,6 +994,8 @@ def main() -> None:
         "learning_rate": LEARNING_RATE,
         "warmup_ratio": WARMUP_RATIO,
         "warmup_steps": warmup_steps,
+        "objective_count": len(train_objectives),
+        "round_robin_steps_per_epoch": steps_per_epoch,
         "total_steps": total_steps,
         "scale": SCALE,
         "loss_mode": LOSS_MODE,
@@ -814,6 +1007,11 @@ def main() -> None:
         "midpoint_band_high": MIDPOINT_BAND_HIGH,
         "midpoint_band_weight": MIDPOINT_BAND_WEIGHT,
         "midpoint_center_weight": MIDPOINT_CENTER_WEIGHT,
+        "midpoint_objective_repeats": MIDPOINT_OBJECTIVE_REPEATS,
+        "bucket_band_tags": sorted(BUCKET_BAND_TAGS),
+        "bucket_band_weight": BUCKET_BAND_WEIGHT,
+        "bucket_band_center_weight": BUCKET_BAND_CENTER_WEIGHT,
+        "bucket_band_examples_after_repeat": len(bucket_band_examples),
         "contrastive_margin": CONTRASTIVE_MARGIN,
         "contrastive_scope": CONTRASTIVE_SCOPE,
         "hard_neg_boost": HARD_NEG_BOOST,
@@ -825,6 +1023,7 @@ def main() -> None:
         "required_antonym_min_angle_repeat": REQUIRED_ANTONYM_MIN_ANGLE_REPEAT,
         "min_train_examples": MIN_TRAIN_EXAMPLES,
         "seed": SEED,
+        "sample_seed": SAMPLE_SEED,
         "device": device,
         "elapsed_seconds": round(elapsed, 1),
         **stats,

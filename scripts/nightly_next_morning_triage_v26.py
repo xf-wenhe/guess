@@ -150,6 +150,7 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
     warnings = [str(item) for item in health.get("warnings", [])]
     report_predates_install = any("predates current launchd install" in item for item in warnings)
     expected_exclude = str(health.get("sup_cosent_exclude_tags") or "").strip()
+    expected_cosine_exclude = str(health.get("sup_cosine_exclude_tags") or "").strip()
     expected_midpoint = str(health.get("sup_midpoint_tags") or "antonym_mid").strip()
     expected_bucket_rows = str(health.get("sup_min_tag_bucket_rows") or "").strip()
     expected_support_low = str(health.get("calib_support_positive_target_low") or "").strip()
@@ -162,11 +163,76 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "skipped": True,
             "reason": "latest real report predates current launchd install",
             "expected_cosent_exclude_tags": expected_exclude,
+            "expected_cosine_exclude_tags": expected_cosine_exclude,
             "expected_midpoint_tags": expected_midpoint,
             "expected_min_tag_bucket_rows": expected_bucket_rows,
             "expected_calib_support_positive_target_low": expected_support_low,
             "issues": issues,
         }
+
+    if rows:
+        required_cosine_evidence = {
+            "cosine_examples_after_repeat",
+            "cosine_exclude_tags",
+            "cosine_excluded_rows",
+            "cosine_excluded_examples_after_repeat",
+            "bucket_band_tags",
+            "bucket_band_examples_after_repeat",
+        }
+        missing_evidence = sorted(
+            key for key in required_cosine_evidence
+            if any(key not in row for row in rows)
+        )
+        if missing_evidence:
+            return {
+                "ok": True,
+                "skipped": True,
+                "reason": "latest real report lacks cosine/bucket training evidence",
+                "expected_cosent_exclude_tags": expected_exclude,
+                "expected_cosine_exclude_tags": expected_cosine_exclude,
+                "expected_midpoint_tags": expected_midpoint,
+                "expected_min_tag_bucket_rows": expected_bucket_rows,
+                "expected_calib_support_positive_target_low": expected_support_low,
+                "missing_evidence": missing_evidence,
+                "issues": issues,
+            }
+
+    if expected_cosine_exclude == "":
+        if not rows:
+            issues.append("missing train_sampling rows in latest report")
+        for row in rows:
+            round_id = row.get("round", "?")
+            total_examples = parse_int(row.get("train_examples_after_repeat"))
+            cosent_examples = parse_int(row.get("cosent_examples_after_repeat"))
+            cosent_excluded_examples = parse_int(row.get("cosent_excluded_examples_after_repeat"))
+            cosine_examples = parse_int(row.get("cosine_examples_after_repeat"))
+            tags = str(row.get("cosine_exclude_tags") or "")
+            excluded_rows = parse_int(row.get("cosine_excluded_rows"))
+            excluded_examples = parse_int(row.get("cosine_excluded_examples_after_repeat"))
+            if total_examples is not None and cosine_examples is not None and excluded_examples is not None:
+                if cosine_examples + excluded_examples != total_examples:
+                    issues.append(
+                        f"round {round_id}: cosine_examples_after_repeat {cosine_examples} + "
+                        f"cosine_excluded_examples_after_repeat {excluded_examples} != "
+                        f"train_examples_after_repeat {total_examples}"
+                    )
+            if total_examples is not None and cosent_examples is not None and cosent_excluded_examples is not None:
+                if cosent_examples + cosent_excluded_examples != total_examples:
+                    issues.append(
+                        f"round {round_id}: cosent_examples_after_repeat {cosent_examples} + "
+                        f"cosent_excluded_examples_after_repeat {cosent_excluded_examples} != "
+                        f"train_examples_after_repeat {total_examples}"
+                    )
+            if "antonym_mid" in tags:
+                issues.append(f"round {round_id}: cosine_exclude_tags must retain antonym_mid")
+            if tags not in {"", "[]"}:
+                issues.append(f"round {round_id}: unexpected cosine_exclude_tags {tags}")
+            if excluded_rows != 0:
+                issues.append(f"round {round_id}: cosine_excluded_rows={excluded_rows}, expected 0")
+            if excluded_examples != 0:
+                issues.append(
+                    f"round {round_id}: cosine_excluded_examples_after_repeat={excluded_examples}, expected 0"
+                )
 
     if expected_exclude == "antonym_mid":
         if not rows:
@@ -231,6 +297,7 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
         "skipped": False,
         "reason": "",
         "expected_cosent_exclude_tags": expected_exclude,
+        "expected_cosine_exclude_tags": expected_cosine_exclude,
         "expected_midpoint_tags": expected_midpoint,
         "expected_min_tag_bucket_rows": expected_bucket_rows,
         "expected_calib_support_positive_target_low": expected_support_low,
@@ -246,9 +313,15 @@ def triage_status(
     if not health.get("ok"):
         return "launchd_unhealthy", 2
     if health.get("run_log_after_latest_schedule"):
-        return "nightly_started_waiting_for_report", 0
+        latest_run = str(health.get("latest_run_log_stamp") or "")
+        latest_report = str(health.get("latest_real_stamp") or "")
+        if not latest_run or latest_run != latest_report:
+            return "nightly_started_waiting_for_report", 0
     if health.get("partial_run_after_latest_schedule"):
-        return "nightly_partial_run_no_report", 3
+        latest_run = str(health.get("latest_run_log_stamp") or "")
+        latest_report = str(health.get("latest_real_stamp") or "")
+        if not latest_run or latest_run != latest_report:
+            return "nightly_partial_run_no_report", 3
     if health.get("missed_latest_schedule"):
         return "missed_schedule", 3
     if not analysis.get("three_rounds_ok"):
@@ -386,6 +459,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"wrapper_loaded={health['wrapper_loaded']}")
     print(f"nightly_total_runs={health['nightly_total_runs']}")
     print(f"sup_cosent_exclude_tags={health.get('sup_cosent_exclude_tags')}")
+    print(f"sup_cosine_exclude_tags={health.get('sup_cosine_exclude_tags')}")
     print(f"latest_run_log={health['latest_run_log']}")
     print(f"run_log_after_latest_schedule={health['run_log_after_latest_schedule']}")
     print(f"latest_partial_run_artifact={health.get('latest_partial_run_artifact', '')}")
@@ -430,11 +504,15 @@ def print_human(payload: dict[str, object]) -> None:
                 f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"cosine_examples={item.get('cosine_examples_after_repeat', '-')} "
+                f"cosine_excluded_examples={item.get('cosine_excluded_examples_after_repeat', '-')} "
                 f"gold_to_calib_rows={item.get('gold_to_calib_rows', '-')} "
                 f"gold_to_calib_weight={item.get('gold_to_calib_weight', '-')} "
                 f"priority_antonym_calib_rows={item.get('priority_antonym_calib_anchor_rows', '-')} "
                 f"priority_antonym_weight_rows={item.get('priority_antonym_calib_weight_rows', '-')} "
                 f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
+                f"cosine_exclude_tags={item.get('cosine_exclude_tags', '-')} "
+                f"bucket_band_examples={item.get('bucket_band_examples_after_repeat', '-')} "
                 f"midpoint_examples={item.get('midpoint_examples_after_repeat', '-')} "
                 f"midpoint_tags={item.get('midpoint_tags', '-')} "
                 f"min_tag_rows={item.get('min_tag_rows', '-')} "
@@ -495,6 +573,7 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
         f"- sup_min_tag_bucket_rows: `{health.get('sup_min_tag_bucket_rows')}`",
         f"- calib_support_positive_target_low: `{health.get('calib_support_positive_target_low')}`",
         f"- sup_cosent_exclude_tags: `{health.get('sup_cosent_exclude_tags')}`",
+        f"- sup_cosine_exclude_tags: `{health.get('sup_cosine_exclude_tags')}`",
         f"- latest_real_report: `{health['latest_real_report']}`",
         f"- report: `{analysis['report']}`",
         f"- three_rounds_ok: `{analysis['three_rounds_ok']}`",
@@ -554,11 +633,15 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
                 f"antonym_mid_rows `{item.get('antonym_mid_rows', '-')}`, "
                 f"antonym_mid_examples `{item.get('antonym_mid_examples_after_repeat', '-')}`, "
                 f"cosent_excluded_examples `{item.get('cosent_excluded_examples_after_repeat', '-')}`, "
+                f"cosine_examples `{item.get('cosine_examples_after_repeat', '-')}`, "
+                f"cosine_excluded_examples `{item.get('cosine_excluded_examples_after_repeat', '-')}`, "
                 f"gold_to_calib_rows `{item.get('gold_to_calib_rows', '-')}`, "
                 f"gold_to_calib_weight `{item.get('gold_to_calib_weight', '-')}`, "
                 f"priority_antonym_calib_rows `{item.get('priority_antonym_calib_anchor_rows', '-')}`, "
                 f"priority_antonym_weight_rows `{item.get('priority_antonym_calib_weight_rows', '-')}`, "
                 f"cosent_exclude_tags `{item.get('cosent_exclude_tags', '-')}`, "
+                f"cosine_exclude_tags `{item.get('cosine_exclude_tags', '-')}`, "
+                f"bucket_band_examples `{item.get('bucket_band_examples_after_repeat', '-')}`, "
                 f"min_tag_rows `{item.get('min_tag_rows', '-')}`, "
                 f"min_tag_bucket_rows `{item.get('min_tag_bucket_rows', '-')}`"
             )
@@ -575,6 +658,7 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     lines.extend(["", "## Strategy Checks", ""])
     lines.append(f"- ok: `{strategy.get('ok')}`")
     lines.append(f"- expected_cosent_exclude_tags: `{strategy.get('expected_cosent_exclude_tags')}`")
+    lines.append(f"- expected_cosine_exclude_tags: `{strategy.get('expected_cosine_exclude_tags')}`")
     lines.append(f"- expected_midpoint_tags: `{strategy.get('expected_midpoint_tags')}`")
     lines.append(f"- expected_min_tag_bucket_rows: `{strategy.get('expected_min_tag_bucket_rows')}`")
     lines.append(
@@ -583,6 +667,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     )
     if strategy.get("skipped"):
         lines.append(f"- skipped: `{strategy.get('reason')}`")
+    if strategy.get("missing_evidence"):
+        lines.append(f"- missing_evidence: `{strategy.get('missing_evidence')}`")
     issues = strategy.get("issues") or []
     if issues:
         lines.extend(f"- issue: `{item}`" for item in issues)

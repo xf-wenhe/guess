@@ -497,6 +497,10 @@ def print_human(summary: dict[str, object]) -> None:
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
                 f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
+                f"cosine_examples={item.get('cosine_examples_after_repeat', '-')} "
+                f"cosine_excluded_examples={item.get('cosine_excluded_examples_after_repeat', '-')} "
+                f"cosine_exclude_tags={item.get('cosine_exclude_tags', '-')} "
+                f"bucket_band_examples={item.get('bucket_band_examples_after_repeat', '-')} "
                 f"min_tag_rows={item.get('min_tag_rows', '-')} "
                 f"min_tag_bucket_rows={item.get('min_tag_bucket_rows', '-')}"
             )

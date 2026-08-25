@@ -62,7 +62,7 @@ class _AccountCreationDialogState extends State<AccountCreationDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: Text(AppStrings.createAccountTitle),
+      title: const Text(AppStrings.createAccountTitle),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       content: Column(
         mainAxisSize: MainAxisSize.min,
@@ -91,7 +91,7 @@ class _AccountCreationDialogState extends State<AccountCreationDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2),
                 )
-              : Text(AppStrings.confirm),
+              : const Text(AppStrings.confirm),
         ),
       ],
     );

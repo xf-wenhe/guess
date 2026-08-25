@@ -79,7 +79,7 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertLess(payload["done"], payload["total"])
         pending_text = "\n".join(item["text"] for item in payload["pending_items"])
         self.assertIn("At least one real candidate passes strict gates", pending_text)
-        self.assertIn("Wait for the next real nightly report", pending_text)
+        self.assertIn("Isolate and reduce the latest real-nightly bucket regressions", pending_text)
 
     def test_next_morning_triage_strategy_check_validates_cosent_exclusion_counts(self):
         spec = importlib.util.spec_from_file_location(
@@ -98,6 +98,7 @@ class NightlyScriptsTest(unittest.TestCase):
         health = {
             "warnings": [],
             "sup_cosent_exclude_tags": "antonym_mid",
+            "sup_cosine_exclude_tags": "",
             "sup_midpoint_tags": "antonym_mid",
             "sup_min_tag_bucket_rows": "same_category_mid@40-59:20,same_category_mid@60-79:12",
             "calib_support_positive_target_low": "60",
@@ -107,10 +108,18 @@ class NightlyScriptsTest(unittest.TestCase):
                 {
                     "round": "1",
                     "antonym_mid_examples_after_repeat": "153",
+                    "train_examples_after_repeat": "579",
+                    "cosent_examples_after_repeat": "426",
+                    "cosine_examples_after_repeat": "579",
                     "cosent_exclude_tags": '["antonym_mid"]',
                     "cosent_excluded_examples_after_repeat": "153",
+                    "cosine_exclude_tags": "[]",
+                    "cosine_excluded_rows": "0",
+                    "cosine_excluded_examples_after_repeat": "0",
                     "midpoint_tags": '["antonym_mid"]',
                     "midpoint_examples_after_repeat": "306",
+                    "bucket_band_tags": '["same_category_mid"]',
+                    "bucket_band_examples_after_repeat": "42",
                     "min_tag_bucket_rows": '{"same_category_mid@40-59": 20, "same_category_mid@60-79": 12}',
                 }
             ]
@@ -118,6 +127,18 @@ class NightlyScriptsTest(unittest.TestCase):
         ok = triage.semantic_strategy_checks(health, analysis)
         self.assertTrue(ok["ok"])
         self.assertFalse(ok["skipped"])
+
+        analysis["train_sampling"][0]["cosine_exclude_tags"] = '["antonym_mid"]'
+        bad_cosine = triage.semantic_strategy_checks(health, analysis)
+        self.assertFalse(bad_cosine["ok"])
+        self.assertIn("cosine_exclude_tags", bad_cosine["issues"][0])
+        analysis["train_sampling"][0]["cosine_exclude_tags"] = "[]"
+
+        analysis["train_sampling"][0]["cosine_examples_after_repeat"] = "578"
+        bad_counts = triage.semantic_strategy_checks(health, analysis)
+        self.assertFalse(bad_counts["ok"])
+        self.assertIn("cosine_examples_after_repeat", bad_counts["issues"][0])
+        analysis["train_sampling"][0]["cosine_examples_after_repeat"] = "579"
 
         analysis["train_sampling"][0]["cosent_excluded_examples_after_repeat"] = "10"
         bad = triage.semantic_strategy_checks(health, analysis)
@@ -149,10 +170,31 @@ class NightlyScriptsTest(unittest.TestCase):
             ),
             ("missed_schedule", 3),
         )
+        self.assertEqual(
+            triage.triage_status(
+                {
+                    "ok": True,
+                    "missed_latest_schedule": False,
+                    "run_log_after_latest_schedule": True,
+                    "latest_run_log_stamp": "20260821_230003",
+                    "latest_real_stamp": "20260821_230003",
+                },
+                {"three_rounds_ok": True},
+                {"ok": True},
+            ),
+            ("ok", 0),
+        )
+        stale = triage.semantic_strategy_checks(
+            health,
+            {"train_sampling": [{"round": "1"}]},
+        )
+        self.assertTrue(stale["skipped"])
+        self.assertIn("cosine/bucket", stale["reason"])
         skipped = triage.semantic_strategy_checks(
             {
                 "warnings": ["latest real report predates current launchd install; wait for next 23:00 run"],
                 "sup_cosent_exclude_tags": "antonym_mid",
+                "sup_cosine_exclude_tags": "",
                 "sup_min_tag_bucket_rows": "same_category_mid@40-59:20,same_category_mid@60-79:12",
                 "calib_support_positive_target_low": "60",
             },
@@ -237,12 +279,13 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>antonym_mid:45</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS</key>", plist)
             self.assertIn(
-                "<string>same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18</string>",
+                "<string>same_category_mid@40-59:20,same_category_mid@60-79:12</string>",
                 plist,
             )
             self.assertIn("<key>NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_COSENT_EXCLUDE_TAGS</key>", plist)
             self.assertIn("<string>antonym_mid</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_COSINE_EXCLUDE_TAGS</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_TAGS</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key>", plist)
@@ -253,6 +296,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>4.0</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT</key>", plist)
             self.assertIn("<string>1.0</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS</key>", plist)
+            self.assertIn("<string>2</string>", plist)
             self.assertIn("<key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key>", plist)
             self.assertIn("<string>60</string>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
@@ -301,8 +346,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(payload["sup_min_tag_rows"], "antonym_mid:45")
             self.assertEqual(
                 payload["sup_min_tag_bucket_rows"],
-                "same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18",
+                "same_category_mid@40-59:20,same_category_mid@60-79:12",
             )
+            self.assertEqual(payload["sup_midpoint_objective_repeats"], "2")
             self.assertEqual(payload["sup_min_angle_repeat_tag_buckets"], "")
             self.assertEqual(payload["calib_support_positive_target_low"], "60")
             self.assertFalse(payload["missed_latest_schedule"])
@@ -634,6 +680,10 @@ class NightlyScriptsTest(unittest.TestCase):
                     |------|-------|
                     | source_rows | 300 |
                     | train_examples_after_repeat | 579 |
+                    | cosine_examples_after_repeat | 579 |
+                    | cosine_exclude_tags | [] |
+                    | cosine_excluded_rows | 0 |
+                    | cosine_excluded_examples_after_repeat | 0 |
                     | hard_negative_rows | 66 |
                     | antonym_mid_rows | 51 |
                     | antonym_mid_examples_after_repeat | 153 |
@@ -643,6 +693,8 @@ class NightlyScriptsTest(unittest.TestCase):
                     | priority_antonym_calib_weight_rows | 4 |
                     | midpoint_tags | ["antonym_mid"] |
                     | midpoint_examples_after_repeat | 306 |
+                    | bucket_band_tags | ["same_category_mid"] |
+                    | bucket_band_examples_after_repeat | 42 |
                     | min_tag_rows | {"antonym_mid": 45} |
                     | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
                     """
@@ -935,6 +987,25 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(item["target_min"], 45)
             self.assertEqual(item["target_max"], 55)
 
+    def test_regression_score_preserves_semantic_midband_boundary(self):
+        spec = importlib.util.spec_from_file_location(
+            "run_regression_pairs_v23_score_policy",
+            REPO_ROOT / "scripts" / "run_regression_pairs_v23.py",
+        )
+        self.assertIsNotNone(spec)
+        regression = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(regression)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        self.assertEqual(regression.final_score(49.8, 0, 53.3), 40)
+        self.assertEqual(regression.final_score(15.0, 0, 25.0), 10)
+
     def test_nightly_builder_reads_approved_worst_case_review_candidates(self):
         source = BUILD_NIGHTLY_SETS_SCRIPT.read_text(encoding="utf-8")
         self.assertIn('"data/nightly_worst_case_review_candidates.csv"', source)
@@ -1184,6 +1255,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     | sup_min_tag_bucket_rows | same_category_mid@40-59:20,same_category_mid@60-79:12 |
                     | calib_support_positive_target_low | 60 |
                     | sup_cosent_exclude_tags | antonym_mid |
+                    | sup_cosine_exclude_tags |  |
 
                     ## 各轮结果
 
@@ -1218,8 +1290,14 @@ class NightlyScriptsTest(unittest.TestCase):
                     |------|-------|
                     | antonym_mid_rows | 50 |
                     | antonym_mid_examples_after_repeat | 150 |
+                    | cosine_examples_after_repeat | 659 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 150 |
+                    | cosine_exclude_tags | [] |
+                    | cosine_excluded_rows | 0 |
+                    | cosine_excluded_examples_after_repeat | 0 |
+                    | bucket_band_tags | ["same_category_mid"] |
+                    | bucket_band_examples_after_repeat | 42 |
                     | min_tag_rows | {"antonym_mid": 45} |
                     | min_tag_bucket_rows | {"same_category_mid@40-59": 20, "same_category_mid@60-79": 12} |
                     """
@@ -1299,6 +1377,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(rows[0]["best_round"], "2")
             self.assertEqual(rows[0]["best_cand_mae"], "6.6")
             self.assertEqual(rows[0]["sup_cosent_exclude_tags"], "antonym_mid")
+            self.assertEqual(rows[0]["sup_cosine_exclude_tags"], "")
             self.assertEqual(
                 rows[0]["sup_min_tag_bucket_rows"],
                 "same_category_mid@40-59:20,same_category_mid@60-79:12",
@@ -1306,6 +1385,11 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(rows[0]["calib_support_positive_target_low"], "60")
             self.assertEqual(rows[0]["antonym_mid_rows"], "50")
             self.assertEqual(rows[0]["cosent_excluded_examples_after_repeat"], "150")
+            self.assertEqual(rows[0]["cosine_examples_after_repeat"], "659")
+            self.assertEqual(rows[0]["cosine_exclude_tags"], "[]")
+            self.assertEqual(rows[0]["cosine_excluded_rows"], "0")
+            self.assertEqual(rows[0]["cosine_excluded_examples_after_repeat"], "0")
+            self.assertEqual(rows[0]["bucket_band_examples_after_repeat"], "42")
             self.assertEqual(rows[0]["priority_antonym_calib_anchor_rows"], "7")
             self.assertEqual(rows[0]["priority_antonym_calib_weight_rows"], "4")
             self.assertEqual(rows[0]["antonym_calib_anchor_weight"], "10")
@@ -1354,6 +1438,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("[nightly] ===== round 1/3 =====", output)
             self.assertIn("[nightly] ===== round 2/3 =====", output)
             self.assertIn("[nightly] ===== round 3/3 =====", output)
+            self.assertIn("[nightly] round_seed=20260303 data_split_seed=20260303", output)
+            self.assertIn("[nightly] round_seed=20260304 data_split_seed=20260303", output)
+            self.assertIn("[nightly] round_seed=20260305 data_split_seed=20260303", output)
             self.assertEqual(output.count("copy round base model from project"), 3, msg=output)
             self.assertNotIn("workspaces/guess_runtime", output)
 
@@ -1367,6 +1454,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("## 运行配置", promotion_text)
             self.assertIn("| requested_device | auto |", promotion_text)
             self.assertIn("| sup_rows | 300 |", promotion_text)
+            self.assertIn("| data_split_seed | 20260303 |", promotion_text)
+            self.assertIn("| train_sample_seed | 20260303 |", promotion_text)
             self.assertIn("## 晋升门控", promotion_text)
             self.assertIn("| min_antonym_mid_recall_improvement | 0.0 |", promotion_text)
             self.assertIn("| regression_gate | passed == total |", promotion_text)
@@ -1438,6 +1527,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
 
             output = result.stdout + result.stderr
+            self.assertIn("project_antonym_mid_recall_45_55=100.00", output)
+            self.assertIn("best_antonym_mid_recall_45_55=100.00", output)
 
             # Promotion report should exist
             reports_dir = root / ".nightly" / "reports"
@@ -1457,6 +1548,21 @@ class NightlyScriptsTest(unittest.TestCase):
             output_model_base = root / ".nightly" / "data" / "models" / "bge-m3-finetuned-local-candidate"
             remaining = list(output_model_base.parent.glob("bge-m3-finetuned-local-candidate*"))
             self.assertEqual(remaining, [], msg=f"nightly artifacts not cleaned: {remaining}\n{output}")
+
+    def test_nightly_script_passes_support_positive_target_low_to_gate_and_best_round_eval(self):
+        source = NIGHTLY_SCRIPT.read_text(encoding="utf-8")
+        self.assertEqual(source.count('SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW="$CALIB_SUPPORT_POSITIVE_TARGET_LOW"'), 4)
+        self.assertIn('KEEP_REJECTED_CALIBRATION="${NIGHTLY_KEEP_REJECTED_CALIBRATION:-1}"', source)
+        project_gate = source.split("# Gate against project model", 1)[1]
+        self.assertIn("b_ant_strict_recall = float(base_ant.get('mid_score_recall_45_55', 0.0))", project_gate)
+        self.assertIn("c_ant_strict_recall = float(cand_ant.get('mid_score_recall_45_55', 0.0))", project_gate)
+
+    def test_nightly_keeps_data_split_seed_fixed_but_training_seed_per_round(self):
+        source = NIGHTLY_SCRIPT.read_text(encoding="utf-8")
+        self.assertIn('DATA_SPLIT_SEED="${NIGHTLY_DATA_SPLIT_SEED:-$BASE_SEED}"', source)
+        self.assertIn('run_cmd "SEM_SEED=$DATA_SPLIT_SEED \\\n    SEM_PUZZLES_JSON=', source)
+        self.assertIn('SEM_SEED=$round_seed \\\n      SEM_SAMPLE_SEED=$DATA_SPLIT_SEED \\\n      SEM_TRAIN_CSV=', source)
+        self.assertIn('SEM_SEED=$round_seed \\\n          SEM_SAMPLE_SEED=$DATA_SPLIT_SEED \\\n          SEM_TRAIN_CSV=', source)
 
     def test_nightly_rejected_candidate_report_includes_diagnostics(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1508,6 +1614,25 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("synonym_alias", promotion_text)
             self.assertIn("校准桶错分 Top", promotion_text)
             self.assertIn("| 80-100 | 60-80 |", promotion_text)
+            base_metrics = sorted((root / ".nightly" / "data" / "tmp").glob("nightly_base_metrics_*.json"))
+            cand_metrics = sorted((root / ".nightly" / "data" / "tmp").glob("nightly_candidate_metrics_*.json"))
+            self.assertTrue(base_metrics, msg=result.stdout + result.stderr)
+            self.assertTrue(cand_metrics, msg=result.stdout + result.stderr)
+            self.assertEqual(
+                json.loads(base_metrics[-1].read_text(encoding="utf-8"))["support_positive_calibration_target_low"],
+                60.0,
+            )
+            self.assertEqual(
+                json.loads(cand_metrics[-1].read_text(encoding="utf-8"))["support_positive_calibration_target_low"],
+                60.0,
+            )
+            train_stats = sorted((root / ".nightly" / "data" / "tmp").glob("nightly_train_stats_*.json"))
+            self.assertTrue(train_stats, msg=result.stdout + result.stderr)
+            self.assertEqual(json.loads(train_stats[-1].read_text(encoding="utf-8"))["sample_seed"], 20260303)
+            retained_calibrations = sorted(
+                (root / ".nightly" / "data" / "tmp").glob("semantic_calibration_local_candidate_*.json")
+            )
+            self.assertTrue(retained_calibrations, msg="rejected candidate calibration was not retained")
 
     def test_nightly_auto_device_retries_supervised_training_on_cpu(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1836,6 +1961,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertFalse(any((row["answer"], row["user_input"]) == ("高兴", "伤心") for row in train_rows))
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["fixed_holdout"], 1)
+            self.assertEqual(stats["eval_antonym_rows"], 0)
+            self.assertEqual(stats["eval_holdout_antonym_rows"], 0)
+            self.assertEqual(stats["eval_non_holdout_antonym_rows"], 0)
             self.assertEqual(stats["train_patch"], 10)
             self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
             self.assertGreaterEqual(stats["train_gold"], 1)
@@ -2107,6 +2235,8 @@ class NightlyScriptsTest(unittest.TestCase):
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["train_eval_symmetric_overlap"], 0)
             self.assertEqual(stats["eval_calib_symmetric_overlap"], 0)
+            self.assertEqual(stats["train_calib_symmetric_overlap"], 0)
+            self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
             self.assertEqual(stats["unexpected_train_calib_exact_overlap"], 0)
 
     def test_build_nightly_semantic_sets_excludes_suggested_relabel_noise_rows_by_default(self):
@@ -2281,8 +2411,84 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["eval_to_calib_tags"], ["antonym_mid"])
             self.assertEqual(stats["eval_to_calib_rows"], 0)
             self.assertEqual(stats["eval_antonym_rows"], 1)
+            self.assertEqual(stats["eval_holdout_antonym_rows"], 1)
+            self.assertEqual(stats["eval_non_holdout_antonym_rows"], 0)
             self.assertEqual(stats["required_proxy_antonym_calib_rows"], 3)
             self.assertEqual(stats["calib_antonym_rows"], 4)
+
+    def test_build_nightly_semantic_sets_rejects_non_holdout_antonym_eval_rows(self):
+        spec = importlib.util.spec_from_file_location(
+            "build_nightly_semantic_sets_partition_guard",
+            BUILD_NIGHTLY_SETS_SCRIPT,
+        )
+        self.assertIsNotNone(spec)
+        builder = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(builder)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        with self.assertRaises(SystemExit) as error:
+            builder.validate_dataset_partition(
+                train_rows=[],
+                calib_rows=[],
+                eval_rows=[
+                    {
+                        "answer": "虚无",
+                        "user_input": "存在",
+                        "relation_tag": "antonym_mid",
+                    }
+                ],
+                holdout_rows=[
+                    {
+                        "answer": "高兴",
+                        "user_input": "难过",
+                        "relation_tag": "antonym_mid",
+                    }
+                ],
+            )
+        self.assertIn("unexpected_eval_antonym_mid_rows", str(error.exception))
+
+    def test_build_nightly_semantic_sets_rejects_reversed_train_calib_overlap(self):
+        spec = importlib.util.spec_from_file_location(
+            "build_nightly_semantic_sets_reversed_train_calib_guard",
+            BUILD_NIGHTLY_SETS_SCRIPT,
+        )
+        self.assertIsNotNone(spec)
+        builder = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(builder)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        with self.assertRaises(SystemExit) as error:
+            builder.validate_dataset_partition(
+                train_rows=[
+                    {
+                        "answer": "开心",
+                        "user_input": "伤心",
+                        "relation_tag": "antonym_mid",
+                        "reviewer": "antonym_script",
+                        "sample_weight": "2.5",
+                    }
+                ],
+                calib_rows=[
+                    {
+                        "answer": "伤心",
+                        "user_input": "开心",
+                        "relation_tag": "antonym_mid",
+                        "reviewer": "nightly_patch_v1",
+                        "sample_weight": "10.0",
+                    }
+                ],
+                eval_rows=[],
+                holdout_rows=[],
+            )
+        self.assertIn("unexpected_train_calib_symmetric_overlap", str(error.exception))
 
     def test_build_nightly_semantic_sets_can_mirror_required_holdout_family_proxy_rows_to_calibration(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3003,6 +3209,7 @@ class NightlyScriptsTest(unittest.TestCase):
 
     def test_supervised_trainer_boosts_real_failure_hard_negative_tags_without_antonyms(self):
         source = (REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py").read_text(encoding="utf-8")
+        nightly_source = (REPO_ROOT / "scripts" / "nightly_train_v26.sh").read_text(encoding="utf-8")
 
         for tag in (
             "collocation_not_equivalent",
@@ -3022,7 +3229,12 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn('SEM_MIN_TAG_ROWS", "antonym_mid:45"', source)
         self.assertIn("SEM_MIN_TAG_BUCKET_ROWS", source)
         self.assertIn('SEM_COSENT_EXCLUDE_TAGS", "antonym_mid"', source)
-        self.assertIn('SEM_COSINE_EXCLUDE_TAGS", "antonym_mid"', source)
+        self.assertIn('SEM_COSINE_EXCLUDE_TAGS", "").strip()', source)
+        self.assertIn("def validate_objective_scope", source)
+        self.assertIn("MIDPOINT_TAGS & COSINE_EXCLUDE_TAGS", source)
+        self.assertIn("antonym_mid must remain excluded from CoSENT", nightly_source)
+        self.assertIn("antonym_mid must remain in cosine regression", nightly_source)
+        self.assertIn('SEM_COSINE_EXCLUDE_TAGS=\\"${SUP_COSINE_EXCLUDE_TAGS}\\"', nightly_source)
         self.assertIn("cosent_excluded_examples_after_repeat", source)
         self.assertIn("cosine_excluded_examples_after_repeat", source)
         self.assertIn("SEM_TRAIN_STATS_JSON", source)
@@ -3041,13 +3253,226 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("SEM_CONTRASTIVE_SCOPE", source)
         self.assertIn("CONTRASTIVE_POSITIVE_TAGS", source)
         self.assertIn("contrastive_label_counts", source)
+        self.assertIn("BucketBandLoss", source)
+        self.assertIn("SEM_BUCKET_BAND_WEIGHT", source)
+        self.assertIn('SEM_BUCKET_BAND_WEIGHT", "1.0"', source)
+        self.assertIn("SEM_BUCKET_BAND_CENTER_WEIGHT", source)
+        self.assertIn("bucket_band_center_weight", source)
+        self.assertIn('"abstract_confusion,nonsense_low"', source)
+        self.assertIn("bucket_band_examples_after_repeat", source)
+        self.assertIn('"abstract_confusion"', source)
+        self.assertIn("same_category_weak", source)
         self.assertIn("SEM_MIDPOINT_TAGS", source)
         self.assertIn("midpoint_examples_after_repeat", source)
+        self.assertIn('SAMPLE_SEED = int(os.getenv("SEM_SAMPLE_SEED", str(SEED)))', source)
+        self.assertIn("seed_training(SEED)", source)
         self.assertIn("MidpointBandLoss", source)
         self.assertIn('SEM_MIDPOINT_BAND_LOW", "0.45"', source)
         self.assertIn('SEM_MIDPOINT_BAND_HIGH", "0.55"', source)
         self.assertIn('SEM_MIDPOINT_BAND_WEIGHT", "4.0"', source)
         self.assertIn('SEM_MIDPOINT_CENTER_WEIGHT", "1.0"', source)
+        self.assertIn('SEM_MIDPOINT_OBJECTIVE_REPEATS", "2"', source)
+        self.assertIn("range(MIDPOINT_OBJECTIVE_REPEATS)", source)
+        self.assertIn("def round_robin_steps_per_epoch", source)
+
+    def test_supervised_trainer_round_robin_steps_include_repeated_objectives(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_round_robin_steps",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeLoader:
+            def __init__(self, batches):
+                self.batches = batches
+
+            def __len__(self):
+                return self.batches
+
+        objectives = [
+            (FakeLoader(61), None),
+            (FakeLoader(83), None),
+            (FakeLoader(45), None),
+            (FakeLoader(45), None),
+            (FakeLoader(46), None),
+        ]
+        self.assertEqual(trainer.round_robin_steps_per_epoch(objectives), 225)
+        self.assertEqual(trainer.round_robin_steps_per_epoch(objectives[:4]), 180)
+
+        with self.assertRaisesRegex(ValueError, "at least one"):
+            trainer.round_robin_steps_per_epoch([])
+        with self.assertRaisesRegex(ValueError, "at least one batch"):
+            trainer.round_robin_steps_per_epoch([(FakeLoader(0), None)])
+
+    def test_supervised_trainer_rejects_midpoint_cosine_exclusion(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_scope_guard",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        previous_midpoint_tags = trainer.MIDPOINT_TAGS
+        previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+        previous_cosent_excluded = trainer.COSENT_EXCLUDE_TAGS
+        try:
+            trainer.MIDPOINT_TAGS = {"antonym_mid"}
+            trainer.COSENT_EXCLUDE_TAGS = set()
+            trainer.COSINE_EXCLUDE_TAGS = set()
+            with self.assertRaisesRegex(SystemExit, "excluded from the CoSENT objective"):
+                trainer.validate_objective_scope()
+
+            trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+            trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+            with self.assertRaisesRegex(SystemExit, "remain in the cosine objective"):
+                trainer.validate_objective_scope()
+        finally:
+            trainer.MIDPOINT_TAGS = previous_midpoint_tags
+            trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+            trainer.COSENT_EXCLUDE_TAGS = previous_cosent_excluded
+
+    def test_supervised_trainer_bucket_band_target_excludes_antonym_mid(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n"
+                "飞机,轮船,same_category_but_far,22,1.0,review\n"
+                "八面玲珑,同舟共济,same_category_mid,20,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive_bucket_band",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_angle_mode = trainer.ANGLE_MODE
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_bucket_tags = trainer.BUCKET_BAND_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.ANGLE_MODE = "none"
+                trainer.COSINE_EXCLUDE_TAGS = set()
+                trainer.BUCKET_BAND_TAGS = {
+                    "antonym_mid",
+                    "same_category_but_far",
+                    "same_category_mid",
+                }
+                examples, _, _, _, _, bucket_band_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.ANGLE_MODE = previous_angle_mode
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.BUCKET_BAND_TAGS = previous_bucket_tags
+
+            self.assertEqual(stats["bucket_band_rows"], 2)
+            self.assertEqual(stats["bucket_band_examples_after_repeat"], 4)
+            self.assertEqual(len(bucket_band_examples), 4)
+            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in bucket_band_examples))
+            self.assertTrue(any(abs(example.label - 0.22) < 1e-9 for example in bucket_band_examples))
+            self.assertTrue(any(abs(example.label - 0.2) < 1e-9 for example in bucket_band_examples))
+
+    def test_bucket_band_loss_reinforces_in_bucket_center(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_bucket_loss",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+        score = 0.55
+        right = torch.tensor([[score, (1.0 - score * score) ** 0.5]], dtype=torch.float32)
+        sentence_features = [{"embedding": left}, {"embedding": right}]
+        labels = torch.tensor([0.50], dtype=torch.float32)
+
+        band_only = trainer.BucketBandLoss(FakeModel(), band_weight=0.5, center_weight=0.0)
+        with_center = trainer.BucketBandLoss(FakeModel(), band_weight=0.5, center_weight=1.0)
+        self.assertAlmostEqual(float(band_only(sentence_features, labels)), 0.0, places=6)
+        self.assertGreater(float(with_center(sentence_features, labels)), 0.0)
+
+    def test_supervised_trainer_bucket_band_covers_abstract_and_weak_category_negatives(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            train_csv = Path(tmp) / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "星球,物理,abstract_confusion,15,1.0,review\n"
+                "圣诞,万圣节,same_category_weak,30,1.0,review\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive_bucket_band_coverage",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_angle_mode = trainer.ANGLE_MODE
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_bucket_tags = trainer.BUCKET_BAND_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.ANGLE_MODE = "none"
+                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.BUCKET_BAND_TAGS = {
+                    "abstract_confusion",
+                    "same_category_weak",
+                    "antonym_mid",
+                }
+                _, _, _, _, _, bucket_band_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.ANGLE_MODE = previous_angle_mode
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.BUCKET_BAND_TAGS = previous_bucket_tags
+
+            self.assertEqual(stats["bucket_band_rows"], 2)
+            self.assertEqual(stats["bucket_band_examples_after_repeat"], 3)
+            self.assertEqual(len(bucket_band_examples), 3)
+            self.assertTrue(any(abs(example.label - 0.15) < 1e-9 for example in bucket_band_examples))
+            self.assertTrue(any(abs(example.label - 0.3) < 1e-9 for example in bucket_band_examples))
+            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in bucket_band_examples))
 
     def test_supervised_trainer_excludes_antonym_mid_from_cosent_and_adds_midpoint_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3083,11 +3508,11 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.MAX_TRAIN_ROWS = 0
                 trainer.MAX_REPEAT = 3
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
-                trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = set()
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_REPEAT_BOOST = 2.0
                 trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = 0
-                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
@@ -3102,9 +3527,9 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["cosent_excluded_rows"], 1)
             self.assertEqual(stats["cosent_excluded_examples_after_repeat"], 3)
             self.assertEqual(stats["cosent_exclude_tags"], ["antonym_mid"])
-            self.assertEqual(stats["cosine_excluded_rows"], 1)
-            self.assertEqual(stats["cosine_excluded_examples_after_repeat"], 3)
-            self.assertEqual(stats["cosine_exclude_tags"], ["antonym_mid"])
+            self.assertEqual(stats["cosine_excluded_rows"], 0)
+            self.assertEqual(stats["cosine_excluded_examples_after_repeat"], 0)
+            self.assertEqual(stats["cosine_exclude_tags"], [])
             self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
             self.assertEqual(stats["midpoint_band_low"], 0.45)
@@ -3114,12 +3539,12 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
             self.assertEqual(len(examples), 7)
             self.assertEqual(len(cosent_examples), 4)
-            self.assertEqual(len(cosine_examples), 4)
+            self.assertEqual(len(cosine_examples), 7)
             self.assertEqual(len(contrastive_examples), 4)
             self.assertEqual(len(midpoint_examples), 6)
             self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in examples))
             self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosent_examples))
-            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosine_examples))
+            self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in cosine_examples))
             self.assertTrue(all(abs(example.label - 0.5) < 1e-9 for example in midpoint_examples))
 
     def test_supervised_trainer_gives_priority_antonym_patch_rows_full_angle_coverage(self):
@@ -3157,7 +3582,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
-                examples, cosent_examples, cosine_examples, _, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+                examples, cosent_examples, cosine_examples, _, midpoint_examples, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
@@ -3210,7 +3635,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
-                examples, cosent_examples, cosine_examples, _, midpoint_examples, stats = trainer.load_examples(train_csv, 123)
+                examples, cosent_examples, cosine_examples, _, midpoint_examples, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
@@ -3267,7 +3692,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.COSINE_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
-                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+                examples, _, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.REGRESSION_PAIR_KEYS = previous_regression_keys
@@ -3350,7 +3775,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     ("same_category_mid", "40-59"): 2,
                     ("same_category_mid", "60-79"): 2,
                 }
-                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+                examples, _, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
@@ -3407,7 +3832,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS = {
                     ("same_category_mid", "60-79"): 4,
                 }
-                examples, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+                examples, _, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
@@ -3543,6 +3968,7 @@ if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_
     if script.endswith('train_v28c_mse_contrastive.py') and env.get('SEM_TRAIN_STATS_JSON'):
         pathlib.Path(env['SEM_TRAIN_STATS_JSON']).write_text(json.dumps({
             'source_rows': 300,
+            'sample_seed': int(env.get('SEM_SAMPLE_SEED', '-1')),
             'train_examples_after_repeat': 579,
             'cosent_examples_after_repeat': 426,
             'cosent_exclude_tags': ['antonym_mid'],
@@ -3589,6 +4015,7 @@ if script.endswith('eval_v26_gold.py'):
         payload['cal_bucket_acc'] -= 2.0
     payload.update({
         'eval_rows': 1,
+        'support_positive_calibration_target_low': float(env.get('SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW', '40')),
         'group_metrics': {
             'hard_negative': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'low_score_precision_at_30': 100.0},
             'synonym_alias': {'count': 1, 'cal_mae': 2.0, 'cal_bucket_acc': 100.0, 'recall_at_70': 100.0},
@@ -3749,6 +4176,8 @@ print(f'project_raw_mae={base_raw_mae:.4f}')
 print(f'project_raw_bucket_acc={base_raw_acc:.2f}')
 print(f'best_raw_mae={cand_raw_mae:.4f}')
 print(f'best_raw_bucket_acc={cand_raw_acc:.2f}')
+print('project_antonym_mid_recall_45_55=100.00')
+print('best_antonym_mid_recall_45_55=100.00')
 print(f'mae_ok={mae_ok}')
 print(f'acc_ok={acc_ok}')
 print(f'raw_mae_no_degrade={raw_mae_no_degrade}')

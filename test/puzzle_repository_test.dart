@@ -16,7 +16,7 @@ void main() {
 
   test('preparePuzzle pads hints to 7', () async {
     final repository = PuzzleRepository();
-    final puzzle = GuessPuzzle(
+    final puzzle = const GuessPuzzle(
       answer: '测试',
       hints: ['提示一', '提示二'],
       category: '测试分类',

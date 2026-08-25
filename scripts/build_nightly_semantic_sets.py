@@ -558,10 +558,26 @@ def validate_dataset_partition(
     train_rows: list[dict],
     calib_rows: list[dict],
     eval_rows: list[dict],
+    holdout_rows: list[dict] | None = None,
 ) -> dict:
     train_map = {(row["answer"], row["user_input"]): row for row in train_rows}
     calib_map = {(row["answer"], row["user_input"]): row for row in calib_rows}
     eval_map = {(row["answer"], row["user_input"]): row for row in eval_rows}
+    holdout_keys = pair_keys(holdout_rows or [], symmetric=True)
+
+    eval_antonym_rows = [
+        row for row in eval_rows if row.get("relation_tag") == "antonym_mid"
+    ]
+    eval_holdout_antonym_rows = [
+        row
+        for row in eval_antonym_rows
+        if canonical_pair(row["answer"], row["user_input"]) in holdout_keys
+    ]
+    unexpected_eval_antonym_rows = [
+        (row["answer"], row["user_input"])
+        for row in eval_antonym_rows
+        if canonical_pair(row["answer"], row["user_input"]) not in holdout_keys
+    ]
 
     train_eval_exact_overlap = sorted(set(train_map) & set(eval_map))
     train_eval_symmetric_overlap = sorted(
@@ -571,6 +587,24 @@ def validate_dataset_partition(
     eval_calib_symmetric_overlap = sorted(
         pair_keys(eval_rows, symmetric=True) & pair_keys(calib_rows, symmetric=True)
     )
+    train_calib_symmetric_overlap = sorted(
+        pair_keys(train_rows, symmetric=True) & pair_keys(calib_rows, symmetric=True)
+    )
+    train_rows_by_pair: defaultdict[tuple[str, str], list[dict]] = defaultdict(list)
+    calib_rows_by_pair: defaultdict[tuple[str, str], list[dict]] = defaultdict(list)
+    for row in train_rows:
+        train_rows_by_pair[canonical_pair(row["answer"], row["user_input"])].append(row)
+    for row in calib_rows:
+        calib_rows_by_pair[canonical_pair(row["answer"], row["user_input"])].append(row)
+    unexpected_train_calib_symmetric_overlap = [
+        pair
+        for pair in train_calib_symmetric_overlap
+        if not all(
+            is_allowed_train_calib_overlap(train_row, calib_row)
+            for train_row in train_rows_by_pair[pair]
+            for calib_row in calib_rows_by_pair[pair]
+        )
+    ]
     train_calib_exact_overlap = sorted(set(train_map) & set(calib_map))
     unexpected_train_calib_exact_overlap = [
         pair
@@ -583,14 +617,19 @@ def validate_dataset_partition(
         or train_eval_symmetric_overlap
         or eval_calib_exact_overlap
         or eval_calib_symmetric_overlap
+        or unexpected_train_calib_symmetric_overlap
         or unexpected_train_calib_exact_overlap
+        or unexpected_eval_antonym_rows
     ):
         details = {
             "train_eval_exact_overlap": train_eval_exact_overlap[:10],
             "train_eval_symmetric_overlap": train_eval_symmetric_overlap[:10],
             "eval_calib_exact_overlap": eval_calib_exact_overlap[:10],
             "eval_calib_symmetric_overlap": eval_calib_symmetric_overlap[:10],
+            "train_calib_symmetric_overlap": train_calib_symmetric_overlap[:10],
+            "unexpected_train_calib_symmetric_overlap": unexpected_train_calib_symmetric_overlap[:10],
             "unexpected_train_calib_exact_overlap": unexpected_train_calib_exact_overlap[:10],
+            "unexpected_eval_antonym_mid_rows": unexpected_eval_antonym_rows[:10],
         }
         raise SystemExit(
             "nightly train/calib/eval partition overlap detected: "
@@ -602,10 +641,15 @@ def validate_dataset_partition(
         "train_eval_symmetric_overlap": len(train_eval_symmetric_overlap),
         "eval_calib_exact_overlap": len(eval_calib_exact_overlap),
         "eval_calib_symmetric_overlap": len(eval_calib_symmetric_overlap),
+        "train_calib_symmetric_overlap": len(train_calib_symmetric_overlap),
+        "unexpected_train_calib_symmetric_overlap": len(unexpected_train_calib_symmetric_overlap),
         "train_calib_exact_overlap": len(train_calib_exact_overlap),
         "allowed_train_calib_exact_overlap": len(train_calib_exact_overlap)
         - len(unexpected_train_calib_exact_overlap),
         "unexpected_train_calib_exact_overlap": len(unexpected_train_calib_exact_overlap),
+        "eval_antonym_rows": len(eval_antonym_rows),
+        "eval_holdout_antonym_rows": len(eval_holdout_antonym_rows),
+        "eval_non_holdout_antonym_rows": len(unexpected_eval_antonym_rows),
     }
 
 
@@ -700,7 +744,7 @@ def main() -> None:
     )
     train_rows = dedupe([*train_patch_rows, *non_patch_train_rows])
     gold_pool_rows = dedupe([*supervised_gold_rows, *tagged_gold_calib_rows, *holdout_rows])
-    partition_stats = validate_dataset_partition(train_rows, calib_rows, eval_rows)
+    partition_stats = validate_dataset_partition(train_rows, calib_rows, eval_rows, holdout_rows)
 
     unsup_pairs = build_unsup_pairs_from_puzzles(PUZZLES_JSON)
 
@@ -733,7 +777,6 @@ def main() -> None:
         "eval_to_calib_tags": sorted(EVAL_TO_CALIB_TAGS),
         "eval_to_calib_rows": len(moved_eval_rows),
         "calib_antonym_rows": sum(1 for row in calib_rows if row["relation_tag"] == "antonym_mid"),
-        "eval_antonym_rows": sum(1 for row in eval_rows if row["relation_tag"] == "antonym_mid"),
         "calib": len(calib_rows),
         "eval": len(eval_rows),
         "fixed_holdout": len(holdout_rows),

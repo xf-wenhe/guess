@@ -166,9 +166,9 @@ extension _GuessHomePageActions on _GuessHomePageState {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
+              const Text(
                 AppStrings.settingsTitle,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: AppFonts.primaryFamily,
                   fontSize: 18,
                   color: AppColors.textPrimary,
@@ -205,9 +205,9 @@ extension _GuessHomePageActions on _GuessHomePageState {
                 ),
               ),
               const SizedBox(height: 8),
-              Text(
+              const Text(
                 AppStrings.puzzlePathHint,
-                style: const TextStyle(
+                style: TextStyle(
                   fontFamily: AppFonts.primaryFamily,
                   fontSize: 12,
                   color: AppColors.textSecondary,

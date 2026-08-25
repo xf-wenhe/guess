@@ -28,7 +28,7 @@ The normal unattended route is the user LaunchAgent installed by `install_nightl
 - `build_nightly_semantic_sets.py`
   Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration. Antonym rows are normalized to `antonym_mid`, score `50`, range `45-55`, with protected sample weights, and a prioritized non-regression antonym patch subset is reserved as heavier-weight calibration anchors, preferring the newer `nightly_patch_v2` regression-family rows first.
 - `train_v28c_mse_contrastive.py`
-  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, dedicated midpoint anchors plus a midpoint band loss for `antonym_mid`, and optional multi-angle coverage for high-value rows.
+  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, dedicated midpoint anchors plus a midpoint band loss for `antonym_mid`, keeps midpoint antonyms in cosine regression while excluding them from CoSENT by default, and supports optional multi-angle coverage for high-value rows.
 - `eval_v26_gold.py`
   Evaluates model/calibration metrics and emits group metrics plus worst cases, including antonym 40-60 and stricter 45-55 mid-score recall. Calibration now honors per-row `sample_weight`, so protected antonym anchors can shape the isotonic curve.
 - `run_regression_pairs_v23.py`

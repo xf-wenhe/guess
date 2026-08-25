@@ -84,7 +84,7 @@ class _CelebrationPainter extends CustomPainter {
       // 旋转的不完整光环 (弧线)
       for (var seg = 0; seg < 4; seg++) {
         final segStart = ringAngle + seg * pi / 2;
-        final segSweep = pi / 3;
+        const segSweep = pi / 3;
         final ringPaint = Paint()
           ..color = _gold[ring].withOpacity(ringOpacity)
           ..style = PaintingStyle.stroke

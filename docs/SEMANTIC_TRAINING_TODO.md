@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-06-15 11:00 CST
+Last updated: 2026-08-22 10:00 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -30,9 +30,13 @@ This goal is complete only when all items below are proven by current repo state
 
 ## Current Status
 
-Overall status: not complete. Waiting for the next real nightly run after fixing the launchd entrypoint.
+Overall status: not complete. Real nightlies are running stably again, but no candidate has passed the strict promotion gate yet.
 
-The pipeline is much stronger and safer than before, but no candidate has passed the strict promotion gate yet.
+The pipeline is much stronger and safer than before. The current blocker is no longer antonym strict 45-55 rollback; it is overall no-degrade quality, especially same-category bucket accuracy and repeated hard-negative over-scoring.
+
+The 2026-08-21 real run also proved that fixed train/calib/eval partitions and fixed capped-row sampling are active across all three MPS rounds. A new bucket-aware auxiliary objective is now staged for the next automatic run; it does not change any promotion threshold or antonym path. The trainer-side boundary tag set now also covers evaluator-only `abstract_confusion` and `same_category_weak` families, while keeping `antonym_mid` excluded. Rejected runs now retain their small calibration JSON artifacts for curve-level diagnosis while still deleting rejected model directories.
+
+The local promotion-chain audit also fixed the best-round recheck so it reads and reports the same strict 45-55 antonym metric as the per-round gate; thresholds and gate predicates are unchanged. This fix still needs a real promotion-path validation.
 
 ## Latest Evidence
 
@@ -126,6 +130,39 @@ No real nightly promotion reports were produced after the 2026-06-04 run. The la
 
 Result: no training started. The installed job was pointed at a wrapper under the external project volume's `.nightly/` directory, which launchd could not execute. The installer now writes the launchd wrapper to `$HOME/.guess_nightly/nightly_launcher.sh`; that wrapper `cd`s into `/Volumes/新/work/flutter/guess` and execs the current repo script, avoiding the stale copied training script and the external-volume wrapper restriction.
 
+### 2026-07-17 through 2026-07-19 Real Nightlies
+
+Reports:
+
+- `.nightly/reports/nightly_promotion_20260717_230005.md`
+- `.nightly/reports/nightly_promotion_20260718_230000.md`
+- `.nightly/reports/nightly_promotion_20260719_230005.md`
+
+All three real runs completed `3/3` rounds on `device=mps`, used `antonym_mid:45`, and proved the current supervised strategy in the report output: `sup_cosent_exclude_tags=antonym_mid`, `sup_midpoint_tags=antonym_mid`, `calib_support_low=60`.
+
+Antonym strict behavior is now stable again in real runs:
+
+| report | antonym cal_mae | antonym acc | strict 45-55 |
+|--------|------------------|-------------|--------------|
+| 20260717_230005 | 0.9645 -> 3.9364 | 100.0 -> 100.0 | 100.0 -> 100.0 |
+| 20260718_230000 | 0.9645 -> 2.8240 | 100.0 -> 100.0 | 100.0 -> 100.0 |
+| 20260719_230005 | 0.9645 -> 3.2784 | 100.0 -> 100.0 | 100.0 -> 100.0 |
+
+Result: rejected. The remaining failures moved to global gates and bucket-shift quality, not antonym rollback. The latest real report (`20260719_230005`) failed:
+
+- `mae_ok`
+- `acc_ok`
+- `raw_mae_no_degrade`
+- `raw_acc_no_degrade`
+- `cal_acc_no_degrade`
+- `no_degrade_all`
+
+The repeated error families in the latest real report are:
+
+- `same_category`: `74.42 -> 58.14` bucket accuracy
+- `hard_negative`: many `0-20 -> 40-60` and `20-40 -> 60-80` overshoots such as `飞机->轮船`, `老虎->大象`
+- `synonym_alias`: many `80-100 -> 60-80` under-shoots such as `诸葛亮->卧龙`, `孔明->诸葛亮`
+
 ## Active TODO
 
 - [x] Fix CPU fallback so `SEM_DEVICE=cpu` does not accidentally use MPS through Trainer/Accelerate.
@@ -185,7 +222,17 @@ Result: no training started. The installed job was pointed at a wrapper under th
 - [x] Make next-morning triage fail with `semantic_strategy_failed` if a fresh report does not prove the CoSENT antonym exclusion strategy.
 - [x] Add a recent-report comparison command so several real nightlies can be checked together for GPU/MPS, three-round stability, failed gates, antonym 50% behavior, and CoSENT exclusion evidence.
 - [x] Make next-morning triage report `waiting_for_next_real_strategy_report` when the latest real report predates the newly installed strategy.
-- [ ] Wait for the next real nightly report to verify `NIGHTLY_SUP_MIDPOINT_TAGS=antonym_mid` plus CoSENT exclusion recovers strict 45-55 antonym behavior.
+- [x] Keep train/calib/eval data partitioning fixed across multi-round nightly seeds while preserving each round's independent training seed.
+- [x] Keep the supervised capped-row sample fixed across rounds via `SEM_SAMPLE_SEED`, while preserving per-round model/training randomness via `SEM_SEED`.
+- [x] Reject non-holdout `antonym_mid` rows in eval and report holdout/non-holdout antonym counts explicitly.
+- [ ] Validate the fixed-partition change against the next real nightly report; do not start a local training run.
+- [x] Wait for the next real nightly report to verify `NIGHTLY_SUP_MIDPOINT_TAGS=antonym_mid` plus CoSENT exclusion recovers strict 45-55 antonym behavior.
+- [x] Add a bucket-aware boundary loss for selected hard-negative and same-category rows while excluding `antonym_mid`.
+- [x] Align the bucket-aware trainer tags with evaluator hard-negative families (`abstract_confusion` and `same_category_weak`).
+- [x] Retain rejected candidate calibration artifacts so regression/calibration coupling can be audited after the nightly cleanup.
+- [x] Make the best-round promotion recheck read/report strict antonym 45-55 metrics instead of relying on an undefined local value.
+- [ ] Isolate and reduce the latest real-nightly bucket regressions in `same_category`, `hard_negative`, and `synonym_alias` without weakening the promotion gates.
+- [ ] Validate the bucket-aware objective against the next real three-round MPS report; do not start a local training run.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.
 - [ ] Promote only after strict gates pass.
@@ -196,7 +243,7 @@ Result: no training started. The installed job was pointed at a wrapper under th
    Current implementation: `SEM_CONTRASTIVE_SCOPE=selective` applies contrastive positives only to clear high-positive tags and negatives only to hard-negative tags. Next experiment should compare it against the rejected all-scope run.
 
 2. Add a bucket-aware objective.
-   The current losses improve continuous MAE but can move samples across bucket boundaries in the wrong direction.
+   The staged `BucketBandLoss` now penalizes only cross-bucket moves for selected hard-negative and same-category tags; the regular cosine loss still controls the target inside each bucket. It remains unverified until the next real nightly.
 
 3. Improve calibration/reporting further.
    Per-bucket confusion summaries now include top `relation_tag`/group counts and can be converted into pending review candidates. Next reporting step, if needed, is to auto-cluster repeated pairs across multiple rejected reports.
