@@ -2,6 +2,7 @@ import json
 import os
 import argparse
 import csv
+import math
 from pathlib import Path
 import time
 from collections import defaultdict
@@ -9,11 +10,12 @@ from collections import defaultdict
 from sentence_transformers import SentenceTransformer
 
 from semantic_common import (
-    apply_calibration,
+    apply_relation_calibration,
     augment_masked_calibration_samples,
     augment_midpoint_calibration_samples,
     build_calibration,
     build_embedding_cache,
+    constrain_calibration_interval,
     metric,
     predict_scored_rows,
     read_scored_rows,
@@ -34,7 +36,9 @@ MIDPOINT_CALIB_TAGS = {
 }
 MIDPOINT_CALIB_TARGET_LOW = float(os.getenv('SEM_CALIB_MIDPOINT_TARGET_LOW', '45'))
 MIDPOINT_CALIB_TARGET_HIGH = float(os.getenv('SEM_CALIB_MIDPOINT_TARGET_HIGH', '55'))
-MIDPOINT_CALIB_AUGMENT_RADIUS = float(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_RADIUS', '2.5'))
+# Keep a calibration-only margin beyond the observed antonym midpoint scores so
+# a sparse positive row cannot create a jump at the strict midpoint boundary.
+MIDPOINT_CALIB_AUGMENT_RADIUS = float(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_RADIUS', '3.5'))
 MIDPOINT_CALIB_AUGMENT_STEPS = int(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_STEPS', '2'))
 MIDPOINT_CALIB_AUGMENT_WEIGHT = float(os.getenv('SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT', '0.5'))
 SUPPORT_POSITIVE_CALIB_TAGS = {
@@ -124,12 +128,16 @@ def eval_group(row: dict) -> str:
         return 'antonym'
     if tag in HARD_NEG_TAGS or score < 30:
         return 'hard_negative'
-    if 'alias' in tag or 'synonym' in tag or score >= 80:
+    # Explicit relation tags must win over the high-score synonym fallback.
+    # Keep the low-score fallback so the hard-negative gate retains its scope.
+    if 'alias' in tag or 'synonym' in tag:
         return 'synonym_alias'
     if 'same_category' in tag:
         return 'same_category'
     if 'hint' in tag:
         return 'hint_like'
+    if score >= 80:
+        return 'synonym_alias'
     return 'other'
 
 
@@ -278,8 +286,13 @@ def main():
     calib_dict_rows = read_eval_dict_rows(CALIB_CSV)
     calib_weighted_rows = read_scored_weighted_rows(CALIB_CSV)
     eval_rows = read_scored_rows(EVAL_CSV)
+    eval_dict_rows = read_eval_dict_rows(EVAL_CSV)
     if len(calib_rows) < 5 or len(eval_rows) < 5:
         raise SystemExit('gold rows too small')
+    if len(calib_rows) != len(calib_dict_rows) or len(calib_rows) != len(calib_weighted_rows):
+        raise SystemExit('calibration row readers are misaligned')
+    if len(eval_rows) != len(eval_dict_rows):
+        raise SystemExit('evaluation row readers are misaligned')
 
     all_rows = calib_rows + eval_rows
     device = resolve_device()
@@ -310,14 +323,28 @@ def main():
         )
         for row in calib_dict_rows
     ]
+    midpoint_pred = [value for value, selected in zip(calib_pred, midpoint_mask) if selected]
+    midpoint_target = [value for value, selected in zip(calib_target, midpoint_mask) if selected]
+    midpoint_weights = [value for value, selected in zip(calib_weights, midpoint_mask) if selected]
     midpoint_pred_aug, midpoint_target_aug, midpoint_weights_aug = augment_midpoint_calibration_samples(
-        calib_pred,
-        calib_target,
-        calib_weights,
-        midpoint_mask,
+        midpoint_pred,
+        midpoint_target,
+        midpoint_weights,
+        [True] * len(midpoint_pred),
         radius=MIDPOINT_CALIB_AUGMENT_RADIUS,
         steps=MIDPOINT_CALIB_AUGMENT_STEPS,
         weight_multiplier=MIDPOINT_CALIB_AUGMENT_WEIGHT,
+    )
+    global_midpoint_pred_aug, global_midpoint_target_aug, global_midpoint_weights_aug = (
+        augment_midpoint_calibration_samples(
+            calib_pred,
+            calib_target,
+            calib_weights,
+            midpoint_mask,
+            radius=MIDPOINT_CALIB_AUGMENT_RADIUS,
+            steps=MIDPOINT_CALIB_AUGMENT_STEPS,
+            weight_multiplier=MIDPOINT_CALIB_AUGMENT_WEIGHT,
+        )
     )
     support_pred_aug, support_target_aug, support_weights_aug = augment_masked_calibration_samples(
         calib_pred,
@@ -328,16 +355,65 @@ def main():
         steps=SUPPORT_POSITIVE_CALIB_AUGMENT_STEPS,
         weight_multiplier=SUPPORT_POSITIVE_CALIB_AUGMENT_WEIGHT,
     )
-    calib_pred_aug = midpoint_pred_aug + support_pred_aug[len(calib_pred):]
-    calib_target_aug = midpoint_target_aug + support_target_aug[len(calib_target):]
-    calib_weights_aug = midpoint_weights_aug + support_weights_aug[len(calib_weights):]
+    # Preserve the established global curve for unrelated relations. The
+    # midpoint-specific curve below is selected only for tagged antonym rows.
+    calib_pred_aug = global_midpoint_pred_aug + support_pred_aug[len(calib_pred):]
+    calib_target_aug = global_midpoint_target_aug + support_target_aug[len(calib_target):]
+    calib_weights_aug = global_midpoint_weights_aug + support_weights_aug[len(calib_weights):]
     calib = build_calibration(calib_pred_aug, calib_target_aug, calib_weights_aug)
+    midpoint_raw_scores = [
+        float(value)
+        for value in midpoint_pred
+        if math.isfinite(float(value))
+    ]
+    midpoint_interval_low = None
+    midpoint_interval_high = None
+    if midpoint_raw_scores and MIDPOINT_CALIB_AUGMENT_RADIUS > 0.0:
+        midpoint_interval_low = max(
+            0.0,
+            min(midpoint_raw_scores) - MIDPOINT_CALIB_AUGMENT_RADIUS,
+        )
+        midpoint_interval_high = min(
+            100.0,
+            max(midpoint_raw_scores) + MIDPOINT_CALIB_AUGMENT_RADIUS,
+        )
+        midpoint_calibration = constrain_calibration_interval(
+            build_calibration(midpoint_pred_aug, midpoint_target_aug, midpoint_weights_aug),
+            midpoint_interval_low,
+            midpoint_interval_high,
+            MIDPOINT_CALIB_TARGET_LOW,
+            MIDPOINT_CALIB_TARGET_HIGH,
+        )
+    elif midpoint_pred_aug:
+        midpoint_calibration = build_calibration(
+            midpoint_pred_aug,
+            midpoint_target_aug,
+            midpoint_weights_aug,
+        )
+    else:
+        midpoint_calibration = None
+    if midpoint_calibration is not None:
+        midpoint_calibration["target_low"] = MIDPOINT_CALIB_TARGET_LOW
+        midpoint_calibration["target_high"] = MIDPOINT_CALIB_TARGET_HIGH
+        midpoint_calibration["source_rows"] = len(midpoint_pred)
+        midpoint_calibration["augmented_rows"] = len(midpoint_pred_aug) - len(midpoint_pred)
+        calib["relation_calibrations"] = {"antonym_mid": midpoint_calibration}
+        calib["midpoint_calibration_profile"] = "antonym_mid"
+    else:
+        calib["midpoint_calibration_profile"] = None
+    calib["midpoint_calibration_interval_low"] = midpoint_interval_low
+    calib["midpoint_calibration_interval_high"] = midpoint_interval_high
+    calib["midpoint_calibration_target_low"] = MIDPOINT_CALIB_TARGET_LOW
+    calib["midpoint_calibration_target_high"] = MIDPOINT_CALIB_TARGET_HIGH
     CALIB_JSON.write_text(json.dumps(calib, ensure_ascii=False, indent=2), encoding='utf-8')
 
     eval_raw = predict_scored_rows(eval_rows, cache)
     eval_target = [s for _, _, s in eval_rows]
-    eval_cal = [apply_calibration(v, calib['x_pred'], calib['y_calibrated']) for v in eval_raw]
-    eval_dict_rows = read_eval_dict_rows(EVAL_CSV)
+    eval_cal = []
+    for raw, row in zip(eval_raw, eval_dict_rows):
+        tag = (row.get('relation_tag') or row.get('error_type') or '').strip()
+        relation = 'antonym_mid' if tag in MIDPOINT_CALIB_TAGS else None
+        eval_cal.append(apply_relation_calibration(raw, calib, relation))
 
     raw_mae, raw_acc = metric(eval_raw, eval_target)
     cal_mae, cal_acc = metric(eval_cal, eval_target)
@@ -359,10 +435,15 @@ def main():
         'calibration_method': calib.get('method', 'unknown'),
         'midpoint_calibration_tags': sorted(MIDPOINT_CALIB_TAGS),
         'midpoint_calibration_rows': sum(1 for flag in midpoint_mask if flag),
-        'midpoint_calibration_augmented_rows': len(midpoint_pred_aug) - len(calib_pred),
+        'midpoint_calibration_augmented_rows': len(midpoint_pred_aug) - len(midpoint_pred),
         'midpoint_calibration_augment_radius': MIDPOINT_CALIB_AUGMENT_RADIUS,
         'midpoint_calibration_augment_steps': MIDPOINT_CALIB_AUGMENT_STEPS,
         'midpoint_calibration_augment_weight': MIDPOINT_CALIB_AUGMENT_WEIGHT,
+        'midpoint_calibration_interval_low': midpoint_interval_low,
+        'midpoint_calibration_interval_high': midpoint_interval_high,
+        'midpoint_calibration_target_low': MIDPOINT_CALIB_TARGET_LOW,
+        'midpoint_calibration_target_high': MIDPOINT_CALIB_TARGET_HIGH,
+        'midpoint_calibration_profile': calib.get('midpoint_calibration_profile'),
         'support_positive_calibration_tags': sorted(SUPPORT_POSITIVE_CALIB_TAGS),
         'support_positive_calibration_rows': sum(1 for flag in support_positive_mask if flag),
         'support_positive_calibration_augmented_rows': len(support_pred_aug) - len(calib_pred),
@@ -379,8 +460,14 @@ def main():
     print(f"calibration_method={calib.get('method', 'unknown')}")
     print(
         f'midpoint_calibration_rows={sum(1 for flag in midpoint_mask if flag)} '
-        f'augmented_rows={len(midpoint_pred_aug) - len(calib_pred)}'
+        f'augmented_rows={len(midpoint_pred_aug) - len(midpoint_pred)}'
     )
+    if midpoint_interval_low is not None and midpoint_interval_high is not None:
+        print(
+            f'midpoint_calibration_interval={midpoint_interval_low:.6f}-'
+            f'{midpoint_interval_high:.6f} '
+            f'target={MIDPOINT_CALIB_TARGET_LOW:.6f}-{MIDPOINT_CALIB_TARGET_HIGH:.6f}'
+        )
     print(
         f'support_positive_calibration_rows={sum(1 for flag in support_positive_mask if flag)} '
         f'augmented_rows={len(support_pred_aug) - len(calib_pred)}'

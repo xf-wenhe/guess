@@ -81,6 +81,37 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("At least one real candidate passes strict gates", pending_text)
         self.assertIn("Isolate and reduce the latest real-nightly bucket regressions", pending_text)
 
+    def test_analyze_gate_status_preserves_failures_from_earlier_rounds(self):
+        spec = importlib.util.spec_from_file_location(
+            "analyze_nightly_report_v26_gate_aggregation",
+            REPO_ROOT / "scripts" / "analyze_nightly_report_v26.py",
+        )
+        self.assertIsNotNone(spec)
+        analyzer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        spec.loader.exec_module(analyzer)
+
+        payload = analyzer.parse_gate_status(
+            "\n".join(
+                (
+                    "mae_ok=False",
+                    "antonym_strict_mid_recall_ok=False",
+                    "regression_ok=False",
+                    "mae_ok=True",
+                    "antonym_strict_mid_recall_ok=True",
+                    "regression_ok=True",
+                )
+            )
+        )
+
+        self.assertFalse(payload["gate_status"]["antonym_strict_mid_recall_ok"])
+        self.assertFalse(payload["gate_status"]["regression_ok"])
+        self.assertEqual(
+            payload["failed_gates"],
+            ["mae_ok", "antonym_strict_mid_recall_ok", "regression_ok"],
+        )
+        self.assertEqual(payload["gate_failure_counts"]["regression_ok"], 1)
+
     def test_next_morning_triage_strategy_check_validates_cosent_exclusion_counts(self):
         spec = importlib.util.spec_from_file_location(
             "nightly_next_morning_triage_v26",
@@ -101,6 +132,7 @@ class NightlyScriptsTest(unittest.TestCase):
             "sup_cosine_exclude_tags": "",
             "sup_midpoint_tags": "antonym_mid",
             "sup_min_tag_bucket_rows": "same_category_mid@40-59:20,same_category_mid@60-79:12",
+            "sup_bucket_band_hard_negative_repeat": "2",
             "calib_support_positive_target_low": "60",
         }
         analysis = {
@@ -119,14 +151,143 @@ class NightlyScriptsTest(unittest.TestCase):
                     "midpoint_tags": '["antonym_mid"]',
                     "midpoint_examples_after_repeat": "306",
                     "bucket_band_tags": '["same_category_mid"]',
+                    "bucket_band_hard_negative_repeat": "2",
                     "bucket_band_examples_after_repeat": "42",
                     "min_tag_bucket_rows": '{"same_category_mid@40-59": 20, "same_category_mid@60-79": 12}',
+                    "eval_antonym_rows": "1",
+                    "eval_holdout_antonym_rows": "1",
+                    "eval_non_holdout_antonym_rows": "0",
+                    "unexpected_train_calib_symmetric_overlap": "0",
+                    "objective_count": "5",
+                    "round_robin_steps_per_epoch": "235",
+                    "round_robin_original_min_batches": "34",
+                    "round_robin_target_batches_per_objective": "47",
+                    "round_robin_protected_min_batches": "47",
+                    "round_robin_padded_examples": "120",
+                    "round_robin_noop_padded_examples": "104",
+                    "trainer_backend": "SentenceTransformer.fit",
+                    "fit_steps_per_epoch": "235",
+                    "fit_warmup_steps": "23",
+                    "warmup_steps": "23",
                 }
             ]
         }
         ok = triage.semantic_strategy_checks(health, analysis)
         self.assertTrue(ok["ok"])
         self.assertFalse(ok["skipped"])
+
+        calibration_health = {
+            **health,
+            "calib_midpoint_augment_radius": "3.5",
+            "calib_midpoint_augment_steps": "2",
+            "calib_midpoint_augment_weight": "0.5",
+        }
+        calibration_analysis = {
+            **analysis,
+            "three_rounds_ok": True,
+            "config": {},
+        }
+        waiting_for_calibration = triage.semantic_strategy_checks(
+            calibration_health,
+            calibration_analysis,
+        )
+        self.assertTrue(waiting_for_calibration["ok"])
+        self.assertTrue(waiting_for_calibration["skipped"])
+        self.assertIn(
+            "midpoint calibration evidence",
+            waiting_for_calibration["reason"],
+        )
+
+        calibration_analysis["config"] = {
+            "calib_midpoint_augment_radius": "3.5",
+            "calib_midpoint_augment_steps": "2",
+            "calib_midpoint_augment_weight": "0.5",
+        }
+        verified_calibration = triage.semantic_strategy_checks(
+            calibration_health,
+            calibration_analysis,
+        )
+        self.assertTrue(verified_calibration["ok"])
+        self.assertFalse(verified_calibration["skipped"])
+        self.assertTrue(verified_calibration["calib_midpoint_report_verified"])
+
+        band_health = {
+            **calibration_health,
+            "sup_midpoint_band_low": "0.45",
+            "sup_midpoint_band_high": "0.55",
+        }
+        band_analysis = {
+            **calibration_analysis,
+            "config": {
+                "calib_midpoint_augment_radius": "3.5",
+                "calib_midpoint_augment_steps": "2",
+                "calib_midpoint_augment_weight": "0.5",
+                "sup_midpoint_band_low": "0.47",
+                "sup_midpoint_band_high": "0.53",
+            },
+        }
+        stale_band = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(stale_band["ok"])
+        self.assertFalse(stale_band["skipped"])
+        self.assertFalse(stale_band["midpoint_band_report_verified"])
+        self.assertIn("sup_midpoint_band_low", stale_band["issues"][0])
+
+        band_analysis["config"]["sup_midpoint_band_low"] = "0.45"
+        band_analysis["config"]["sup_midpoint_band_high"] = "0.55"
+        verified_band = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertTrue(verified_band["ok"])
+        self.assertFalse(verified_band["skipped"])
+        self.assertTrue(verified_band["midpoint_band_report_verified"])
+        self.assertTrue(verified_band["partition_report_verified"])
+        self.assertTrue(verified_band["round_robin_report_verified"])
+        self.assertTrue(verified_band["fit_report_verified"])
+
+        sampling_row = band_analysis["train_sampling"][0]
+        sampling_row["eval_non_holdout_antonym_rows"] = "1"
+        bad_partition = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_partition["ok"])
+        self.assertFalse(bad_partition["partition_report_verified"])
+        self.assertIn("eval_non_holdout_antonym_rows", bad_partition["issues"][-1])
+        sampling_row["eval_non_holdout_antonym_rows"] = "0"
+
+        sampling_row["round_robin_steps_per_epoch"] = "230"
+        bad_schedule = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_schedule["ok"])
+        self.assertFalse(bad_schedule["round_robin_report_verified"])
+        self.assertIn("steps_per_epoch", bad_schedule["issues"][-1])
+        sampling_row["round_robin_steps_per_epoch"] = "235"
+
+        sampling_row["fit_steps_per_epoch"] = "234"
+        bad_fit_schedule = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_fit_schedule["ok"])
+        self.assertFalse(bad_fit_schedule["fit_report_verified"])
+        self.assertIn("fit_steps_per_epoch", bad_fit_schedule["issues"][-1])
+        sampling_row["fit_steps_per_epoch"] = "235"
+
+        band_analysis["actual_device_inferred"] = "mps"
+        missing_backend = sampling_row.pop("trainer_backend")
+        bad_backend_evidence = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_backend_evidence["ok"])
+        self.assertFalse(bad_backend_evidence["fit_report_verified"])
+        self.assertIn("trainer_backend", " ".join(bad_backend_evidence["issues"]))
+        sampling_row["trainer_backend"] = missing_backend
+        band_analysis.pop("actual_device_inferred")
+
+        sampling_row["round_robin_noop_padded_examples"] = "121"
+        bad_noop_padding = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_noop_padding["ok"])
+        self.assertFalse(bad_noop_padding["round_robin_report_verified"])
+        self.assertIn("noop_padded_examples", bad_noop_padding["issues"][-1])
+        sampling_row["round_robin_noop_padded_examples"] = "104"
+
+        calibration_analysis["config"]["calib_midpoint_augment_radius"] = "2.5"
+        mismatched_calibration = triage.semantic_strategy_checks(
+            calibration_health,
+            calibration_analysis,
+        )
+        self.assertFalse(mismatched_calibration["ok"])
+        self.assertFalse(mismatched_calibration["skipped"])
+        self.assertIn("calib_midpoint_augment_radius", mismatched_calibration["issues"][0])
 
         analysis["train_sampling"][0]["cosine_exclude_tags"] = '["antonym_mid"]'
         bad_cosine = triage.semantic_strategy_checks(health, analysis)
@@ -298,8 +459,14 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("<string>1.0</string>", plist)
             self.assertIn("<key>NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS</key>", plist)
             self.assertIn("<string>2</string>", plist)
+            self.assertIn("<key>NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT</key>", plist)
+            self.assertIn("<string>2</string>", plist)
             self.assertIn("<key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key>", plist)
             self.assertIn("<string>60</string>", plist)
+            self.assertIn("<key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS</key>", plist)
+            self.assertIn("<string>3.5</string>", plist)
+            self.assertIn("<key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS</key>", plist)
+            self.assertIn("<key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT</key>", plist)
             self.assertIn("<key>NIGHTLY_ENABLE_ANCHOR_FINETUNE</key>", plist)
             self.assertIn("<key>NIGHTLY_MIN_MAE_IMPROVEMENT</key>", plist)
             self.assertIn("<string>0.3</string>", plist)
@@ -1004,6 +1171,12 @@ class NightlyScriptsTest(unittest.TestCase):
             sys.path.remove(str(REPO_ROOT / "scripts"))
 
         self.assertEqual(regression.final_score(49.8, 0, 53.3), 40)
+        self.assertEqual(regression.final_score(47.52, 0, 47.87), 40)
+        self.assertEqual(regression.final_score(37.91, 0, 42.90, "related"), 40)
+        self.assertEqual(regression.final_score(37.91, 0, 42.90, "unrelated"), 15)
+        self.assertEqual(regression.final_score(33.50, 0, 39.85, "related"), 40)
+        self.assertNotEqual(regression.final_score(29.99, 0, 39.85, "related"), 40)
+        self.assertEqual(regression.final_score(45.0, 0, 30.0), 10)
         self.assertEqual(regression.final_score(15.0, 0, 25.0), 10)
 
     def test_nightly_builder_reads_approved_worst_case_review_candidates(self):
@@ -1965,6 +2138,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["eval_holdout_antonym_rows"], 0)
             self.assertEqual(stats["eval_non_holdout_antonym_rows"], 0)
             self.assertEqual(stats["train_patch"], 10)
+            self.assertEqual(stats["required_proxy_antonym_train_rows"], 0)
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
             self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
             self.assertGreaterEqual(stats["train_gold"], 1)
 
@@ -2490,7 +2665,103 @@ class NightlyScriptsTest(unittest.TestCase):
             )
         self.assertIn("unexpected_train_calib_symmetric_overlap", str(error.exception))
 
-    def test_build_nightly_semantic_sets_can_mirror_required_holdout_family_proxy_rows_to_calibration(self):
+        stats = builder.validate_dataset_partition(
+            train_rows=[
+                {
+                    "answer": "高兴",
+                    "user_input": "伤心",
+                    "relation_tag": "antonym_mid",
+                    "reviewer": "required_antonym_proxy_train",
+                    "sample_weight": "4.0",
+                }
+            ],
+            calib_rows=[
+                {
+                    "answer": "高兴",
+                    "user_input": "伤心",
+                    "relation_tag": "antonym_mid",
+                    "reviewer": "required_antonym_proxy_calib",
+                    "sample_weight": "13.0",
+                }
+            ],
+            eval_rows=[],
+            holdout_rows=[
+                {"answer": "高兴", "user_input": "难过", "relation_tag": "antonym_mid"}
+            ],
+        )
+        self.assertEqual(stats["train_calib_symmetric_overlap"], 1)
+        self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
+        self.assertEqual(stats["train_calib_exact_overlap"], 1)
+        self.assertEqual(stats["allowed_train_calib_exact_overlap"], 1)
+
+    def test_build_nightly_semantic_sets_prefers_required_proxy_rows_on_pair_collision(self):
+        spec = importlib.util.spec_from_file_location(
+            "build_nightly_semantic_sets_proxy_precedence",
+            BUILD_NIGHTLY_SETS_SCRIPT,
+        )
+        self.assertIsNotNone(spec)
+        builder = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(builder)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        holdout_keys = {builder.canonical_pair("高兴", "难过")}
+        proxy_train_rows = builder.required_holdout_family_proxy_training_rows(holdout_keys)
+        proxy_calib_rows = builder.required_holdout_family_proxy_calibration_rows(holdout_keys)
+        self.assertEqual(len(proxy_train_rows), 3)
+        self.assertEqual(len(proxy_calib_rows), 3)
+
+        existing_train_row = dict(proxy_train_rows[0])
+        existing_train_row.update(
+            {
+                "answer": proxy_train_rows[0]["user_input"],
+                "user_input": proxy_train_rows[0]["answer"],
+                "reviewer": "nightly_patch_v1",
+                "sample_weight": "2.5",
+            }
+        )
+        existing_calib_row = dict(proxy_calib_rows[0])
+        existing_calib_row.update(
+            {
+                "answer": proxy_calib_rows[0]["user_input"],
+                "user_input": proxy_calib_rows[0]["answer"],
+                "reviewer": "nightly_patch_v1",
+                "sample_weight": "10.0",
+            }
+        )
+        merged_train = builder.dedupe_with_preferred_rows(
+            proxy_train_rows,
+            [existing_train_row, *proxy_train_rows[1:]],
+        )
+        merged_calib = builder.dedupe_with_preferred_rows(
+            proxy_calib_rows,
+            [existing_calib_row, *proxy_calib_rows[1:]],
+        )
+
+        train_row = next(
+            row for row in merged_train if row["answer"] == proxy_train_rows[0]["answer"]
+            and row["user_input"] == proxy_train_rows[0]["user_input"]
+        )
+        calib_row = next(
+            row for row in merged_calib if row["answer"] == proxy_calib_rows[0]["answer"]
+            and row["user_input"] == proxy_calib_rows[0]["user_input"]
+        )
+        self.assertNotIn(
+            (proxy_train_rows[0]["user_input"], proxy_train_rows[0]["answer"]),
+            {(row["answer"], row["user_input"]) for row in merged_train},
+        )
+        self.assertNotIn(
+            (proxy_calib_rows[0]["user_input"], proxy_calib_rows[0]["answer"]),
+            {(row["answer"], row["user_input"]) for row in merged_calib},
+        )
+        self.assertEqual(train_row["reviewer"], "required_antonym_proxy_train")
+        self.assertEqual(calib_row["reviewer"], "required_antonym_proxy_calib")
+        self.assertEqual(calib_row["sample_weight"], "13.0000")
+
+    def test_build_nightly_semantic_sets_mirrors_required_holdout_family_proxy_rows_to_train_and_calibration(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -2571,14 +2842,19 @@ class NightlyScriptsTest(unittest.TestCase):
 
             with train_out.open("r", encoding="utf-8") as file:
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
-            self.assertNotIn(("高兴", "伤心"), train_pairs)
+            for proxy_pair in (("高兴", "伤心"), ("开心", "悲伤"), ("快乐", "难过")):
+                self.assertIn(proxy_pair, train_pairs)
+            self.assertNotIn(("高兴", "难过"), train_pairs)
 
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
+            self.assertEqual(stats["required_proxy_antonym_train_rows"], 3)
             self.assertEqual(stats["required_proxy_antonym_calib_rows"], 3)
             self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 0)
             self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
             self.assertEqual(stats["calib_antonym_rows"], 3)
+            self.assertEqual(stats["train_calib_symmetric_overlap"], 3)
+            self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
 
     def test_build_nightly_semantic_sets_can_reserve_antonym_patch_rows_for_calibration(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3242,8 +3518,10 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", source)
         self.assertIn("SEM_REQUIRED_ANTONYM_MIN_ANGLE_REPEAT", source)
         self.assertIn("SEM_PRIORITY_ANTONYM_MIN_ANGLE_REPEAT", source)
+        self.assertIn("SEM_PROXY_ANTONYM_MIN_ANGLE_REPEAT", source)
         self.assertIn("required_antonym_examples_after_repeat", source)
         self.assertIn("priority_antonym_examples_after_repeat", source)
+        self.assertIn("proxy_antonym_examples_after_repeat", source)
         self.assertIn("full_angle_coverage_rows", source)
         self.assertIn("SEM_LOSS_MODE", source)
         self.assertIn("CosineSimilarityLoss", source)
@@ -3254,10 +3532,33 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("CONTRASTIVE_POSITIVE_TAGS", source)
         self.assertIn("contrastive_label_counts", source)
         self.assertIn("BucketBandLoss", source)
+        self.assertIn("BaseGuardedCosineLoss", source)
         self.assertIn("SEM_BUCKET_BAND_WEIGHT", source)
         self.assertIn('SEM_BUCKET_BAND_WEIGHT", "1.0"', source)
         self.assertIn("SEM_BUCKET_BAND_CENTER_WEIGHT", source)
+        self.assertIn("SEM_BUCKET_BAND_HARD_NEG_REPEAT", source)
+        self.assertIn('SEM_BUCKET_BAND_HARD_NEG_REPEAT", "2"', source)
+        self.assertIn("SEM_BUCKET_BAND_BASE_GUARD", source)
+        self.assertIn("attach_base_bucket_scores", source)
+        self.assertIn("bucket_band_base_guard_protected_examples", source)
+        self.assertIn("cosine_base_guard_protected_examples", source)
+        self.assertIn("cosine_base_guard_enabled", nightly_source)
+        self.assertIn("sup_cosine_base_guard", nightly_source)
         self.assertIn("bucket_band_center_weight", source)
+        self.assertIn("bucket_band_hard_negative_repeat", source)
+        self.assertIn("bucket_band_hard_negative_examples_after_repeat", source)
+        self.assertIn(
+            'base_raw_mae_val="$(echo "$python_gate_output" | awk -F= \'/^base_raw_mae=/{print $2}\')"',
+            nightly_source,
+        )
+        self.assertIn(
+            'cand_raw_acc_val="$(echo "$python_gate_output" | awk -F= \'/^cand_raw_bucket_acc=/{print $2}\')"',
+            nightly_source,
+        )
+        self.assertIn(
+            'ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|${cand_mae_val}|${cand_acc_val}|${cand_raw_mae_val}|${cand_raw_acc_val}|${accepted}")',
+            nightly_source,
+        )
         self.assertIn('"abstract_confusion,nonsense_low"', source)
         self.assertIn("bucket_band_examples_after_repeat", source)
         self.assertIn('"abstract_confusion"', source)
@@ -3273,7 +3574,284 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn('SEM_MIDPOINT_CENTER_WEIGHT", "1.0"', source)
         self.assertIn('SEM_MIDPOINT_OBJECTIVE_REPEATS", "2"', source)
         self.assertIn("range(MIDPOINT_OBJECTIVE_REPEATS)", source)
+        self.assertIn("def round_robin_batch_budget", source)
+        self.assertIn("def round_robin_schedule_stats", source)
+        self.assertIn("pad_examples_to_batch_budget", source)
         self.assertIn("def round_robin_steps_per_epoch", source)
+        self.assertIn("schedule_stats = round_robin_schedule_stats(", source)
+        self.assertIn("round_robin_target_batches_per_objective", source)
+        self.assertIn("round_robin_padded_examples", source)
+        self.assertIn("round_robin_noop_padded_examples", source)
+        self.assertIn('pad_label = float("nan") if isinstance(loss_fn, BucketBandLoss) else None', source)
+        self.assertIn("seed=SEED", source)
+        eval_source = (REPO_ROOT / "scripts" / "eval_v26_gold.py").read_text(encoding="utf-8")
+        self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_RADIUS", eval_source)
+        self.assertIn("'3.5'", eval_source)
+        self.assertIn("apply_relation_calibration", eval_source)
+        self.assertIn('calib["relation_calibrations"]', eval_source)
+        self.assertIn('midpoint_calibration_profile', eval_source)
+        self.assertIn("global_midpoint_pred_aug", eval_source)
+        self.assertNotIn("calib = constrain_calibration_interval(", eval_source)
+        regression_source = (REPO_ROOT / "scripts" / "run_regression_pairs_v23.py").read_text(encoding="utf-8")
+        self.assertIn("apply_relation_calibration", regression_source)
+        self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_STEPS", nightly_source)
+        self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT", nightly_source)
+
+    def test_supervised_trainer_preserves_legacy_mps_path_and_explicit_cpu_path(self):
+        source = (REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py").read_text(encoding="utf-8")
+        main_source = source.split("def main()", 1)[1]
+
+        self.assertIn("def materialize_padded_objectives(", source)
+        self.assertIn("def fit_with_explicit_trainer(", source)
+        self.assertIn("def fit_with_sentence_transformer_fit(", source)
+        self.assertIn("def fit_with_legacy_model_fit(", source)
+        self.assertIn("seed=SEED", source)
+        self.assertIn(
+            'trainer_backend = "SentenceTransformerTrainer" if device == "cpu" else "SentenceTransformer.fit"',
+            source,
+        )
+        self.assertIn("LEGACY_MODEL_FIT_SEED", source)
+        self.assertIn('stats["trainer_backend"] = trainer_backend', source)
+        self.assertIn('stats["trainer_seed"] = trainer_seed', source)
+        self.assertIn('stats["round_robin_steps_per_epoch"] = steps_per_epoch', source)
+        self.assertIn('stats["fit_steps_per_epoch"] = fit_steps_per_epoch', source)
+        self.assertIn('stats["fit_warmup_steps"] = fit_warmup_steps', source)
+        self.assertIn("write_train_stats(stats)", source)
+        self.assertIn("multi_dataset_batch_sampler=MultiDatasetBatchSamplers.ROUND_ROBIN", source)
+        self.assertIn("fit_with_explicit_trainer(", main_source)
+        self.assertIn("fit_with_sentence_transformer_fit(", main_source)
+        self.assertIn("device=device", main_source)
+        self.assertIn("target_batches = round_robin_batch_budget(", source)
+        self.assertIn("steps_per_epoch = round_robin_steps_per_epoch(", source)
+        self.assertIn("fit_steps_per_epoch = (", main_source)
+        self.assertIn("fit_warmup_steps = warmup_steps", main_source)
+        self.assertNotIn("model.fit(", main_source)
+
+    def test_legacy_model_fit_receives_padded_objectives_without_training(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_legacy_model_fit",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class CaptureModel:
+            def __init__(self):
+                self.fit_kwargs = None
+
+            def fit(self, **kwargs):
+                self.fit_kwargs = kwargs
+
+        real_examples = [
+            trainer.InputExample(texts=["a", "b"], label=0.2),
+            trainer.InputExample(texts=["c", "d"], label=0.3),
+            trainer.InputExample(texts=["e", "f"], label=0.4),
+            trainer.InputExample(texts=["g", "h"], label=0.5),
+            trainer.InputExample(texts=["i", "j"], label=0.6),
+            trainer.InputExample(texts=["k", "l"], label=0.7),
+        ]
+        bucket_examples = [
+            trainer.InputExample(texts=["m", "n"], label=0.2),
+            trainer.InputExample(texts=["o", "p"], label=0.3),
+        ]
+        objectives = [
+            (
+                trainer.DataLoader(real_examples, batch_size=2, shuffle=False),
+                object(),
+            ),
+            (
+                trainer.DataLoader(bucket_examples, batch_size=2, shuffle=False),
+                trainer.BucketBandLoss(None, band_weight=1.0),
+            ),
+        ]
+        model = CaptureModel()
+        trainer.fit_with_legacy_model_fit(
+            model=model,
+            train_objectives=objectives,
+            epochs=1,
+            batch_size=2,
+            warmup_steps=1,
+            learning_rate=2e-6,
+            protected_min_batches=3,
+        )
+
+        self.assertIsNotNone(model.fit_kwargs)
+        self.assertEqual(model.fit_kwargs["steps_per_epoch"], 6)
+        padded_loaders = model.fit_kwargs["train_objectives"]
+        self.assertEqual([len(loader) for loader, _ in padded_loaders], [3, 3])
+        self.assertEqual([loader.sampler.__class__.__name__ for loader, _ in padded_loaders], ["SequentialSampler", "SequentialSampler"])
+        padded_bucket_examples = padded_loaders[1][0].dataset
+        self.assertEqual(len(padded_bucket_examples), 6)
+        self.assertTrue(all(label != label for label in [example.label for example in padded_bucket_examples[2:]]))
+
+    def test_supervised_trainer_materialization_is_stable_for_fixed_sample_seed(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_materialization_seed",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        def make_objectives():
+            examples = [
+                trainer.InputExample(texts=[f"a{idx}", f"b{idx}"], label=idx / 10)
+                for idx in range(6)
+            ]
+            return [
+                (trainer.DataLoader(list(examples), batch_size=2, shuffle=True), object()),
+                (trainer.DataLoader(list(examples), batch_size=2, shuffle=True), object()),
+            ]
+
+        first = trainer.materialize_padded_objectives(
+            make_objectives(),
+            batch_size=2,
+            protected_min_batches=2,
+            sampling_seed=123,
+        )
+        second = trainer.materialize_padded_objectives(
+            make_objectives(),
+            batch_size=2,
+            protected_min_batches=2,
+            sampling_seed=123,
+        )
+        first_labels = [[example.label for example in examples] for examples, _ in first]
+        second_labels = [[example.label for example in examples] for examples, _ in second]
+        self.assertEqual(first_labels, second_labels)
+
+    def test_supervised_trainer_normalizes_legacy_midpoint_band_on_direct_invocation(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_legacy_midpoint_band",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        previous_low = os.environ.get("SEM_MIDPOINT_BAND_LOW")
+        previous_high = os.environ.get("SEM_MIDPOINT_BAND_HIGH")
+        os.environ["SEM_MIDPOINT_BAND_LOW"] = "0.47"
+        os.environ["SEM_MIDPOINT_BAND_HIGH"] = "0.53"
+        try:
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+        finally:
+            if previous_low is None:
+                os.environ.pop("SEM_MIDPOINT_BAND_LOW", None)
+            else:
+                os.environ["SEM_MIDPOINT_BAND_LOW"] = previous_low
+            if previous_high is None:
+                os.environ.pop("SEM_MIDPOINT_BAND_HIGH", None)
+            else:
+                os.environ["SEM_MIDPOINT_BAND_HIGH"] = previous_high
+
+        self.assertEqual(trainer.MIDPOINT_BAND_LOW, 0.45)
+        self.assertEqual(trainer.MIDPOINT_BAND_HIGH, 0.55)
+
+    def test_eval_group_prioritizes_explicit_relation_tags_over_score_fallback(self):
+        spec = importlib.util.spec_from_file_location(
+            "eval_v26_gold_group_priority",
+            REPO_ROOT / "scripts" / "eval_v26_gold.py",
+        )
+        self.assertIsNotNone(spec)
+        evaluator = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(evaluator)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        def group(tag, score):
+            return evaluator.eval_group({"relation_tag": tag, "_score": score})
+
+        self.assertEqual(group("hint_like_high", 90), "hint_like")
+        self.assertEqual(group("hint_like_high", 20), "hard_negative")
+        self.assertEqual(group("same_category_mid", 90), "same_category")
+        self.assertEqual(group("same_category_mid", 20), "hard_negative")
+        self.assertEqual(group("alias_synonym_high", 90), "synonym_alias")
+        self.assertEqual(group("", 90), "synonym_alias")
+        self.assertEqual(group("hard_negative_low", 90), "hard_negative")
+        self.assertEqual(group("antonym_mid", 90), "antonym")
+
+    def test_nightly_script_normalizes_stale_launchd_bucket_quotas(self):
+        source = (REPO_ROOT / "scripts" / "nightly_train_v26.sh").read_text(encoding="utf-8")
+
+        self.assertIn('CANONICAL_SUP_MIDPOINT_BAND_LOW="0.45"', source)
+        self.assertIn('CANONICAL_SUP_MIDPOINT_BAND_HIGH="0.55"', source)
+        self.assertIn('LEGACY_SUP_MIDPOINT_BAND_LOW="0.47"', source)
+        self.assertIn('LEGACY_SUP_MIDPOINT_BAND_HIGH="0.53"', source)
+        self.assertIn(
+            'if [[ "$SUP_MIDPOINT_BAND_LOW" == "$LEGACY_SUP_MIDPOINT_BAND_LOW" || \\',
+            source,
+        )
+        self.assertIn('SUP_MIDPOINT_BAND_LOW="$CANONICAL_SUP_MIDPOINT_BAND_LOW"', source)
+        self.assertIn('SUP_MIDPOINT_BAND_HIGH="$CANONICAL_SUP_MIDPOINT_BAND_HIGH"', source)
+        self.assertIn(
+            'CANONICAL_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12"',
+            source,
+        )
+        self.assertIn(
+            'LEGACY_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18"',
+            source,
+        )
+        self.assertIn(
+            'if [[ "$SUP_MIN_TAG_BUCKET_ROWS" == "$LEGACY_SUP_MIN_TAG_BUCKET_ROWS" ]]; then',
+            source,
+        )
+        self.assertIn('SUP_MIN_TAG_BUCKET_ROWS="$CANONICAL_SUP_MIN_TAG_BUCKET_ROWS"', source)
+
+        checker_spec = importlib.util.spec_from_file_location(
+            "check_nightly_launchd_v26_bucket_quota",
+            CHECK_NIGHTLY_LAUNCHD_SCRIPT,
+        )
+        self.assertIsNotNone(checker_spec)
+        checker = importlib.util.module_from_spec(checker_spec)
+        self.assertIsNotNone(checker_spec.loader)
+        checker_spec.loader.exec_module(checker)
+        self.assertEqual(
+            checker.effective_sup_min_tag_bucket_rows(
+                checker.LEGACY_SUP_MIN_TAG_BUCKET_ROWS
+            ),
+            checker.CANONICAL_SUP_MIN_TAG_BUCKET_ROWS,
+        )
+        self.assertEqual(
+            checker.effective_sup_min_tag_bucket_rows(
+                checker.CANONICAL_SUP_MIN_TAG_BUCKET_ROWS
+            ),
+            checker.CANONICAL_SUP_MIN_TAG_BUCKET_ROWS,
+        )
+        self.assertEqual(
+            checker.effective_sup_bucket_band_hard_neg_repeat("1"),
+            "2",
+        )
+        self.assertEqual(
+            checker.effective_sup_bucket_band_hard_neg_repeat(""),
+            "2",
+        )
+        self.assertEqual(
+            checker.effective_sup_bucket_band_hard_neg_repeat("2"),
+            "2",
+        )
+        self.assertEqual(
+            checker.effective_sup_midpoint_band("0.45", "0.55"),
+            ("0.45", "0.55"),
+        )
+        self.assertEqual(
+            checker.effective_sup_midpoint_band("0.45", "0.53"),
+            ("0.45", "0.55"),
+        )
+        self.assertEqual(
+            checker.effective_sup_midpoint_band("0.47", "0.53"),
+            ("0.45", "0.55"),
+        )
 
     def test_supervised_trainer_round_robin_steps_include_repeated_objectives(self):
         spec = importlib.util.spec_from_file_location(
@@ -3308,6 +3886,76 @@ class NightlyScriptsTest(unittest.TestCase):
             trainer.round_robin_steps_per_epoch([])
         with self.assertRaisesRegex(ValueError, "at least one batch"):
             trainer.round_robin_steps_per_epoch([(FakeLoader(0), None)])
+
+        self.assertEqual(trainer.round_robin_batch_budget(objectives, protected_min_batches=46), 46)
+        self.assertEqual(trainer.round_robin_steps_per_epoch(objectives, protected_min_batches=46), 230)
+
+    def test_supervised_trainer_protects_midpoint_batches_from_round_robin_truncation(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_midpoint_schedule",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeLoader:
+            def __init__(self, batches):
+                self.batches = batches
+
+            def __len__(self):
+                return self.batches
+
+        objectives = [
+            (FakeLoader(59), None),
+            (FakeLoader(82), None),
+            (FakeLoader(47), object()),
+            (FakeLoader(47), object()),
+            (FakeLoader(34), trainer.BucketBandLoss(None, band_weight=1.0)),
+        ]
+        self.assertEqual(trainer.round_robin_batch_budget(objectives, protected_min_batches=47), 47)
+        self.assertEqual(trainer.round_robin_steps_per_epoch(objectives, protected_min_batches=47), 235)
+        schedule_stats = trainer.round_robin_schedule_stats(
+            objectives,
+            batch_size=8,
+            protected_min_batches=47,
+        )
+        self.assertEqual(schedule_stats["padded_examples"], 104)
+        self.assertEqual(schedule_stats["noop_padded_examples"], 104)
+
+    def test_supervised_trainer_pads_short_objective_to_protected_batch_budget(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_padding",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        texts, labels = trainer.pad_examples_to_batch_budget(
+            [("a", "b"), ("c", "d")],
+            [0.1, 0.2],
+            5,
+        )
+        self.assertEqual(len(texts), 5)
+        self.assertEqual(len(labels), 5)
+        self.assertEqual(texts[:2], [("a", "b"), ("c", "d")])
+        self.assertEqual(labels, [0.1, 0.2, 0.1, 0.2, 0.1])
+
+        _, noop_labels = trainer.pad_examples_to_batch_budget(
+            [("a", "b"), ("c", "d")],
+            [0.1, 0.2],
+            5,
+            pad_label=float("nan"),
+        )
+        self.assertEqual(noop_labels[:2], [0.1, 0.2])
+        self.assertTrue(all(label != label for label in noop_labels[2:]))
 
     def test_supervised_trainer_rejects_midpoint_cosine_exclusion(self):
         spec = importlib.util.spec_from_file_location(
@@ -3387,13 +4035,16 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.BUCKET_BAND_TAGS = previous_bucket_tags
 
             self.assertEqual(stats["bucket_band_rows"], 2)
-            self.assertEqual(stats["bucket_band_examples_after_repeat"], 4)
-            self.assertEqual(len(bucket_band_examples), 4)
+            self.assertEqual(stats["bucket_band_hard_negative_rows"], 1)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_before_repeat"], 2)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_after_repeat"], 4)
+            self.assertEqual(stats["bucket_band_examples_after_repeat"], 6)
+            self.assertEqual(len(bucket_band_examples), 6)
             self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in bucket_band_examples))
             self.assertTrue(any(abs(example.label - 0.22) < 1e-9 for example in bucket_band_examples))
             self.assertTrue(any(abs(example.label - 0.2) < 1e-9 for example in bucket_band_examples))
 
-    def test_bucket_band_loss_reinforces_in_bucket_center(self):
+    def test_bucket_band_loss_preserves_in_bucket_scores_and_repairs_violations(self):
         spec = importlib.util.spec_from_file_location(
             "train_v28c_mse_contrastive_bucket_loss",
             REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
@@ -3420,7 +4071,179 @@ class NightlyScriptsTest(unittest.TestCase):
         band_only = trainer.BucketBandLoss(FakeModel(), band_weight=0.5, center_weight=0.0)
         with_center = trainer.BucketBandLoss(FakeModel(), band_weight=0.5, center_weight=1.0)
         self.assertAlmostEqual(float(band_only(sentence_features, labels)), 0.0, places=6)
-        self.assertGreater(float(with_center(sentence_features, labels)), 0.0)
+        self.assertAlmostEqual(float(with_center(sentence_features, labels)), 0.0, places=6)
+
+        outside_score = 0.75
+        outside_right = torch.tensor(
+            [[outside_score, (1.0 - outside_score * outside_score) ** 0.5]],
+            dtype=torch.float32,
+        )
+        outside_features = [{"embedding": left}, {"embedding": outside_right}]
+        band_value = float(band_only(outside_features, labels))
+        center_value = float(with_center(outside_features, labels))
+        self.assertGreater(band_value, 0.0)
+        self.assertGreater(center_value, band_value)
+        noop_labels = torch.tensor([float("nan")], dtype=torch.float32)
+        self.assertEqual(float(with_center(sentence_features, noop_labels)), 0.0)
+
+    def test_bucket_band_loss_uses_base_guard_for_correct_and_wrong_base_buckets(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_base_bucket_guard_loss",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+        guard = trainer.BucketBandLoss(
+            FakeModel(),
+            band_weight=0.0,
+            center_weight=0.0,
+            base_guard_weight=1.0,
+            base_guard_margin=0.02,
+        )
+
+        def features(score):
+            right = torch.tensor(
+                [[score, (1.0 - score * score) ** 0.5]],
+                dtype=torch.float32,
+            )
+            return [{"embedding": left}, {"embedding": right}]
+
+        base_correct_labels = torch.tensor([[0.50, 0.55]], dtype=torch.float32)
+        self.assertGreater(float(guard(features(0.59), base_correct_labels)), 0.0)
+        self.assertAlmostEqual(float(guard(features(0.55), base_correct_labels)), 0.0, places=6)
+
+        base_wrong_labels = torch.tensor([[0.50, 0.75]], dtype=torch.float32)
+        self.assertAlmostEqual(float(guard(features(0.55), base_wrong_labels)), 0.0, places=6)
+        self.assertAlmostEqual(float(guard(features(0.75), base_wrong_labels)), 0.0, places=6)
+        self.assertGreater(float(guard(features(0.78), base_wrong_labels)), 0.0)
+
+        base_wrong_low_labels = torch.tensor([[0.20, 0.10]], dtype=torch.float32)
+        self.assertAlmostEqual(float(guard(features(0.15), base_wrong_low_labels)), 0.0, places=6)
+        self.assertAlmostEqual(float(guard(features(0.10), base_wrong_low_labels)), 0.0, places=6)
+        self.assertGreater(float(guard(features(0.05), base_wrong_low_labels)), 0.0)
+
+    def test_base_bucket_guard_labels_survive_materialization_padding(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_base_bucket_guard_materialization",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        import torch
+
+        class FakeModel:
+            training = True
+
+            def encode(self, texts, **kwargs):
+                vectors = {
+                    "a": [1.0, 0.0],
+                    "b": [0.55, (1.0 - 0.55 * 0.55) ** 0.5],
+                    "c": [1.0, 0.0],
+                    "d": [0.10, (1.0 - 0.10 * 0.10) ** 0.5],
+                }
+                return torch.tensor([vectors[text] for text in texts], dtype=torch.float32)
+
+            def train(self, mode=True):
+                self.training = mode
+                return self
+
+        examples = [
+            trainer.InputExample(texts=["a", "b"], label=0.50),
+            trainer.InputExample(texts=["c", "d"], label=0.20),
+        ]
+        enriched, stats = trainer.attach_base_bucket_scores(FakeModel(), examples, batch_size=2)
+        self.assertEqual(stats["bucket_band_base_guard_examples"], 2)
+        self.assertEqual(stats["bucket_band_base_guard_protected_examples"], 1)
+        self.assertEqual(len(enriched[0].label), 2)
+        self.assertAlmostEqual(enriched[0].label[0], 0.50, places=6)
+        self.assertAlmostEqual(enriched[0].label[1], 0.55, places=6)
+
+        loader = trainer.DataLoader(enriched, batch_size=2, shuffle=False)
+        materialized = trainer.materialize_padded_objectives(
+            [(loader, trainer.BucketBandLoss(None, band_weight=1.0))],
+            batch_size=2,
+            protected_min_batches=2,
+        )[0][0]
+        self.assertEqual(len(materialized), 4)
+        self.assertTrue(all(label[0] != label[0] and label[1] != label[1] for label in [
+            example.label for example in materialized[2:]
+        ]))
+
+    def test_cosine_loss_uses_the_same_directional_base_guard(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_cosine_base_guard",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+
+        def features(score):
+            right = torch.tensor(
+                [[score, (1.0 - score * score) ** 0.5]],
+                dtype=torch.float32,
+            )
+            return [{"embedding": left}, {"embedding": right}]
+
+        loss = trainer.BaseGuardedCosineLoss(
+            FakeModel(),
+            base_guard_weight=1.0,
+            base_guard_margin=0.02,
+        )
+        unguarded = trainer.BaseGuardedCosineLoss(
+            FakeModel(),
+            base_guard_weight=0.0,
+            base_guard_margin=0.02,
+        )
+        base_correct = torch.tensor([[0.50, 0.55]], dtype=torch.float32)
+        self.assertGreater(
+            float(loss(features(0.59), base_correct)),
+            float(unguarded(features(0.59), base_correct)),
+        )
+        self.assertAlmostEqual(
+            float(loss(features(0.55), base_correct)),
+            float(unguarded(features(0.55), base_correct)),
+            places=6,
+        )
+
+        base_wrong_high = torch.tensor([[0.50, 0.75]], dtype=torch.float32)
+        self.assertAlmostEqual(
+            float(loss(features(0.55), base_wrong_high)),
+            float(unguarded(features(0.55), base_wrong_high)),
+            places=6,
+        )
+        self.assertGreater(
+            float(loss(features(0.78), base_wrong_high)),
+            float(unguarded(features(0.78), base_wrong_high)),
+        )
 
     def test_supervised_trainer_bucket_band_covers_abstract_and_weak_category_negatives(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3468,11 +4291,72 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.BUCKET_BAND_TAGS = previous_bucket_tags
 
             self.assertEqual(stats["bucket_band_rows"], 2)
-            self.assertEqual(stats["bucket_band_examples_after_repeat"], 3)
-            self.assertEqual(len(bucket_band_examples), 3)
+            self.assertEqual(stats["bucket_band_hard_negative_rows"], 1)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_before_repeat"], 2)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_after_repeat"], 4)
+            self.assertEqual(stats["bucket_band_examples_after_repeat"], 5)
+            self.assertEqual(len(bucket_band_examples), 5)
             self.assertTrue(any(abs(example.label - 0.15) < 1e-9 for example in bucket_band_examples))
             self.assertTrue(any(abs(example.label - 0.3) < 1e-9 for example in bucket_band_examples))
             self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in bucket_band_examples))
+
+    def test_supervised_trainer_repeats_only_selected_hard_negative_bucket_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            train_csv = Path(tmp) / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "飞机,轮船,same_category_but_far,22,1.0,review\n"
+                "圣诞,万圣节,same_category_weak,30,1.0,review\n"
+                "高兴,难过,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive_bucket_band_repeat",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_angle_mode = trainer.ANGLE_MODE
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            previous_bucket_tags = trainer.BUCKET_BAND_TAGS
+            previous_bucket_repeat = trainer.BUCKET_BAND_HARD_NEG_REPEAT
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.ANGLE_MODE = "none"
+                trainer.COSINE_EXCLUDE_TAGS = set()
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                trainer.BUCKET_BAND_TAGS = {"same_category_but_far", "same_category_weak", "antonym_mid"}
+                trainer.BUCKET_BAND_HARD_NEG_REPEAT = 2
+                _, _, _, _, _, bucket_band_examples, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.ANGLE_MODE = previous_angle_mode
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+                trainer.BUCKET_BAND_TAGS = previous_bucket_tags
+                trainer.BUCKET_BAND_HARD_NEG_REPEAT = previous_bucket_repeat
+
+            labels = [round(example.label, 2) for example in bucket_band_examples]
+            self.assertEqual(stats["bucket_band_rows"], 2)
+            self.assertEqual(stats["bucket_band_hard_negative_rows"], 1)
+            self.assertEqual(stats["bucket_band_hard_negative_repeat"], 2)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_before_repeat"], 2)
+            self.assertEqual(stats["bucket_band_hard_negative_examples_after_repeat"], 4)
+            self.assertEqual(stats["bucket_band_examples_after_repeat"], 5)
+            self.assertEqual(labels.count(0.22), 4)
+            self.assertEqual(labels.count(0.30), 1)
+            self.assertNotIn(0.50, labels)
 
     def test_supervised_trainer_excludes_antonym_mid_from_cosent_and_adds_midpoint_anchor(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -3599,6 +4483,75 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(len(cosine_examples), 2)
             self.assertEqual(len(midpoint_examples), len(trainer.ANGLES) * 2)
             self.assertEqual(len(examples), len(trainer.ANGLES) + 2)
+
+    def test_supervised_trainer_gives_holdout_family_proxy_rows_full_angle_coverage(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            train_csv = tmp_path / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "高兴,伤心,antonym_mid,50,4.0,required_antonym_proxy_train\n"
+                "医生,大夫,alias_synonym_high,90,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            spec = importlib.util.spec_from_file_location(
+                "train_v28c_mse_contrastive_proxy",
+                REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+            )
+            self.assertIsNotNone(spec)
+            trainer = importlib.util.module_from_spec(spec)
+            self.assertIsNotNone(spec.loader)
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                spec.loader.exec_module(trainer)
+
+            previous_max_rows = trainer.MAX_TRAIN_ROWS
+            previous_max_repeat = trainer.MAX_REPEAT
+            previous_proxy_repeat = trainer.PROXY_ANTONYM_MIN_ANGLE_REPEAT
+            previous_excluded = trainer.COSENT_EXCLUDE_TAGS
+            previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_midpoint_tags = trainer.MIDPOINT_TAGS
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.PROXY_ANTONYM_MIN_ANGLE_REPEAT = len(trainer.ANGLES)
+                trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
+                trainer.COSINE_EXCLUDE_TAGS = set()
+                trainer.MIDPOINT_TAGS = {"antonym_mid"}
+                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, _, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                trainer.MAX_TRAIN_ROWS = previous_max_rows
+                trainer.MAX_REPEAT = previous_max_repeat
+                trainer.PROXY_ANTONYM_MIN_ANGLE_REPEAT = previous_proxy_repeat
+                trainer.COSENT_EXCLUDE_TAGS = previous_excluded
+                trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.MIDPOINT_TAGS = previous_midpoint_tags
+
+            proxy_examples = [
+                example
+                for example in examples
+                if "高兴" in example.texts[0] and "伤心" in example.texts[1]
+            ]
+            covered_angles = {
+                angle
+                for angle in trainer.ANGLES
+                if any(example.texts[0].startswith(angle) for example in proxy_examples)
+            }
+            self.assertEqual(stats["proxy_antonym_rows"], 1)
+            self.assertEqual(stats["proxy_antonym_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertEqual(stats["proxy_antonym_min_angle_repeat"], len(trainer.ANGLES))
+            self.assertEqual(stats["antonym_mid_rows"], 1)
+            self.assertEqual(stats["antonym_mid_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertEqual(stats["cosent_excluded_rows"], 1)
+            self.assertEqual(stats["cosent_excluded_examples_after_repeat"], len(trainer.ANGLES))
+            self.assertEqual(len(proxy_examples), len(trainer.ANGLES))
+            self.assertEqual(covered_angles, set(trainer.ANGLES))
+            self.assertEqual(len(examples), len(trainer.ANGLES) + 2)
+            self.assertEqual(len(cosent_examples), 2)
+            self.assertEqual(len(cosine_examples), len(examples))
+            self.assertEqual(len(contrastive_examples), 2)
+            self.assertEqual(len(midpoint_examples), len(trainer.ANGLES) * 2)
 
     def test_supervised_trainer_gives_required_antonym_rows_full_angle_coverage(self):
         with tempfile.TemporaryDirectory() as tmp:

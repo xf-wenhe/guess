@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import json
+import math
 import os
 import random
 import time
@@ -19,7 +20,7 @@ from sentence_transformers import (
 )
 from sentence_transformers.losses import CoSENTLoss, CosineSimilarityLoss, OnlineContrastiveLoss
 from sentence_transformers.training_args import BatchSamplers, MultiDatasetBatchSamplers
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, RandomSampler
 
 
 TRAIN_CSV = Path(os.getenv("SEM_TRAIN_CSV", "data/train_v28c_balanced.csv"))
@@ -34,6 +35,9 @@ WARMUP_RATIO = float(os.getenv("SEM_WARMUP_RATIO", "0.1"))
 MAX_TRAIN_ROWS = int(os.getenv("SEM_MAX_TRAIN_ROWS", "0"))
 SEED = int(os.getenv("SEM_SEED", "20260515"))
 SAMPLE_SEED = int(os.getenv("SEM_SAMPLE_SEED", str(SEED)))
+# SentenceTransformer.fit does not expose the Trainer seed; its current
+# SentenceTransformerTrainingArguments default is 42.
+LEGACY_MODEL_FIT_SEED = 42
 DEVICE = os.getenv("SEM_DEVICE", "").strip().lower()
 SCALE = float(os.getenv("SEM_COSENT_SCALE", "20.0"))
 HARD_NEG_BOOST = float(os.getenv("SEM_HARD_NEG_BOOST", "2.0"))
@@ -45,13 +49,37 @@ COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").s
 COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "").strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
-MIDPOINT_BAND_LOW = float(os.getenv("SEM_MIDPOINT_BAND_LOW", "0.45"))
-MIDPOINT_BAND_HIGH = float(os.getenv("SEM_MIDPOINT_BAND_HIGH", "0.55"))
+# Keep raw midpoint supervision centered on the fixed strict 45-55 gate; the
+# calibration stage must improve it without relying on a narrowed train band.
+MIDPOINT_BAND_LOW_SPEC = os.getenv("SEM_MIDPOINT_BAND_LOW", "0.45").strip()
+MIDPOINT_BAND_HIGH_SPEC = os.getenv("SEM_MIDPOINT_BAND_HIGH", "0.55").strip()
+if MIDPOINT_BAND_LOW_SPEC == "0.47" or MIDPOINT_BAND_HIGH_SPEC == "0.53":
+    # Direct invocations can inherit the pre-fix launchd values, so keep the
+    # trainer safe even when nightly_train_v26.sh is bypassed.
+    MIDPOINT_BAND_LOW = 0.45
+    MIDPOINT_BAND_HIGH = 0.55
+else:
+    MIDPOINT_BAND_LOW = float(MIDPOINT_BAND_LOW_SPEC)
+    MIDPOINT_BAND_HIGH = float(MIDPOINT_BAND_HIGH_SPEC)
 MIDPOINT_BAND_WEIGHT = float(os.getenv("SEM_MIDPOINT_BAND_WEIGHT", "4.0"))
 MIDPOINT_CENTER_WEIGHT = float(os.getenv("SEM_MIDPOINT_CENTER_WEIGHT", "1.0"))
 MIDPOINT_OBJECTIVE_REPEATS = int(os.getenv("SEM_MIDPOINT_OBJECTIVE_REPEATS", "2"))
 BUCKET_BAND_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_WEIGHT", "1.0"))
 BUCKET_BAND_CENTER_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_CENTER_WEIGHT", "1.0"))
+# Keep bucket emphasis opt-in without changing the round-robin schedule by default.
+BUCKET_BAND_HARD_NEG_REPEAT = max(
+    1, int(os.getenv("SEM_BUCKET_BAND_HARD_NEG_REPEAT", "2"))
+)
+BUCKET_BAND_BASE_GUARD = os.getenv("SEM_BUCKET_BAND_BASE_GUARD", "1").strip().lower() not in {
+    "0",
+    "false",
+    "no",
+}
+BUCKET_BAND_BASE_GUARD_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_WEIGHT", "1.0"))
+BUCKET_BAND_BASE_GUARD_MARGIN = min(
+    0.09,
+    max(0.0, float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", "0.02"))),
+)
 BUCKET_BAND_TAGS_SPEC = os.getenv(
     "SEM_BUCKET_BAND_TAGS",
     "collocation_not_equivalent,function_word_low,function_word_vs_real_low,"
@@ -88,6 +116,10 @@ REQUIRED_ANTONYM_MIN_ANGLE_REPEAT = int(
 PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = int(
     os.getenv("SEM_PRIORITY_ANTONYM_MIN_ANGLE_REPEAT", str(len(ANGLES)))
 )
+PROXY_ANTONYM_MIN_ANGLE_REPEAT = int(
+    os.getenv("SEM_PROXY_ANTONYM_MIN_ANGLE_REPEAT", str(len(ANGLES)))
+)
+PROXY_ANTONYM_TRAIN_REVIEWER = "required_antonym_proxy_train"
 
 HARD_NEG_TAGS = {
     "collocation_not_equivalent",
@@ -209,6 +241,13 @@ def is_bucket_band_row(row: dict) -> bool:
     )
 
 
+def bucket_band_repeat_for_row(row: dict) -> int:
+    """Spend extra bucket-boundary updates on the already-selected hard negatives."""
+    if row["tag"] in HARD_NEG_TAGS:
+        return BUCKET_BAND_HARD_NEG_REPEAT
+    return 1
+
+
 def canonical_pair(left: str, right: str) -> tuple[str, str]:
     return tuple(sorted((left, right)))
 
@@ -246,6 +285,10 @@ def is_required_antonym_row(tag: str, reviewer: str) -> bool:
 
 def is_priority_antonym_row(tag: str, reviewer: str) -> bool:
     return tag == "antonym_mid" and reviewer.startswith("nightly_patch")
+
+
+def is_proxy_antonym_row(tag: str, reviewer: str) -> bool:
+    return tag == "antonym_mid" and reviewer == PROXY_ANTONYM_TRAIN_REVIEWER
 
 
 def resolve_device() -> str:
@@ -407,12 +450,63 @@ class MidpointBandLoss(torch.nn.Module):
         return (self.center_weight * center_loss) + (self.band_weight * band_loss)
 
 
+def _unpack_guard_labels(
+    labels: torch.Tensor,
+    scores: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor | None]:
+    labels = labels.to(scores.device)
+    if labels.ndim == 1:
+        return labels.view(-1), None
+    if labels.ndim == 2 and labels.shape[1] == 1:
+        return labels[:, 0].view(-1), None
+    if labels.ndim == 2 and labels.shape[1] >= 2:
+        # Guarded objectives carry [target_score, frozen_base_score].
+        return labels[:, 0].view(-1), labels[:, 1].view(-1)
+    raise ValueError("guarded labels must be scalar or [target, base_score]")
+
+
+def _base_bucket_guard_penalty(
+    scores: torch.Tensor,
+    target_labels: torch.Tensor,
+    base_scores: torch.Tensor | None,
+    margin: float,
+) -> torch.Tensor:
+    if base_scores is None:
+        return scores.sum() * 0.0
+
+    target_labels = target_labels.clamp(0.0, 1.0)
+    base_scores = base_scores.clamp(0.0, 1.0)
+    target_bucket = torch.floor(target_labels * 5.0).to(torch.long).clamp(0, 4)
+    base_bucket = torch.floor(base_scores * 5.0).to(torch.long).clamp(0, 4)
+    protected = base_bucket == target_bucket
+
+    # A correct base bucket gets an interior margin instead of an exact-score
+    # anchor, so pointwise learning can still improve within the bucket.
+    lower = target_bucket.to(scores.dtype) * 0.2
+    upper = (target_bucket + 1).to(scores.dtype) * 0.2
+    correct_lower = lower + margin
+    correct_upper = upper - margin
+    correct_violation = torch.relu(correct_lower - scores).square()
+    correct_violation += torch.relu(scores - correct_upper).square()
+
+    # A wrong base bucket may move toward the target, but not farther away.
+    lower_drift = torch.relu(base_scores - margin - scores).square()
+    upper_drift = torch.relu(scores - base_scores - margin).square()
+    directional_violation = torch.where(base_bucket < target_bucket, lower_drift, upper_drift)
+    return torch.where(protected, correct_violation, directional_violation).mean()
+
+
 class BucketBandLoss(torch.nn.Module):
     """Penalize predictions that leave the target score bucket.
 
-    The cosine center term reinforces the reviewed target inside the bucket. The
-    auxiliary band term also resists cross-bucket moves, which is important for
-    reviewed hard negatives and ambiguous same-category rows.
+    The auxiliary band term resists cross-bucket moves, which is important for
+    reviewed hard negatives and ambiguous same-category rows. The center term
+    only corrects samples that are already outside their target bucket, so this
+    objective does not move a base-model score across a boundary just to reach
+    the exact reviewed label. When a frozen base score is supplied, a small
+    interior guard protects rows whose base bucket was already correct, while
+    a directional guard prevents an already-wrong base score from drifting
+    farther away from the target bucket.
     """
 
     def __init__(
@@ -420,11 +514,15 @@ class BucketBandLoss(torch.nn.Module):
         model: SentenceTransformer,
         band_weight: float,
         center_weight: float = 1.0,
+        base_guard_weight: float = 1.0,
+        base_guard_margin: float = 0.02,
     ) -> None:
         super().__init__()
         self.model = model
         self.band_weight = band_weight
         self.center_weight = center_weight
+        self.base_guard_weight = base_guard_weight
+        self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
 
     def forward(
         self,
@@ -433,18 +531,165 @@ class BucketBandLoss(torch.nn.Module):
     ) -> torch.Tensor:
         embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
         scores = F.cosine_similarity(embeddings[0], embeddings[1])
-        if self.band_weight <= 0 and self.center_weight <= 0:
+        if self.band_weight <= 0 and self.center_weight <= 0 and self.base_guard_weight <= 0:
             return scores.sum() * 0.0
 
-        labels = labels.view(-1).to(scores.device).clamp(0.0, 1.0)
+        target_labels, base_scores = _unpack_guard_labels(labels, scores)
+        # Round-robin padding keeps the midpoint objective from being
+        # truncated. Short bucket batches use NaN labels as inert padding so
+        # that this schedule change does not silently amplify bucket updates.
+        valid = torch.isfinite(target_labels)
+        if base_scores is not None:
+            valid &= torch.isfinite(base_scores)
+        if not torch.any(valid):
+            return scores.sum() * 0.0
+        scores = scores[valid]
+        labels = target_labels[valid].clamp(0.0, 1.0)
+        if base_scores is not None:
+            base_scores = base_scores[valid]
         bucket_index = torch.floor(labels * 5.0).to(torch.long).clamp(0, 4)
         lower = bucket_index.to(scores.dtype) * 0.2
         upper = (bucket_index + 1).to(scores.dtype) * 0.2
         lower_violation = torch.relu(lower - scores)
         upper_violation = torch.relu(scores - upper)
         violation = lower_violation.square() + upper_violation.square()
-        center_loss = F.mse_loss(scores, labels)
-        return (self.center_weight * center_loss) + (self.band_weight * violation.mean())
+        # Treat buckets as a no-degrade region. Ordinary cosine supervision
+        # still learns exact labels; this auxiliary objective only repairs
+        # predictions that would otherwise be counted in the wrong bucket.
+        outside_bucket = (scores < lower) | (scores >= upper)
+        if torch.any(outside_bucket):
+            center_loss = F.mse_loss(scores[outside_bucket], labels[outside_bucket])
+        else:
+            center_loss = scores.sum() * 0.0
+        base_guard_loss = (
+            _base_bucket_guard_penalty(
+                scores,
+                labels,
+                base_scores,
+                self.base_guard_margin,
+            )
+            if self.base_guard_weight > 0
+            else scores.sum() * 0.0
+        )
+        return (
+            (self.center_weight * center_loss)
+            + (self.band_weight * violation.mean())
+            + (self.base_guard_weight * base_guard_loss)
+        )
+
+
+class BaseGuardedCosineLoss(CosineSimilarityLoss):
+    """Keep cosine regression from worsening a frozen base bucket."""
+
+    def __init__(
+        self,
+        model: SentenceTransformer,
+        base_guard_weight: float = 1.0,
+        base_guard_margin: float = 0.02,
+    ) -> None:
+        super().__init__(model)
+        self.base_guard_weight = base_guard_weight
+        self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
+
+    def forward(
+        self,
+        sentence_features: list[dict[str, torch.Tensor]],
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
+        scores = F.cosine_similarity(embeddings[0], embeddings[1])
+        target_labels, base_scores = _unpack_guard_labels(labels, scores)
+        valid = torch.isfinite(target_labels)
+        if base_scores is not None:
+            valid &= torch.isfinite(base_scores)
+        if not torch.any(valid):
+            return scores.sum() * 0.0
+        scores = scores[valid]
+        target_labels = target_labels[valid].float()
+        if base_scores is not None:
+            base_scores = base_scores[valid]
+        center_loss = F.mse_loss(scores, target_labels)
+        guard_loss = (
+            _base_bucket_guard_penalty(
+                scores,
+                target_labels,
+                base_scores,
+                self.base_guard_margin,
+            )
+            if self.base_guard_weight > 0
+            else scores.sum() * 0.0
+        )
+        return center_loss + (self.base_guard_weight * guard_loss)
+
+
+GUARDED_LOSS_TYPES = (BucketBandLoss, BaseGuardedCosineLoss)
+
+
+def attach_base_bucket_scores(
+    model: SentenceTransformer,
+    examples: list[InputExample],
+    batch_size: int,
+    *,
+    vector_cache: dict[str, torch.Tensor] | None = None,
+    stats_prefix: str = "bucket_band",
+) -> tuple[list[InputExample], dict[str, object]]:
+    """Attach frozen base scores so guarded objectives have a soft guard.
+
+    The score is computed before optimization from the exact angle-prefixed
+    texts used by the objective. Rows whose base score is already in the target
+    bucket receive an interior guard; rows with a wrong base bucket remain free
+    to move toward the reviewed target.
+    """
+    stats_key = f"{stats_prefix}_base_guard"
+    if not examples:
+        return examples, {
+            f"{stats_key}_examples": 0,
+            f"{stats_key}_protected_examples": 0,
+        }
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+
+    unique_texts = sorted({text for example in examples for text in example.texts})
+    vectors = vector_cache if vector_cache is not None else {}
+    was_training = bool(model.training)
+    try:
+        missing_texts = [text for text in unique_texts if text not in vectors]
+        if missing_texts:
+            encoded = model.encode(
+                missing_texts,
+                batch_size=batch_size,
+                convert_to_tensor=True,
+                normalize_embeddings=True,
+                show_progress_bar=False,
+            )
+            vectors.update({text: vector for text, vector in zip(missing_texts, encoded)})
+        enriched = []
+        protected_examples = 0
+        for example in examples:
+            target = float(example.label)
+            left = torch.as_tensor(vectors[example.texts[0]])
+            right = torch.as_tensor(vectors[example.texts[1]])
+            base_score = float(torch.dot(left, right).detach().cpu().item())
+            if not math.isfinite(base_score):
+                base_score = 0.0
+            base_score = max(0.0, min(1.0, base_score))
+            target_bucket = max(0, min(4, int(math.floor(target * 5.0))))
+            base_bucket = max(0, min(4, int(math.floor(base_score * 5.0))))
+            if target_bucket == base_bucket:
+                protected_examples += 1
+            enriched.append(
+                InputExample(
+                    texts=list(example.texts),
+                    label=[target, base_score],
+                )
+            )
+    finally:
+        model.train(was_training)
+
+    return enriched, {
+        f"{stats_key}_examples": len(enriched),
+        f"{stats_key}_protected_examples": protected_examples,
+    }
 
 
 def load_examples(
@@ -488,6 +733,9 @@ def load_examples(
             if ANGLE_MODE != "none" and PRIORITY_ANTONYM_MIN_ANGLE_REPEAT > 0:
                 if is_priority_antonym_row(tag, reviewer):
                     repeat = max(repeat, min(len(ANGLES), PRIORITY_ANTONYM_MIN_ANGLE_REPEAT))
+            if ANGLE_MODE != "none" and PROXY_ANTONYM_MIN_ANGLE_REPEAT > 0:
+                if is_proxy_antonym_row(tag, reviewer):
+                    repeat = max(repeat, min(len(ANGLES), PROXY_ANTONYM_MIN_ANGLE_REPEAT))
             if ANGLE_MODE != "none" and MIN_ANGLE_REPEAT_FOR_HIGH_VALUE > 0:
                 min_angle_repeat = min(len(ANGLES), MIN_ANGLE_REPEAT_FOR_HIGH_VALUE)
                 if sample_weight >= PIN_WEIGHT_THRESHOLD or reviewer.startswith("nightly_patch") or tag in TAG_REPEAT_BOOSTS:
@@ -549,8 +797,9 @@ def load_examples(
                     for _ in range(midpoint_repeat)
                 )
             if is_bucket_band_row(row):
-                bucket_band_examples.append(
+                bucket_band_examples.extend(
                     InputExample(texts=list(example.texts), label=example.label)
+                    for _ in range(bucket_band_repeat_for_row(row))
                 )
             binary_label = contrastive_label(row)
             if binary_label is not None:
@@ -581,6 +830,21 @@ def load_examples(
         for row in rows
         if is_bucket_band_row(row)
     )
+    bucket_band_hard_negative_rows = sum(
+        1
+        for row in rows
+        if is_bucket_band_row(row) and row["tag"] in HARD_NEG_TAGS
+    )
+    bucket_band_hard_negative_examples_before_repeat = sum(
+        row["repeat"]
+        for row in rows
+        if is_bucket_band_row(row) and row["tag"] in HARD_NEG_TAGS
+    )
+    bucket_band_hard_negative_examples_after_repeat = sum(
+        row["repeat"] * bucket_band_repeat_for_row(row)
+        for row in rows
+        if is_bucket_band_row(row) and row["tag"] in HARD_NEG_TAGS
+    )
     hard_count = sum(1 for row in rows if row["tag"] in HARD_NEG_TAGS)
     protected_count = sum(1 for row in rows if row["tag"] in TAG_REPEAT_BOOSTS)
     antonym_mid_count = sum(1 for row in rows if row["tag"] == "antonym_mid")
@@ -592,6 +856,10 @@ def load_examples(
     priority_antonym_count = sum(1 for row in rows if is_priority_antonym_row(row["tag"], row["reviewer"]))
     priority_antonym_repeats = sum(
         row["repeat"] for row in rows if is_priority_antonym_row(row["tag"], row["reviewer"])
+    )
+    proxy_antonym_count = sum(1 for row in rows if is_proxy_antonym_row(row["tag"], row["reviewer"]))
+    proxy_antonym_repeats = sum(
+        row["repeat"] for row in rows if is_proxy_antonym_row(row["tag"], row["reviewer"])
     )
     cosent_excluded_rows = sum(1 for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
     cosent_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
@@ -643,7 +911,11 @@ def load_examples(
         "bucket_band_tags": sorted(BUCKET_BAND_TAGS),
         "bucket_band_weight": BUCKET_BAND_WEIGHT,
         "bucket_band_center_weight": BUCKET_BAND_CENTER_WEIGHT,
+        "bucket_band_hard_negative_repeat": BUCKET_BAND_HARD_NEG_REPEAT,
         "bucket_band_rows": bucket_band_rows,
+        "bucket_band_hard_negative_rows": bucket_band_hard_negative_rows,
+        "bucket_band_hard_negative_examples_before_repeat": bucket_band_hard_negative_examples_before_repeat,
+        "bucket_band_hard_negative_examples_after_repeat": bucket_band_hard_negative_examples_after_repeat,
         "bucket_band_examples_after_repeat": len(bucket_band_examples),
         "contrastive_examples_after_repeat": len(contrastive_examples),
         "contrastive_scope": CONTRASTIVE_SCOPE,
@@ -668,6 +940,9 @@ def load_examples(
         "required_antonym_examples_after_repeat": required_antonym_repeats,
         "priority_antonym_rows": priority_antonym_count,
         "priority_antonym_examples_after_repeat": priority_antonym_repeats,
+        "proxy_antonym_min_angle_repeat": PROXY_ANTONYM_MIN_ANGLE_REPEAT,
+        "proxy_antonym_rows": proxy_antonym_count,
+        "proxy_antonym_examples_after_repeat": proxy_antonym_repeats,
         "protected_positive_rows": protected_count,
         "pinned_high_value_rows": pinned_count,
         "regression_protected_rows": regression_protected_count,
@@ -690,27 +965,85 @@ def load_examples(
     )
 
 
-def fit_with_explicit_cpu(
+def materialize_padded_objectives(
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    batch_size: int,
+    protected_min_batches: int = 0,
+    sampling_seed: int | None = None,
+) -> list[tuple[list[InputExample], torch.nn.Module]]:
+    """Freeze each objective after padding it to the protected batch budget.
+
+    When a sample seed is supplied, materialize random data loaders with a
+    dedicated generator. This keeps the effective truncated prefix stable
+    across model seeds while leaving optimizer/model randomness independent.
+    """
+    def identity(batch):
+        return batch
+
+    target_batches = round_robin_batch_budget(train_objectives, protected_min_batches)
+    target_examples = target_batches * batch_size
+    padded_objectives = []
+    for objective_idx, (data_loader, loss_fn) in enumerate(train_objectives):
+        data_loader.collate_fn = identity
+        materialization_loader = data_loader
+        if sampling_seed is not None and isinstance(getattr(data_loader, "sampler", None), RandomSampler):
+            generator = torch.Generator()
+            generator.manual_seed(int(sampling_seed) + objective_idx)
+            materialization_loader = DataLoader(
+                data_loader.dataset,
+                batch_size=data_loader.batch_size,
+                sampler=RandomSampler(data_loader.dataset, generator=generator),
+                num_workers=data_loader.num_workers,
+                pin_memory=data_loader.pin_memory,
+                drop_last=data_loader.drop_last,
+                collate_fn=identity,
+            )
+        raw_examples = []
+        for batch in materialization_loader:
+            raw_examples.extend(batch)
+        texts = [tuple(example.texts) for example in raw_examples]
+        labels = [example.label for example in raw_examples]
+        pad_label = float("nan") if isinstance(loss_fn, GUARDED_LOSS_TYPES) else None
+        if isinstance(loss_fn, GUARDED_LOSS_TYPES) and any(
+            isinstance(label, (list, tuple)) and len(label) >= 2 for label in labels
+        ):
+            pad_label = [float("nan"), float("nan")]
+        texts, labels = pad_examples_to_batch_budget(
+            texts,
+            labels,
+            target_examples,
+            pad_label=pad_label,
+        )
+        padded_objectives.append(
+            (
+                [InputExample(texts=list(text), label=label) for text, label in zip(texts, labels)],
+                loss_fn,
+            )
+        )
+    return padded_objectives
+
+
+def fit_with_explicit_trainer(
     model: SentenceTransformer,
     train_objectives: list[tuple[DataLoader, torch.nn.Module]],
     epochs: int,
     batch_size: int,
     warmup_steps: int,
     learning_rate: float,
+    device: str,
+    protected_min_batches: int = 0,
 ) -> None:
-    def identity(batch):
-        return batch
-
+    padded_objectives = materialize_padded_objectives(
+        train_objectives,
+        batch_size=batch_size,
+        protected_min_batches=protected_min_batches,
+        sampling_seed=SAMPLE_SEED,
+    )
     datasets: dict[str, Dataset] = {}
     losses: dict[str, torch.nn.Module] = {}
-    for idx, (data_loader, loss_fn) in enumerate(train_objectives, start=1):
-        data_loader.collate_fn = identity
-        texts = []
-        labels = []
-        for batch in data_loader:
-            batch_texts, batch_labels = zip(*[(example.texts, example.label) for example in batch])
-            texts += batch_texts
-            labels += batch_labels
+    for idx, (objective_examples, loss_fn) in enumerate(padded_objectives, start=1):
+        texts = [example.texts for example in objective_examples]
+        labels = [example.label for example in objective_examples]
         dataset = Dataset.from_dict({f"sentence_{text_idx}": text for text_idx, text in enumerate(zip(*texts))})
         dataset = dataset.add_column("label", labels)
         dataset_key = f"_dataset_{idx}"
@@ -725,8 +1058,9 @@ def fit_with_explicit_cpu(
         num_train_epochs=epochs,
         warmup_steps=warmup_steps,
         learning_rate=learning_rate,
-        use_cpu=True,
-        no_cuda=True,
+        seed=SEED,
+        use_cpu=device == "cpu",
+        no_cuda=device == "cpu",
         use_mps_device=False,
         eval_strategy="no",
         save_strategy="no",
@@ -741,16 +1075,159 @@ def fit_with_explicit_cpu(
     trainer.train()
 
 
+def fit_with_sentence_transformer_fit(
+    model: SentenceTransformer,
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    epochs: int,
+    batch_size: int,
+    warmup_steps: int,
+    learning_rate: float,
+    protected_min_batches: int = 0,
+) -> None:
+    """Run the current SentenceTransformer.fit round-robin schedule.
+
+    The installed SentenceTransformer.fit implementation uses the new Trainer
+    path, where steps_per_epoch is the total number of optimizer updates. The
+    padded round-robin datasets already provide one objective batch per cycle,
+    so the total is the per-objective budget multiplied by objective_count.
+    """
+    padded_objectives = materialize_padded_objectives(
+        train_objectives,
+        batch_size=batch_size,
+        protected_min_batches=protected_min_batches,
+        sampling_seed=SAMPLE_SEED,
+    )
+    padded_loaders = [
+        (
+            DataLoader(
+                objective_examples,
+                # The source loader was already shuffled while it was
+                # materialized; avoid adding a second pre-Trainer shuffle.
+                shuffle=False,
+                batch_size=batch_size,
+                num_workers=0,
+                pin_memory=False,
+            ),
+            loss_fn,
+        )
+        for objective_examples, loss_fn in padded_objectives
+    ]
+    # RoundRobinBatchSampler consumes one batch from each objective per cycle;
+    # SentenceTransformer.fit expects the resulting total update count.
+    steps_per_epoch = round_robin_steps_per_epoch(
+        train_objectives,
+        protected_min_batches=protected_min_batches,
+    )
+    model.fit(
+        train_objectives=padded_loaders,
+        epochs=epochs,
+        steps_per_epoch=steps_per_epoch if epochs == 1 else None,
+        warmup_steps=warmup_steps,
+        optimizer_params={"lr": learning_rate},
+        show_progress_bar=True,
+    )
+
+
+def fit_with_legacy_model_fit(
+    model: SentenceTransformer,
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    epochs: int,
+    batch_size: int,
+    warmup_steps: int,
+    learning_rate: float,
+    protected_min_batches: int = 0,
+) -> None:
+    """Compatibility entry point for callers using the former function name."""
+    fit_with_sentence_transformer_fit(
+        model=model,
+        train_objectives=train_objectives,
+        epochs=epochs,
+        batch_size=batch_size,
+        warmup_steps=warmup_steps,
+        learning_rate=learning_rate,
+        protected_min_batches=protected_min_batches,
+    )
+
+
 def round_robin_steps_per_epoch(
     train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    protected_min_batches: int = 0,
 ) -> int:
-    """Match SentenceTransformers' ROUND_ROBIN batch sampler update count."""
+    """Match ROUND_ROBIN updates while protecting the midpoint objective."""
+    return round_robin_batch_budget(train_objectives, protected_min_batches) * len(train_objectives)
+
+
+def round_robin_batch_budget(
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    protected_min_batches: int = 0,
+) -> int:
+    """Return the shortest objective length, never below a protected objective."""
     if not train_objectives:
         raise ValueError("at least one training objective is required")
+    if protected_min_batches < 0:
+        raise ValueError("protected_min_batches must be non-negative")
     batches_per_objective = [len(data_loader) for data_loader, _ in train_objectives]
     if any(batch_count <= 0 for batch_count in batches_per_objective):
         raise ValueError("every training objective must contain at least one batch")
-    return min(batches_per_objective) * len(train_objectives)
+    return max(min(batches_per_objective), protected_min_batches)
+
+
+def pad_examples_to_batch_budget(
+    texts: list[tuple[str, ...]],
+    labels: list[float | list[float]],
+    target_examples: int,
+    pad_label: float | list[float] | None = None,
+) -> tuple[list[tuple[str, ...]], list[float | list[float]]]:
+    """Pad short objectives, optionally marking synthetic labels as inert."""
+    if len(texts) != len(labels):
+        raise ValueError("texts and labels must have the same length")
+    if target_examples <= len(texts):
+        return texts, labels
+    if not texts:
+        raise ValueError("cannot pad an empty objective")
+
+    extra = target_examples - len(texts)
+    full_repeats, remainder = divmod(extra, len(texts))
+    padded_labels = (
+        [pad_label] * extra
+        if pad_label is not None
+        else labels * full_repeats + labels[:remainder]
+    )
+    return (
+        texts + texts * full_repeats + texts[:remainder],
+        labels + padded_labels,
+    )
+
+
+def round_robin_schedule_stats(
+    train_objectives: list[tuple[DataLoader, torch.nn.Module]],
+    batch_size: int,
+    protected_min_batches: int = 0,
+) -> dict[str, int]:
+    """Describe the effective schedule after short objectives are padded."""
+    if batch_size <= 0:
+        raise ValueError("batch_size must be positive")
+    target_batches = round_robin_batch_budget(train_objectives, protected_min_batches)
+    padded_examples = 0
+    noop_padded_examples = 0
+    for data_loader, loss_fn in train_objectives:
+        dataset = getattr(data_loader, "dataset", None)
+        try:
+            example_count = len(dataset) if dataset is not None else len(data_loader) * batch_size
+        except TypeError:
+            example_count = len(data_loader) * batch_size
+        objective_padding = max(0, target_batches * batch_size - example_count)
+        padded_examples += objective_padding
+        if isinstance(loss_fn, GUARDED_LOSS_TYPES):
+            noop_padded_examples += objective_padding
+    return {
+        "original_min_batches": min(len(data_loader) for data_loader, _ in train_objectives),
+        "target_batches_per_objective": target_batches,
+        "protected_min_batches": protected_min_batches,
+        "padded_examples": padded_examples,
+        "noop_padded_examples": noop_padded_examples,
+        "steps_per_epoch": target_batches * len(train_objectives),
+    }
 
 
 def seed_training(seed: int) -> None:
@@ -759,6 +1236,14 @@ def seed_training(seed: int) -> None:
     torch.manual_seed(seed)
     if torch.cuda.is_available():
         torch.cuda.manual_seed_all(seed)
+
+
+def write_train_stats(stats: dict) -> None:
+    if not TRAIN_STATS_JSON:
+        return
+    stats_path = Path(TRAIN_STATS_JSON)
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+    stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
 
 def main() -> None:
@@ -778,6 +1263,15 @@ def main() -> None:
         stats,
     ) = load_examples(TRAIN_CSV, SAMPLE_SEED)
     stats["sample_seed"] = SAMPLE_SEED
+    stats["device"] = device
+    trainer_backend = "SentenceTransformerTrainer" if device == "cpu" else "SentenceTransformer.fit"
+    trainer_seed = SEED if device == "cpu" else LEGACY_MODEL_FIT_SEED
+    stats["trainer_backend"] = trainer_backend
+    stats["trainer_seed"] = trainer_seed
+    stats["seed"] = SEED
+    stats["epochs"] = EPOCHS
+    stats["batch_size"] = BATCH_SIZE
+    stats["learning_rate"] = LEARNING_RATE
     if len(examples) < MIN_TRAIN_EXAMPLES:
         raise SystemExit(f"not enough training examples (<{MIN_TRAIN_EXAMPLES})")
     if LOSS_MODE in {"cosent", "mixed", "mixed_contrastive"} and not cosent_examples:
@@ -788,6 +1282,7 @@ def main() -> None:
     print(f"base_model={BASE_MODEL}")
     print(f"output_model={OUTPUT_MODEL}")
     print(f"device={device}")
+    print(f"trainer_backend={trainer_backend} trainer_seed={trainer_seed}")
     print(f"epochs={EPOCHS} batch_size={BATCH_SIZE} lr={LEARNING_RATE}")
     print(f"warmup_ratio={WARMUP_RATIO} seed={SEED} sample_seed={SAMPLE_SEED} scale={SCALE}")
     print(f"hard_neg_boost={HARD_NEG_BOOST} max_repeat={MAX_REPEAT} angle_mode={ANGLE_MODE} loss_mode={LOSS_MODE}")
@@ -805,10 +1300,12 @@ def main() -> None:
         f"bucket_band_tags={','.join(sorted(BUCKET_BAND_TAGS)) or '-'} "
         f"bucket_band_weight={BUCKET_BAND_WEIGHT} "
         f"bucket_band_center_weight={BUCKET_BAND_CENTER_WEIGHT} "
+        f"bucket_band_hard_negative_repeat={BUCKET_BAND_HARD_NEG_REPEAT} "
         f"bucket_band_examples={len(bucket_band_examples)}"
     )
     print(f"required_antonym_min_angle_repeat={REQUIRED_ANTONYM_MIN_ANGLE_REPEAT}")
     print(f"priority_antonym_min_angle_repeat={PRIORITY_ANTONYM_MIN_ANGLE_REPEAT}")
+    print(f"proxy_antonym_min_angle_repeat={PROXY_ANTONYM_MIN_ANGLE_REPEAT}")
     print(
         "contrastive_margin="
         f"{CONTRASTIVE_MARGIN} contrastive_pos_threshold={CONTRASTIVE_POS_THRESHOLD} "
@@ -820,17 +1317,59 @@ def main() -> None:
         "min_angle_repeat_tag_buckets="
         + json.dumps(stats.get("min_angle_repeat_tag_buckets", {}), ensure_ascii=False, sort_keys=True)
     )
-    print("train_stats=" + json.dumps(stats, ensure_ascii=False))
-    if TRAIN_STATS_JSON:
-        stats_path = Path(TRAIN_STATS_JSON)
-        stats_path.parent.mkdir(parents=True, exist_ok=True)
-        stats_path.write_text(json.dumps(stats, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
 
     model = SentenceTransformer(
         BASE_MODEL,
         device=device,
         local_files_only=True,
     )
+    bucket_guard_stats = {
+        "bucket_band_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "bucket_band_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "bucket_band_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "bucket_band_base_guard_examples": 0,
+        "bucket_band_base_guard_protected_examples": 0,
+    }
+    cosine_guard_stats = {
+        "cosine_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "cosine_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "cosine_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosine_base_guard_examples": 0,
+        "cosine_base_guard_protected_examples": 0,
+    }
+    base_vector_cache: dict[str, torch.Tensor] = {}
+    if BUCKET_BAND_BASE_GUARD and bucket_band_examples:
+        bucket_band_examples, attached_stats = attach_base_bucket_scores(
+            model,
+            bucket_band_examples,
+            BATCH_SIZE,
+            vector_cache=base_vector_cache,
+        )
+        bucket_guard_stats.update(attached_stats)
+    if BUCKET_BAND_BASE_GUARD and cosine_examples:
+        cosine_examples, attached_stats = attach_base_bucket_scores(
+            model,
+            cosine_examples,
+            BATCH_SIZE,
+            vector_cache=base_vector_cache,
+            stats_prefix="cosine",
+        )
+        cosine_guard_stats.update(attached_stats)
+    stats.update(bucket_guard_stats)
+    stats.update(cosine_guard_stats)
+    print(
+        f"bucket_band_base_guard={BUCKET_BAND_BASE_GUARD} "
+        f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
+        f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"protected_examples={bucket_guard_stats['bucket_band_base_guard_protected_examples']}"
+    )
+    print(
+        f"cosine_base_guard={BUCKET_BAND_BASE_GUARD} "
+        f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
+        f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"protected_examples={cosine_guard_stats['cosine_base_guard_protected_examples']}"
+    )
+    print("train_stats=" + json.dumps(stats, ensure_ascii=False))
     cosent_loader = DataLoader(
         cosent_examples,
         shuffle=True,
@@ -867,7 +1406,18 @@ def main() -> None:
             num_workers=0,
             pin_memory=False,
         )
-        train_objectives = [(cosine_loader, CosineSimilarityLoss(model=model))]
+        train_objectives = [
+            (
+                cosine_loader,
+                BaseGuardedCosineLoss(
+                    model=model,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            )
+        ]
     elif LOSS_MODE == "mixed":
         cosine_loader = DataLoader(
             list(cosine_examples),
@@ -878,7 +1428,16 @@ def main() -> None:
         )
         train_objectives = [
             (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
-            (cosine_loader, CosineSimilarityLoss(model=model)),
+            (
+                cosine_loader,
+                BaseGuardedCosineLoss(
+                    model=model,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            ),
         ]
         if midpoint_examples:
             for _ in range(MIDPOINT_OBJECTIVE_REPEATS):
@@ -902,6 +1461,10 @@ def main() -> None:
                         model=model,
                         band_weight=BUCKET_BAND_WEIGHT,
                         center_weight=BUCKET_BAND_CENTER_WEIGHT,
+                        base_guard_weight=(
+                            BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                        ),
+                        base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
                     ),
                 )
             )
@@ -924,7 +1487,16 @@ def main() -> None:
         )
         train_objectives = [
             (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
-            (cosine_loader, CosineSimilarityLoss(model=model)),
+            (
+                cosine_loader,
+                BaseGuardedCosineLoss(
+                    model=model,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            ),
             (contrastive_loader, OnlineContrastiveLoss(model=model, margin=CONTRASTIVE_MARGIN)),
         ]
         if midpoint_examples:
@@ -949,39 +1521,80 @@ def main() -> None:
                         model=model,
                         band_weight=BUCKET_BAND_WEIGHT,
                         center_weight=BUCKET_BAND_CENTER_WEIGHT,
+                        base_guard_weight=(
+                            BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                        ),
+                        base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
                     ),
                 )
             )
     else:
         train_objectives = [(cosent_loader, CoSENTLoss(model=model, scale=SCALE))]
 
-    steps_per_epoch = round_robin_steps_per_epoch(train_objectives)
+    protected_min_batches = (
+        len(midpoint_loader)
+        if any(isinstance(loss_fn, MidpointBandLoss) for _, loss_fn in train_objectives)
+        else 0
+    )
+    schedule_stats = round_robin_schedule_stats(
+        train_objectives,
+        batch_size=BATCH_SIZE,
+        protected_min_batches=protected_min_batches,
+    )
+    steps_per_epoch = schedule_stats["steps_per_epoch"]
     total_steps = steps_per_epoch * EPOCHS
     warmup_steps = int(total_steps * WARMUP_RATIO)
+    fit_steps_per_epoch = (
+        steps_per_epoch
+        if trainer_backend == "SentenceTransformer.fit" and EPOCHS == 1
+        else None
+    )
+    fit_warmup_steps = warmup_steps if trainer_backend == "SentenceTransformer.fit" else None
     print(
         f"objective_count={len(train_objectives)} "
         f"round_robin_steps_per_epoch={steps_per_epoch} "
+        f"round_robin_target_batches_per_objective={schedule_stats['target_batches_per_objective']} "
+        f"round_robin_padded_examples={schedule_stats['padded_examples']} "
+        f"round_robin_noop_padded_examples={schedule_stats['noop_padded_examples']} "
+        f"fit_steps_per_epoch={fit_steps_per_epoch} "
+        f"fit_warmup_steps={fit_warmup_steps} "
         f"total_steps={total_steps} warmup_steps={warmup_steps}"
     )
+    stats["objective_count"] = len(train_objectives)
+    stats["round_robin_steps_per_epoch"] = steps_per_epoch
+    stats["round_robin_original_min_batches"] = schedule_stats["original_min_batches"]
+    stats["round_robin_target_batches_per_objective"] = schedule_stats["target_batches_per_objective"]
+    stats["round_robin_protected_min_batches"] = schedule_stats["protected_min_batches"]
+    stats["round_robin_padded_examples"] = schedule_stats["padded_examples"]
+    stats["round_robin_noop_padded_examples"] = schedule_stats["noop_padded_examples"]
+    stats["fit_steps_per_epoch"] = fit_steps_per_epoch
+    stats["fit_warmup_steps"] = fit_warmup_steps
+    stats["total_steps"] = total_steps
+    stats["warmup_steps"] = warmup_steps
+    write_train_stats(stats)
     print(f"Starting supervised {LOSS_MODE} training...")
 
     started = time.time()
     if device == "cpu":
-        fit_with_explicit_cpu(
+        fit_with_explicit_trainer(
             model=model,
             train_objectives=train_objectives,
             epochs=EPOCHS,
             batch_size=BATCH_SIZE,
             warmup_steps=warmup_steps,
             learning_rate=LEARNING_RATE,
+            device=device,
+            protected_min_batches=protected_min_batches,
         )
     else:
-        model.fit(
+        fit_with_sentence_transformer_fit(
+            model=model,
             train_objectives=train_objectives,
             epochs=EPOCHS,
-            warmup_steps=warmup_steps,
-            optimizer_params={"lr": LEARNING_RATE},
-            show_progress_bar=True,
+            batch_size=BATCH_SIZE,
+            warmup_steps=fit_warmup_steps,
+            learning_rate=LEARNING_RATE,
+            protected_min_batches=protected_min_batches,
         )
     elapsed = time.time() - started
     model.save(OUTPUT_MODEL)
@@ -996,6 +1609,13 @@ def main() -> None:
         "warmup_steps": warmup_steps,
         "objective_count": len(train_objectives),
         "round_robin_steps_per_epoch": steps_per_epoch,
+        "round_robin_original_min_batches": schedule_stats["original_min_batches"],
+        "round_robin_target_batches_per_objective": schedule_stats["target_batches_per_objective"],
+        "round_robin_protected_min_batches": schedule_stats["protected_min_batches"],
+        "round_robin_padded_examples": schedule_stats["padded_examples"],
+        "round_robin_noop_padded_examples": schedule_stats["noop_padded_examples"],
+        "fit_steps_per_epoch": fit_steps_per_epoch,
+        "fit_warmup_steps": fit_warmup_steps,
         "total_steps": total_steps,
         "scale": SCALE,
         "loss_mode": LOSS_MODE,
@@ -1011,6 +1631,28 @@ def main() -> None:
         "bucket_band_tags": sorted(BUCKET_BAND_TAGS),
         "bucket_band_weight": BUCKET_BAND_WEIGHT,
         "bucket_band_center_weight": BUCKET_BAND_CENTER_WEIGHT,
+        "bucket_band_hard_negative_repeat": BUCKET_BAND_HARD_NEG_REPEAT,
+        "bucket_band_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "bucket_band_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "bucket_band_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "bucket_band_base_guard_examples": stats["bucket_band_base_guard_examples"],
+        "bucket_band_base_guard_protected_examples": stats[
+            "bucket_band_base_guard_protected_examples"
+        ],
+        "cosine_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "cosine_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "cosine_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosine_base_guard_examples": stats["cosine_base_guard_examples"],
+        "cosine_base_guard_protected_examples": stats[
+            "cosine_base_guard_protected_examples"
+        ],
+        "bucket_band_hard_negative_rows": stats["bucket_band_hard_negative_rows"],
+        "bucket_band_hard_negative_examples_before_repeat": stats[
+            "bucket_band_hard_negative_examples_before_repeat"
+        ],
+        "bucket_band_hard_negative_examples_after_repeat": stats[
+            "bucket_band_hard_negative_examples_after_repeat"
+        ],
         "bucket_band_examples_after_repeat": len(bucket_band_examples),
         "contrastive_margin": CONTRASTIVE_MARGIN,
         "contrastive_scope": CONTRASTIVE_SCOPE,
@@ -1021,10 +1663,14 @@ def main() -> None:
         "pin_weight_threshold": PIN_WEIGHT_THRESHOLD,
         "min_angle_repeat_for_high_value": MIN_ANGLE_REPEAT_FOR_HIGH_VALUE,
         "required_antonym_min_angle_repeat": REQUIRED_ANTONYM_MIN_ANGLE_REPEAT,
+        "priority_antonym_min_angle_repeat": PRIORITY_ANTONYM_MIN_ANGLE_REPEAT,
+        "proxy_antonym_min_angle_repeat": PROXY_ANTONYM_MIN_ANGLE_REPEAT,
         "min_train_examples": MIN_TRAIN_EXAMPLES,
         "seed": SEED,
         "sample_seed": SAMPLE_SEED,
         "device": device,
+        "trainer_backend": trainer_backend,
+        "trainer_seed": trainer_seed,
         "elapsed_seconds": round(elapsed, 1),
         **stats,
     }

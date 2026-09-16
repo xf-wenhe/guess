@@ -39,7 +39,7 @@ def main():
     print("玄衡恢复高质量hints！")
     print("="*60)
     
-    puzzles_file = "/Volumes/新/work/flutter/guess/assets/puzzles.json"
+    puzzles_file = "/Volumes/new_disk/work/flutter/guess/assets/puzzles.json"
     with open(puzzles_file, "r", encoding="utf-8") as f:
         puzzles = json.load(f)
     

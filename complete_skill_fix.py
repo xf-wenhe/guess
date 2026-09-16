@@ -18,8 +18,8 @@ def main():
     # --------------------------
     print("\n[1/7] 第一步：备份当前文件")
     print("-"*80)
-    src = "/Volumes/新/work/flutter/guess/assets/puzzles.json"
-    backup_dir = "/Volumes/新/work/flutter/guess/tmp"
+    src = "/Volumes/new_disk/work/flutter/guess/assets/puzzles.json"
+    backup_dir = "/Volumes/new_disk/work/flutter/guess/tmp"
     os.makedirs(backup_dir, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     backup = os.path.join(backup_dir, f"puzzles_{timestamp}.json")
@@ -136,7 +136,7 @@ def main():
             ["python3", "scripts/validate_global_hint_rules_v1.py"],
             capture_output=True,
             text=True,
-            cwd="/Volumes/新/work/flutter/guess"
+            cwd="/Volumes/new_disk/work/flutter/guess"
         )
         print("✅ 自动验证脚本运行完成")
         if "hard_fail" in result.stdout:

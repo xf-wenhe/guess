@@ -202,20 +202,49 @@ if [[ ",${SUP_COSINE_EXCLUDE_TAGS}," == *,antonym_mid,* ]]; then
   exit 2
 fi
 SUP_MIDPOINT_REPEAT_BOOST="${NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST:-2.0}"
-SUP_MIDPOINT_BAND_LOW="${NIGHTLY_SUP_MIDPOINT_BAND_LOW:-0.45}"
-SUP_MIDPOINT_BAND_HIGH="${NIGHTLY_SUP_MIDPOINT_BAND_HIGH:-0.55}"
+CANONICAL_SUP_MIDPOINT_BAND_LOW="0.45"
+CANONICAL_SUP_MIDPOINT_BAND_HIGH="0.55"
+LEGACY_SUP_MIDPOINT_BAND_LOW="0.47"
+LEGACY_SUP_MIDPOINT_BAND_HIGH="0.53"
+SUP_MIDPOINT_BAND_LOW="${NIGHTLY_SUP_MIDPOINT_BAND_LOW:-$CANONICAL_SUP_MIDPOINT_BAND_LOW}"
+SUP_MIDPOINT_BAND_HIGH="${NIGHTLY_SUP_MIDPOINT_BAND_HIGH:-$CANONICAL_SUP_MIDPOINT_BAND_HIGH}"
+if [[ "$SUP_MIDPOINT_BAND_LOW" == "$LEGACY_SUP_MIDPOINT_BAND_LOW" || \
+      "$SUP_MIDPOINT_BAND_HIGH" == "$LEGACY_SUP_MIDPOINT_BAND_HIGH" ]]; then
+  echo "[nightly] replacing stale midpoint band from the loaded launchd environment"
+  SUP_MIDPOINT_BAND_LOW="$CANONICAL_SUP_MIDPOINT_BAND_LOW"
+  SUP_MIDPOINT_BAND_HIGH="$CANONICAL_SUP_MIDPOINT_BAND_HIGH"
+fi
 SUP_MIDPOINT_BAND_WEIGHT="${NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT:-4.0}"
 SUP_MIDPOINT_CENTER_WEIGHT="${NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT:-1.0}"
 SUP_MIDPOINT_OBJECTIVE_REPEATS="${NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS:-2}"
 SUP_BUCKET_BAND_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_WEIGHT:-1.0}"
 SUP_BUCKET_BAND_CENTER_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT:-1.0}"
+SUP_BUCKET_BAND_BASE_GUARD="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD:-1}"
+SUP_BUCKET_BAND_BASE_GUARD_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_WEIGHT:-1.0}"
+SUP_BUCKET_BAND_BASE_GUARD_MARGIN="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_MARGIN:-0.02}"
+CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT="2"
+LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT="1"
+SUP_BUCKET_BAND_HARD_NEG_REPEAT="${NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT:-$CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT}"
+if [[ "$SUP_BUCKET_BAND_HARD_NEG_REPEAT" == "$LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT" ]]; then
+  echo "[nightly] replacing stale hard-negative bucket repeat from the loaded launchd environment"
+  SUP_BUCKET_BAND_HARD_NEG_REPEAT="$CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT"
+fi
 SUP_BUCKET_BAND_TAGS="${NIGHTLY_SUP_BUCKET_BAND_TAGS:-collocation_not_equivalent,function_word_low,function_word_vs_real_low,hard_negative_low,hard_negative_mid,cross_category_low,cross_category_negative,same_category_but_far,same_category_weak,same_category_mid,same_category_strong,abstract_confusion,nonsense_low}"
 CALIB_SUPPORT_POSITIVE_TARGET_LOW="${NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW:-60}"
+CALIB_MIDPOINT_AUGMENT_RADIUS="${NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS:-3.5}"
+CALIB_MIDPOINT_AUGMENT_STEPS="${NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS:-2}"
+CALIB_MIDPOINT_AUGMENT_WEIGHT="${NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT:-0.5}"
 SUP_CONTRASTIVE_MARGIN="${NIGHTLY_SUP_CONTRASTIVE_MARGIN:-0.5}"
 SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
 SUP_CONTRASTIVE_NEG_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD:-0.3}"
-SUP_MIN_TAG_BUCKET_ROWS="${NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS:-same_category_mid@40-59:20,same_category_mid@60-79:12}"
+CANONICAL_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12"
+LEGACY_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18"
+SUP_MIN_TAG_BUCKET_ROWS="${NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS:-$CANONICAL_SUP_MIN_TAG_BUCKET_ROWS}"
+if [[ "$SUP_MIN_TAG_BUCKET_ROWS" == "$LEGACY_SUP_MIN_TAG_BUCKET_ROWS" ]]; then
+  echo "[nightly] replacing stale supervised bucket quotas from the loaded launchd environment"
+  SUP_MIN_TAG_BUCKET_ROWS="$CANONICAL_SUP_MIN_TAG_BUCKET_ROWS"
+fi
 SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS="${NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS:-}"
 MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
 MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
@@ -275,7 +304,7 @@ echo "[nightly][paths] GOLD_EVAL_CSV=$GOLD_EVAL_CSV"
 echo "[nightly][paths] BASE_TRAIN_CSV=$BASE_TRAIN_CSV"
 echo "[nightly][paths] NIGHTLY_TRAIN_CSV=$NIGHTLY_TRAIN_CSV"
 echo "[nightly][config] TRAIN_DEVICE=$TRAIN_DEVICE train_profile=$TRAIN_PROFILE supervised=$ENABLE_SUPERVISED_FINETUNE unsup_pretrain=$ENABLE_UNSUP_PRETRAIN anchor=$ENABLE_ANCHOR_FINETUNE"
-echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_min_tag_bucket_rows=$SUP_MIN_TAG_BUCKET_ROWS sup_min_angle_repeat_tag_buckets=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_cosine_exclude_tags=$SUP_COSINE_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_midpoint_band_low=$SUP_MIDPOINT_BAND_LOW sup_midpoint_band_high=$SUP_MIDPOINT_BAND_HIGH sup_midpoint_band_weight=$SUP_MIDPOINT_BAND_WEIGHT sup_midpoint_center_weight=$SUP_MIDPOINT_CENTER_WEIGHT sup_midpoint_objective_repeats=$SUP_MIDPOINT_OBJECTIVE_REPEATS calib_support_positive_target_low=$CALIB_SUPPORT_POSITIVE_TARGET_LOW sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
+echo "[nightly][config] TOTAL_RUNS=$TOTAL_RUNS sup_rows=$SUP_MAX_TRAIN_ROWS sup_epochs=$SUP_EPOCHS sup_batch=$SUP_BATCH_SIZE sup_lr=$SUP_LEARNING_RATE sup_max_repeat=$SUP_MAX_REPEAT sup_angle_mode=$SUP_ANGLE_MODE sup_loss_mode=$SUP_LOSS_MODE sup_min_tag_rows=$SUP_MIN_TAG_ROWS sup_min_tag_bucket_rows=$SUP_MIN_TAG_BUCKET_ROWS sup_min_angle_repeat_tag_buckets=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS sup_cosent_exclude_tags=$SUP_COSENT_EXCLUDE_TAGS sup_cosine_exclude_tags=$SUP_COSINE_EXCLUDE_TAGS sup_midpoint_tags=$SUP_MIDPOINT_TAGS sup_midpoint_repeat_boost=$SUP_MIDPOINT_REPEAT_BOOST sup_midpoint_band_low=$SUP_MIDPOINT_BAND_LOW sup_midpoint_band_high=$SUP_MIDPOINT_BAND_HIGH sup_midpoint_band_weight=$SUP_MIDPOINT_BAND_WEIGHT sup_midpoint_center_weight=$SUP_MIDPOINT_CENTER_WEIGHT sup_midpoint_objective_repeats=$SUP_MIDPOINT_OBJECTIVE_REPEATS sup_bucket_band_weight=$SUP_BUCKET_BAND_WEIGHT sup_bucket_band_center_weight=$SUP_BUCKET_BAND_CENTER_WEIGHT sup_bucket_band_base_guard=$SUP_BUCKET_BAND_BASE_GUARD sup_bucket_band_base_guard_weight=$SUP_BUCKET_BAND_BASE_GUARD_WEIGHT sup_bucket_band_base_guard_margin=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN sup_bucket_band_hard_negative_repeat=$SUP_BUCKET_BAND_HARD_NEG_REPEAT calib_support_positive_target_low=$CALIB_SUPPORT_POSITIVE_TARGET_LOW calib_midpoint_augment_radius=$CALIB_MIDPOINT_AUGMENT_RADIUS calib_midpoint_augment_steps=$CALIB_MIDPOINT_AUGMENT_STEPS calib_midpoint_augment_weight=$CALIB_MIDPOINT_AUGMENT_WEIGHT sup_contrastive_scope=$SUP_CONTRASTIVE_SCOPE"
 echo "[nightly][paths] PUZZLES_JSON=$PUZZLES_JSON"
 echo "[nightly][paths] MANUAL_OVERRIDES_JSON=$MANUAL_OVERRIDES_JSON"
 echo "[nightly][paths] SCORED_CSV=$SCORED_CSV"
@@ -461,6 +490,9 @@ run_single_round() {
 
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
       SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
+      SEM_CALIB_MIDPOINT_AUGMENT_RADIUS=$CALIB_MIDPOINT_AUGMENT_RADIUS \
+      SEM_CALIB_MIDPOINT_AUGMENT_STEPS=$CALIB_MIDPOINT_AUGMENT_STEPS \
+      SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT=$CALIB_MIDPOINT_AUGMENT_WEIGHT \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -498,6 +530,10 @@ run_single_round() {
       SEM_MIDPOINT_OBJECTIVE_REPEATS=$SUP_MIDPOINT_OBJECTIVE_REPEATS \
       SEM_BUCKET_BAND_WEIGHT=$SUP_BUCKET_BAND_WEIGHT \
       SEM_BUCKET_BAND_CENTER_WEIGHT=$SUP_BUCKET_BAND_CENTER_WEIGHT \
+      SEM_BUCKET_BAND_BASE_GUARD=$SUP_BUCKET_BAND_BASE_GUARD \
+      SEM_BUCKET_BAND_BASE_GUARD_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_WEIGHT \
+      SEM_BUCKET_BAND_BASE_GUARD_MARGIN=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN \
+      SEM_BUCKET_BAND_HARD_NEG_REPEAT=$SUP_BUCKET_BAND_HARD_NEG_REPEAT \
       SEM_BUCKET_BAND_TAGS=$SUP_BUCKET_BAND_TAGS \
       SEM_TRAIN_STATS_JSON=$train_stats_json \
       SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
@@ -540,6 +576,10 @@ run_single_round() {
           SEM_MIDPOINT_OBJECTIVE_REPEATS=$SUP_MIDPOINT_OBJECTIVE_REPEATS \
           SEM_BUCKET_BAND_WEIGHT=$SUP_BUCKET_BAND_WEIGHT \
           SEM_BUCKET_BAND_CENTER_WEIGHT=$SUP_BUCKET_BAND_CENTER_WEIGHT \
+          SEM_BUCKET_BAND_BASE_GUARD=$SUP_BUCKET_BAND_BASE_GUARD \
+          SEM_BUCKET_BAND_BASE_GUARD_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_WEIGHT \
+          SEM_BUCKET_BAND_BASE_GUARD_MARGIN=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN \
+          SEM_BUCKET_BAND_HARD_NEG_REPEAT=$SUP_BUCKET_BAND_HARD_NEG_REPEAT \
           SEM_BUCKET_BAND_TAGS=$SUP_BUCKET_BAND_TAGS \
           SEM_TRAIN_STATS_JSON=$train_stats_json \
           SEM_CONTRASTIVE_MARGIN=$SUP_CONTRASTIVE_MARGIN \
@@ -562,6 +602,9 @@ run_single_round() {
 
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
       SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
+      SEM_CALIB_MIDPOINT_AUGMENT_RADIUS=$CALIB_MIDPOINT_AUGMENT_RADIUS \
+      SEM_CALIB_MIDPOINT_AUGMENT_STEPS=$CALIB_MIDPOINT_AUGMENT_STEPS \
+      SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT=$CALIB_MIDPOINT_AUGMENT_WEIGHT \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -584,6 +627,9 @@ run_single_round() {
     candidate_stage="anchor"
     run_cmd "$(device_prefix)SEM_MODEL_PATH=$candidate_model \
       SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW=$CALIB_SUPPORT_POSITIVE_TARGET_LOW \
+      SEM_CALIB_MIDPOINT_AUGMENT_RADIUS=$CALIB_MIDPOINT_AUGMENT_RADIUS \
+      SEM_CALIB_MIDPOINT_AUGMENT_STEPS=$CALIB_MIDPOINT_AUGMENT_STEPS \
+      SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT=$CALIB_MIDPOINT_AUGMENT_WEIGHT \
       SEM_CALIB_CSV=$GOLD_CALIB_CSV \
       SEM_EVAL_CSV=$GOLD_EVAL_CSV \
       SEM_CALIB_JSON=$round_output_calib \
@@ -637,6 +683,9 @@ PY
   env $(device_prefix) \
   SEM_MODEL_PATH="$round_base_model" \
   SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW="$CALIB_SUPPORT_POSITIVE_TARGET_LOW" \
+  SEM_CALIB_MIDPOINT_AUGMENT_RADIUS="$CALIB_MIDPOINT_AUGMENT_RADIUS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_STEPS="$CALIB_MIDPOINT_AUGMENT_STEPS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT="$CALIB_MIDPOINT_AUGMENT_WEIGHT" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$round_base_calib" \
@@ -646,6 +695,9 @@ PY
   env $(device_prefix) \
   SEM_MODEL_PATH="$candidate_model" \
   SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW="$CALIB_SUPPORT_POSITIVE_TARGET_LOW" \
+  SEM_CALIB_MIDPOINT_AUGMENT_RADIUS="$CALIB_MIDPOINT_AUGMENT_RADIUS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_STEPS="$CALIB_MIDPOINT_AUGMENT_STEPS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT="$CALIB_MIDPOINT_AUGMENT_WEIGHT" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$round_output_calib" \
@@ -766,13 +818,17 @@ PY
   base_acc_val="$(echo "$python_gate_output" | awk -F= '/^base_cal_bucket_acc=/{print $2}')"
   cand_mae_val="$(echo "$python_gate_output" | awk -F= '/^cand_cal_mae=/{print $2}')"
   cand_acc_val="$(echo "$python_gate_output" | awk -F= '/^cand_cal_bucket_acc=/{print $2}')"
+  base_raw_mae_val="$(echo "$python_gate_output" | awk -F= '/^base_raw_mae=/{print $2}')"
+  base_raw_acc_val="$(echo "$python_gate_output" | awk -F= '/^base_raw_bucket_acc=/{print $2}')"
+  cand_raw_mae_val="$(echo "$python_gate_output" | awk -F= '/^cand_raw_mae=/{print $2}')"
+  cand_raw_acc_val="$(echo "$python_gate_output" | awk -F= '/^cand_raw_bucket_acc=/{print $2}')"
   reg_ok_val="$(echo "$python_gate_output" | awk -F= '/^regression_ok=/{print $2}')"
 
   printf "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n" \
     "$round" "$candidate_stage" "$base_mae_val" "$cand_mae_val" "$base_acc_val" "$cand_acc_val" "$reg_ok_val" "$accepted" "deferred" >> "$SUMMARY_FILE"
 
   # Record for best-round selection
-  ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|${cand_mae_val}|${cand_acc_val}|${cand_mae_val}|${cand_acc_val}|${accepted}")
+  ROUND_RESULTS+=("${round}|${candidate_stage}|${candidate_model}|${round_output_calib}|${cand_mae_val}|${cand_acc_val}|${cand_raw_mae_val}|${cand_raw_acc_val}|${accepted}")
   ROUND_DIAGNOSTICS+=("${round}|${candidate_stage}|${base_metrics_json}|${nightly_metrics_json}|${regression_out}")
 
   # Clean up round base model (candidate kept for now)
@@ -844,6 +900,22 @@ for group in groups:
             f"mid@40-60 {b.get('mid_score_recall_40_60', '-')} -> {c.get('mid_score_recall_40_60', '-')}; "
             f"strict@45-55 {b.get('mid_score_recall_45_55', '-')} -> {c.get('mid_score_recall_45_55', '-')}"
         )
+        # Calibration metadata lives at the candidate metrics root, not in
+        # the per-group metrics payload.
+        interval_low = cand.get('midpoint_calibration_interval_low')
+        interval_high = cand.get('midpoint_calibration_interval_high')
+        if interval_low is not None and interval_high is not None:
+            extra += (
+                f"; calibrated_interval {interval_low}-{interval_high} "
+                f"target {cand.get('midpoint_calibration_target_low', '-')}"
+                f"-{cand.get('midpoint_calibration_target_high', '-')}"
+            )
+        profile = cand.get('midpoint_calibration_profile')
+        if profile:
+            extra += (
+                f"; profile {profile} rows {cand.get('midpoint_calibration_rows', '-')} "
+                f"augmented {cand.get('midpoint_calibration_augmented_rows', '-')}"
+            )
     lines.append(
         f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
         f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
@@ -934,6 +1006,8 @@ for key in ("train_rows", "gold_pool", "train_gold", "train_patch", "calib", "ev
     lines.append(f"| {key} | {stats.get(key, '-')} |")
 for key in (
     "antonym_calib_anchor_rows",
+    "required_proxy_antonym_train_rows",
+    "required_proxy_antonym_calib_rows",
     "priority_antonym_calib_anchor_rows",
     "priority_antonym_calib_weight_rows",
     "antonym_calib_anchor_weight",
@@ -1003,6 +1077,24 @@ lines = [
 for key in (
     "source_rows",
     "sample_seed",
+    "device",
+    "trainer_backend",
+    "trainer_seed",
+    "seed",
+    "epochs",
+    "batch_size",
+    "learning_rate",
+    "objective_count",
+    "round_robin_steps_per_epoch",
+    "round_robin_original_min_batches",
+    "round_robin_target_batches_per_objective",
+    "round_robin_protected_min_batches",
+    "round_robin_padded_examples",
+    "round_robin_noop_padded_examples",
+    "fit_steps_per_epoch",
+    "fit_warmup_steps",
+    "total_steps",
+    "warmup_steps",
     "train_examples_after_repeat",
     "cosent_examples_after_repeat",
     "cosent_exclude_tags",
@@ -1014,16 +1106,37 @@ for key in (
     "cosine_excluded_examples_after_repeat",
     "midpoint_tags",
     "midpoint_repeat_boost",
+    "midpoint_band_low",
+    "midpoint_band_high",
+    "midpoint_band_weight",
+    "midpoint_center_weight",
     "midpoint_examples_after_repeat",
     "bucket_band_tags",
     "bucket_band_weight",
     "bucket_band_center_weight",
+    "bucket_band_base_guard_enabled",
+    "bucket_band_base_guard_weight",
+    "bucket_band_base_guard_margin",
+    "bucket_band_base_guard_examples",
+    "bucket_band_base_guard_protected_examples",
+    "cosine_base_guard_enabled",
+    "cosine_base_guard_weight",
+    "cosine_base_guard_margin",
+    "cosine_base_guard_examples",
+    "cosine_base_guard_protected_examples",
+    "bucket_band_hard_negative_repeat",
     "bucket_band_rows",
+    "bucket_band_hard_negative_rows",
+    "bucket_band_hard_negative_examples_before_repeat",
+    "bucket_band_hard_negative_examples_after_repeat",
     "bucket_band_examples_after_repeat",
     "contrastive_examples_after_repeat",
     "hard_negative_rows",
     "antonym_mid_rows",
     "antonym_mid_examples_after_repeat",
+    "proxy_antonym_min_angle_repeat",
+    "proxy_antonym_rows",
+    "proxy_antonym_examples_after_repeat",
     "min_tag_rows",
     "min_tag_bucket_rows",
     "min_angle_repeat_tag_buckets",
@@ -1136,8 +1249,18 @@ done
   echo "| sup_midpoint_objective_repeats | $SUP_MIDPOINT_OBJECTIVE_REPEATS |"
   echo "| sup_bucket_band_weight | $SUP_BUCKET_BAND_WEIGHT |"
   echo "| sup_bucket_band_center_weight | $SUP_BUCKET_BAND_CENTER_WEIGHT |"
+  echo "| sup_bucket_band_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
+  echo "| sup_bucket_band_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
+  echo "| sup_bucket_band_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_cosine_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
+  echo "| sup_cosine_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
+  echo "| sup_cosine_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_bucket_band_hard_negative_repeat | $SUP_BUCKET_BAND_HARD_NEG_REPEAT |"
   echo "| sup_bucket_band_tags | $SUP_BUCKET_BAND_TAGS |"
   echo "| calib_support_positive_target_low | $CALIB_SUPPORT_POSITIVE_TARGET_LOW |"
+  echo "| calib_midpoint_augment_radius | $CALIB_MIDPOINT_AUGMENT_RADIUS |"
+  echo "| calib_midpoint_augment_steps | $CALIB_MIDPOINT_AUGMENT_STEPS |"
+  echo "| calib_midpoint_augment_weight | $CALIB_MIDPOINT_AUGMENT_WEIGHT |"
   echo "| data_split_seed | $DATA_SPLIT_SEED |"
   echo "| train_sample_seed | $DATA_SPLIT_SEED |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"
@@ -1226,6 +1349,9 @@ else
   env $(device_prefix) \
   SEM_MODEL_PATH="$PROJECT_MODEL_DIR" \
   SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW="$CALIB_SUPPORT_POSITIVE_TARGET_LOW" \
+  SEM_CALIB_MIDPOINT_AUGMENT_RADIUS="$CALIB_MIDPOINT_AUGMENT_RADIUS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_STEPS="$CALIB_MIDPOINT_AUGMENT_STEPS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT="$CALIB_MIDPOINT_AUGMENT_WEIGHT" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$PROJECT_EVAL_CALIB" \
@@ -1235,6 +1361,9 @@ else
   env $(device_prefix) \
   SEM_MODEL_PATH="$BEST_MODEL" \
   SEM_CALIB_SUPPORT_POSITIVE_TARGET_LOW="$CALIB_SUPPORT_POSITIVE_TARGET_LOW" \
+  SEM_CALIB_MIDPOINT_AUGMENT_RADIUS="$CALIB_MIDPOINT_AUGMENT_RADIUS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_STEPS="$CALIB_MIDPOINT_AUGMENT_STEPS" \
+  SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT="$CALIB_MIDPOINT_AUGMENT_WEIGHT" \
   SEM_CALIB_CSV="$GOLD_CALIB_CSV" \
   SEM_EVAL_CSV="$GOLD_EVAL_CSV" \
   SEM_CALIB_JSON="$BEST_CALIB" \

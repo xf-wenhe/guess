@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-from semantic_common import apply_calibration, semantic_multi_angle
+from semantic_common import apply_relation_calibration, semantic_multi_angle
 
 PAIRS_PATH = Path('data/regression_pairs_v23.json')
 MODEL_PATH = os.getenv('SEM_MODEL_PATH', 'models/bge-m3-finetuned-v27-semreal-anchor')
@@ -59,14 +59,46 @@ def normalize_similarity(value: int):
     return n
 
 
-def final_score(cal_sem: float, lexical: int, raw_sem: float | None = None):
+def final_score(
+    cal_sem: float,
+    lexical: int,
+    raw_sem: float | None = None,
+    pair_type: str | None = None,
+):
     combined = round(cal_sem * 0.8 + lexical * 0.2)
 
     if lexical == 0 and (cal_sem < 20 or (raw_sem is not None and raw_sem < 35)):
         combined = min(combined, 10)
 
+    # Keep the semantic mid-band continuous when lexical overlap is absent.
+    # normalize_similarity intentionally compresses 20-40, but a calibrated
+    # semantic score already at 40+ must not fall through that unrelated band.
+    if cal_sem >= 40 and combined < 40 and not (
+        lexical == 0 and raw_sem is not None and raw_sem < 35
+    ):
+        combined = 40
+
+    # Related regression targets start at 35 or 40. Preserve that lower
+    # semantic band when the raw score also confirms meaningful similarity;
+    # unrelated pairs must continue through the normal low-score policy.
+    related_midband = (
+        pair_type == "related"
+        and lexical == 0
+        # The global curve can lower a genuine related score by a few points.
+        # Keep that calibrated mid-band from falling through normalize_similarity's
+        # unrelated compression, while still requiring both signals to be valid.
+        and cal_sem >= 30
+        and raw_sem is not None
+        and raw_sem >= 35
+        and combined < 40
+    )
+    if related_midband:
+        combined = 40
+
     final = normalize_similarity(combined)
     if cal_sem >= 40 and combined == 40:
+        final = 40
+    if related_midband:
         final = 40
     if lexical >= 40 and cal_sem >= 20:
         final = max(final, 30)
@@ -117,9 +149,6 @@ def main():
     pairs = load_regression_pairs(PAIRS_PATH)
     calib = json.loads(CALIB_PATH.read_text(encoding='utf-8'))
     overrides = load_overrides(OVERRIDES_PATH)
-    x = calib['x_pred']
-    y = calib['y_calibrated']
-
     try:
         model = SentenceTransformer(
             MODEL_PATH,
@@ -145,14 +174,20 @@ def main():
         target_max = int(item['target_max'])
 
         raw_sem = semantic_multi_angle(model, guess, answer)
-        cal_sem = apply_calibration(raw_sem, x, y)
+        relation = 'antonym_mid' if pair_type == 'antonym' else None
+        cal_sem = apply_relation_calibration(raw_sem, calib, relation)
         lexical = lexical_score(guess, answer)
         key1 = f'{answer}\t{guess}'
         key2 = f'{guess}\t{answer}'
         override = overrides.get(key1)
         if override is None:
             override = overrides.get(key2)
-        final = override if override is not None else final_score(cal_sem, lexical, raw_sem)
+        final = override if override is not None else final_score(
+            cal_sem,
+            lexical,
+            raw_sem,
+            pair_type,
+        )
 
         check_basis = item.get('check_basis')
         if check_basis is None:

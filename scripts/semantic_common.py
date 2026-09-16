@@ -60,6 +60,49 @@ def apply_calibration(pred: float, x: list[float], y: list[float]) -> float:
     return pred
 
 
+def apply_relation_calibration(
+    pred: float,
+    calibration: dict[str, object],
+    relation: str | None = None,
+) -> float:
+    """Apply an optional relation-specific calibration profile.
+
+    The default curve remains global. A profile may provide its own curve and
+    an output band, which is applied only when the caller identifies that
+    relation; this prevents a midpoint antonym rule from remapping unrelated
+    same-category or hard-negative rows at the same raw score.
+    """
+    active = calibration
+    if relation:
+        profiles = calibration.get("relation_calibrations")
+        if isinstance(profiles, dict):
+            profile = profiles.get(relation)
+            if isinstance(profile, dict):
+                active = profile
+
+    x = active.get("x_pred")
+    y = active.get("y_calibrated")
+    if not isinstance(x, list) or not isinstance(y, list):
+        raise ValueError("calibration profile must contain x_pred and y_calibrated lists")
+    value = apply_calibration(
+        float(pred),
+        [float(item) for item in x],
+        [float(item) for item in y],
+    )
+
+    target_low = active.get("target_low")
+    target_high = active.get("target_high")
+    if target_low is None and target_high is None:
+        return value
+    if target_low is None or target_high is None:
+        raise ValueError("calibration profile target_low and target_high must be paired")
+    target_low = float(target_low)
+    target_high = float(target_high)
+    if not np.isfinite(target_low) or not np.isfinite(target_high) or target_low > target_high:
+        raise ValueError("calibration profile target band is invalid")
+    return max(target_low, min(target_high, value))
+
+
 def load_calibration(path: Path) -> tuple[list[float], list[float]]:
     payload = json.loads(path.read_text(encoding="utf-8"))
     return [float(v) for v in payload["x_pred"]], [float(v) for v in payload["y_calibrated"]]
@@ -76,6 +119,77 @@ def build_calibration(
     if method != "isotonic":
         raise ValueError(f"unsupported SEM_CALIBRATION_METHOD={method!r}")
     return build_isotonic_calibration(pred, target, weights)
+
+
+def constrain_calibration_interval(
+    calibration: dict[str, object],
+    lower: float,
+    upper: float,
+    target_low: float,
+    target_high: float,
+) -> dict[str, object]:
+    """Keep a raw-score interval inside a relation-specific target band.
+
+    Midpoint calibration rows are sparse, so weighted isotonic regression can
+    still rise above the target band between two knots. Insert the observed
+    midpoint neighborhood boundaries and clip only that interval. The
+    cumulative maximum preserves the monotonic contract required by the
+    interpolating calibrator; it does not inspect holdout rows.
+    """
+    x = [float(value) for value in calibration.get("x_pred", [])]
+    y = [float(value) for value in calibration.get("y_calibrated", [])]
+    if not x or len(x) != len(y):
+        raise ValueError("calibration must contain equally sized non-empty x_pred/y_calibrated")
+    if any(not np.isfinite(value) for value in (*x, *y)):
+        raise ValueError("calibration curve must contain only finite values")
+
+    lower = float(lower)
+    upper = float(upper)
+    target_low = float(target_low)
+    target_high = float(target_high)
+    if not all(np.isfinite(value) for value in (lower, upper, target_low, target_high)):
+        raise ValueError("calibration interval bounds must be finite")
+    if lower > upper:
+        raise ValueError("calibration interval lower bound must not exceed upper bound")
+    if target_low > target_high:
+        raise ValueError("calibration target lower bound must not exceed upper bound")
+
+    # Predictions are defined on the semantic 0-100 domain. Clamping the
+    # inserted knots prevents an extrapolation-only boundary from changing
+    # scores outside that domain.
+    lower = max(0.0, min(100.0, lower))
+    upper = max(0.0, min(100.0, upper))
+    target_low = max(0.0, min(100.0, target_low))
+    target_high = max(0.0, min(100.0, target_high))
+
+    if any(left > right for left, right in zip(x, x[1:])):
+        raise ValueError("calibration x_pred must be sorted")
+
+    knots = sorted(set((*x, lower, upper)))
+    raw_values = [apply_calibration(value, x, y) for value in knots]
+    bounded_values: list[float] = []
+    for knot, value in zip(knots, raw_values):
+        if knot < lower:
+            bounded_values.append(min(value, target_high))
+        elif knot <= upper:
+            bounded_values.append(max(target_low, min(target_high, value)))
+        else:
+            bounded_values.append(max(value, target_low))
+
+    # The input is normally isotonic already. This final projection also
+    # keeps the helper safe for legacy quantile-mean curves with ties or small
+    # local inversions, while the interval values remain within the band.
+    monotonic_values: list[float] = []
+    for value in bounded_values:
+        value = max(0.0, min(100.0, float(value)))
+        if monotonic_values:
+            value = max(value, monotonic_values[-1])
+        monotonic_values.append(value)
+
+    result = dict(calibration)
+    result["x_pred"] = knots
+    result["y_calibrated"] = monotonic_values
+    return result
 
 
 def augment_masked_calibration_samples(

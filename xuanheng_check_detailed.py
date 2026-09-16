@@ -8,7 +8,7 @@ import json
 import os
 
 # ==================== 路径 ====================
-PROJECT_ROOT = "/Volumes/新/work/flutter/guess"
+PROJECT_ROOT = "/Volumes/new_disk/work/flutter/guess"
 PUZZLES_PATH = os.path.join(PROJECT_ROOT, "assets/puzzles.json")
 SKILL_PATH = os.path.join(PROJECT_ROOT, ".github/skills/puzzle-management/SKILL.md")
 

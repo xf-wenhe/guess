@@ -124,9 +124,9 @@ cat > "$PLIST_PATH" <<PLIST
     <string>antonym_mid</string>
     <key>NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST</key>
     <string>2.0</string>
-    <key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key>
+  <key>NIGHTLY_SUP_MIDPOINT_BAND_LOW</key>
     <string>0.45</string>
-    <key>NIGHTLY_SUP_MIDPOINT_BAND_HIGH</key>
+  <key>NIGHTLY_SUP_MIDPOINT_BAND_HIGH</key>
     <string>0.55</string>
     <key>NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT</key>
     <string>4.0</string>
@@ -136,8 +136,16 @@ cat > "$PLIST_PATH" <<PLIST
     <string>${NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS:-2}</string>
     <key>NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT</key>
     <string>${NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT:-1.0}</string>
+    <key>NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT</key>
+    <string>${NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT:-2}</string>
     <key>NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW</key>
     <string>${NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW:-60}</string>
+    <key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS</key>
+    <string>${NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS:-3.5}</string>
+    <key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS</key>
+    <string>${NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS:-2}</string>
+    <key>NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT</key>
+    <string>${NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT:-0.5}</string>
     <key>NIGHTLY_BASE_SEED</key>
     <string>20260303</string>
     <key>NIGHTLY_TOTAL_RUNS</key>

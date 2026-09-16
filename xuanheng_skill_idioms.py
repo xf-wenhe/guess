@@ -12,7 +12,7 @@ import subprocess
 from datetime import datetime
 
 # ==================== 路径配置 ====================
-PROJECT_ROOT = "/Volumes/新/work/flutter/guess"
+PROJECT_ROOT = "/Volumes/new_disk/work/flutter/guess"
 SKILL_PATH = os.path.join(PROJECT_ROOT, ".github/skills/puzzle-management/SKILL.md")
 PUZZLES_PATH = os.path.join(PROJECT_ROOT, "assets/puzzles.json")
 VALIDATE_SCRIPT = os.path.join(PROJECT_ROOT, "scripts/validate_global_hint_rules_v1.py")

@@ -299,10 +299,24 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "regression_ok",
         "accepted",
     )
-    status: dict[str, bool] = {}
+    observations: dict[str, list[bool]] = {}
     pattern = re.compile(rf"^({'|'.join(names)})=(True|False|true|false)$", re.MULTILINE)
     for match in pattern.finditer(log_text):
-        status[match.group(1)] = match.group(2).lower() == "true"
+        observations.setdefault(match.group(1), []).append(
+            match.group(2).lower() == "true"
+        )
+
+    # A report covers multiple independent rounds; a later True must not hide
+    # an earlier round that failed the same promotion gate.
+    status = {
+        name: all(values)
+        for name, values in observations.items()
+    }
+    failure_counts = {
+        name: sum(not value for value in values)
+        for name, values in observations.items()
+        if any(not value for value in values)
+    }
 
     primary = (
         "mae_ok",
@@ -319,8 +333,16 @@ def parse_gate_status(log_text: str) -> dict[str, object]:
         "antonym_strict_mid_recall_ok",
         "regression_ok",
     )
-    failed = [name for name in primary if status.get(name) is False]
-    return {"gate_status": status, "failed_gates": failed}
+    failed = [
+        name
+        for name in primary
+        if any(not value for value in observations.get(name, []))
+    ]
+    return {
+        "gate_status": status,
+        "failed_gates": failed,
+        "gate_failure_counts": failure_counts,
+    }
 
 
 def parse_group_regressions(groups: list[dict[str, str]]) -> list[dict[str, object]]:
@@ -500,6 +522,12 @@ def print_human(summary: dict[str, object]) -> None:
                 f"cosine_examples={item.get('cosine_examples_after_repeat', '-')} "
                 f"cosine_excluded_examples={item.get('cosine_excluded_examples_after_repeat', '-')} "
                 f"cosine_exclude_tags={item.get('cosine_exclude_tags', '-')} "
+                f"base_bucket_guard={item.get('bucket_band_base_guard_enabled', '-')} "
+                f"guard_margin={item.get('bucket_band_base_guard_margin', '-')} "
+                f"guard_protected={item.get('bucket_band_base_guard_protected_examples', '-')} "
+                f"cosine_base_guard={item.get('cosine_base_guard_enabled', '-')} "
+                f"cosine_guard_margin={item.get('cosine_base_guard_margin', '-')} "
+                f"cosine_guard_protected={item.get('cosine_base_guard_protected_examples', '-')} "
                 f"bucket_band_examples={item.get('bucket_band_examples_after_repeat', '-')} "
                 f"min_tag_rows={item.get('min_tag_rows', '-')} "
                 f"min_tag_bucket_rows={item.get('min_tag_bucket_rows', '-')}"

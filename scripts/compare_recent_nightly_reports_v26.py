@@ -93,6 +93,9 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "sup_min_tag_rows": config.get("sup_min_tag_rows"),
         "sup_min_tag_bucket_rows": config.get("sup_min_tag_bucket_rows"),
         "calib_support_positive_target_low": config.get("calib_support_positive_target_low"),
+        "calib_midpoint_augment_radius": config.get("calib_midpoint_augment_radius"),
+        "calib_midpoint_augment_steps": config.get("calib_midpoint_augment_steps"),
+        "calib_midpoint_augment_weight": config.get("calib_midpoint_augment_weight"),
         "sup_cosent_exclude_tags": config.get("sup_cosent_exclude_tags"),
         "sup_cosine_exclude_tags": config.get("sup_cosine_exclude_tags"),
         "best_round": round_number,
@@ -101,6 +104,7 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "best_cand_acc": best.get("cand_acc"),
         "best_accepted": best.get("accepted"),
         "failed_gates": failed_gates,
+        "gate_failure_counts": summary.get("gate_failure_counts"),
         "antonym_base_mae": antonym.get("base_mae"),
         "antonym_cand_mae": antonym.get("cand_mae"),
         "antonym_base_acc": antonym.get("base_acc"),
@@ -108,6 +112,18 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "antonym_extra": antonym.get("extra"),
         "antonym_mid_rows": sampling.get("antonym_mid_rows"),
         "antonym_mid_examples_after_repeat": sampling.get("antonym_mid_examples_after_repeat"),
+        "required_proxy_antonym_train_rows": sampling.get("required_proxy_antonym_train_rows"),
+        "required_proxy_antonym_calib_rows": sampling.get("required_proxy_antonym_calib_rows"),
+        "proxy_antonym_rows": sampling.get("proxy_antonym_rows"),
+        "proxy_antonym_examples_after_repeat": sampling.get("proxy_antonym_examples_after_repeat"),
+        "proxy_antonym_min_angle_repeat": sampling.get("proxy_antonym_min_angle_repeat"),
+        "round_robin_original_min_batches": sampling.get("round_robin_original_min_batches"),
+        "round_robin_target_batches_per_objective": sampling.get("round_robin_target_batches_per_objective"),
+        "round_robin_protected_min_batches": sampling.get("round_robin_protected_min_batches"),
+        "round_robin_padded_examples": sampling.get("round_robin_padded_examples"),
+        "round_robin_noop_padded_examples": sampling.get("round_robin_noop_padded_examples"),
+        "fit_steps_per_epoch": sampling.get("fit_steps_per_epoch"),
+        "fit_warmup_steps": sampling.get("fit_warmup_steps"),
         "cosent_exclude_tags": sampling.get("cosent_exclude_tags"),
         "cosent_excluded_examples_after_repeat": sampling.get("cosent_excluded_examples_after_repeat"),
         "cosine_examples_after_repeat": sampling.get("cosine_examples_after_repeat"),
@@ -115,6 +131,19 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "cosine_excluded_rows": sampling.get("cosine_excluded_rows"),
         "cosine_excluded_examples_after_repeat": sampling.get("cosine_excluded_examples_after_repeat"),
         "bucket_band_tags": sampling.get("bucket_band_tags"),
+        "bucket_band_base_guard_enabled": sampling.get("bucket_band_base_guard_enabled"),
+        "bucket_band_base_guard_weight": sampling.get("bucket_band_base_guard_weight"),
+        "bucket_band_base_guard_margin": sampling.get("bucket_band_base_guard_margin"),
+        "bucket_band_base_guard_protected_examples": sampling.get(
+            "bucket_band_base_guard_protected_examples"
+        ),
+        "cosine_base_guard_enabled": sampling.get("cosine_base_guard_enabled"),
+        "cosine_base_guard_weight": sampling.get("cosine_base_guard_weight"),
+        "cosine_base_guard_margin": sampling.get("cosine_base_guard_margin"),
+        "cosine_base_guard_protected_examples": sampling.get(
+            "cosine_base_guard_protected_examples"
+        ),
+        "bucket_band_hard_negative_repeat": sampling.get("bucket_band_hard_negative_repeat"),
         "bucket_band_examples_after_repeat": sampling.get("bucket_band_examples_after_repeat"),
         "priority_antonym_calib_anchor_rows": sampling.get("priority_antonym_calib_anchor_rows"),
         "priority_antonym_calib_weight_rows": sampling.get("priority_antonym_calib_weight_rows"),
@@ -167,6 +196,9 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"loss={row['sup_loss_mode']} min_tags={row['sup_min_tag_rows']} "
             f"bucket_min_tags={row['sup_min_tag_bucket_rows'] or '-'} "
             f"calib_support_low={row['calib_support_positive_target_low'] or '-'} "
+            f"calib_midpoint={row['calib_midpoint_augment_radius'] or '-'}/"
+            f"{row['calib_midpoint_augment_steps'] or '-'}/"
+            f"{row['calib_midpoint_augment_weight'] or '-'} "
             f"cosent_exclude={row['sup_cosent_exclude_tags']} "
             f"cosine_exclude={row['sup_cosine_exclude_tags'] or '-'}"
         )
@@ -180,12 +212,27 @@ def print_human(comparison: dict[str, Any]) -> None:
             "  sampling: "
             f"antonym_rows={row['antonym_mid_rows'] or '-'} "
             f"antonym_examples={row['antonym_mid_examples_after_repeat'] or '-'} "
+            f"proxy_train={row['required_proxy_antonym_train_rows'] or '-'} "
+            f"proxy_calib={row['required_proxy_antonym_calib_rows'] or '-'} "
+            f"proxy_examples={row['proxy_antonym_examples_after_repeat'] or '-'} "
             f"cosent_excluded={row['cosent_excluded_examples_after_repeat'] or '-'} "
             f"cosent_exclude_tags={row['cosent_exclude_tags'] or '-'} "
             f"cosine_examples={row['cosine_examples_after_repeat'] or '-'} "
             f"cosine_excluded={row['cosine_excluded_examples_after_repeat'] or '-'} "
             f"cosine_exclude_tags={row['cosine_exclude_tags'] or '-'} "
+            f"base_bucket_guard={row['bucket_band_base_guard_enabled'] or '-'} "
+            f"guard_margin={row['bucket_band_base_guard_margin'] or '-'} "
+            f"guard_protected={row['bucket_band_base_guard_protected_examples'] or '-'} "
+            f"cosine_base_guard={row['cosine_base_guard_enabled'] or '-'} "
+            f"cosine_guard_margin={row['cosine_base_guard_margin'] or '-'} "
+            f"cosine_guard_protected={row['cosine_base_guard_protected_examples'] or '-'} "
+            f"bucket_band_hard_neg_repeat={row['bucket_band_hard_negative_repeat'] or '-'} "
             f"bucket_band_examples={row['bucket_band_examples_after_repeat'] or '-'} "
+            f"rr_batches={row['round_robin_target_batches_per_objective'] or '-'} "
+            f"fit_steps={row['fit_steps_per_epoch'] or '-'} "
+            f"fit_warmup={row['fit_warmup_steps'] or '-'} "
+            f"rr_padded={row['round_robin_padded_examples'] or '-'} "
+            f"rr_noop_padded={row['round_robin_noop_padded_examples'] or '-'} "
             f"min_tag_rows={row['min_tag_rows'] or '-'} "
             f"min_tag_bucket_rows={row['min_tag_bucket_rows'] or '-'}"
         )
@@ -200,6 +247,8 @@ def print_human(comparison: dict[str, Any]) -> None:
         )
         if row["failed_gates"]:
             print("  failed_gates: " + ", ".join(str(item) for item in row["failed_gates"]))
+            if row.get("gate_failure_counts"):
+                print("  gate_failure_counts: " + str(row["gate_failure_counts"]))
 
 
 def main() -> int:

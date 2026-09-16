@@ -127,6 +127,9 @@ REQUIRED_HOLDOUT_FAMILY_PROXY_CALIB_PAIRS = {
     ("开心", "悲伤"),
     ("快乐", "难过"),
 }
+REQUIRED_HOLDOUT_FAMILY_PROXY_TRAIN_REVIEWER = "required_antonym_proxy_train"
+REQUIRED_HOLDOUT_FAMILY_PROXY_CALIB_REVIEWER = "required_antonym_proxy_calib"
+REQUIRED_HOLDOUT_FAMILY_PROXY_SAMPLE_WEIGHT = "4.0"
 EVAL_TO_CALIB_TAGS = {
     tag.strip()
     for tag in os.getenv("SEM_EVAL_TO_CALIB_TAGS", "antonym_mid").split(",")
@@ -297,6 +300,20 @@ def dedupe(rows: list[dict]) -> list[dict]:
     for idx, row in enumerate(out, start=1):
         row["id"] = str(idx)
     return out
+
+
+def dedupe_with_preferred_rows(preferred_rows: list[dict], rows: list[dict]) -> list[dict]:
+    """Keep curated rows when a source contains the same opposite pair."""
+    preferred_keys = {
+        canonical_pair(row["answer"], row["user_input"])
+        for row in preferred_rows
+    }
+    remaining_rows = [
+        row
+        for row in rows
+        if canonical_pair(row["answer"], row["user_input"]) not in preferred_keys
+    ]
+    return dedupe([*preferred_rows, *remaining_rows])
 
 
 def pair_keys(rows: list[dict], *, symmetric: bool = False) -> set[tuple[str, str]]:
@@ -497,11 +514,31 @@ def reserve_tagged_gold_rows_for_calibration(
 def required_holdout_family_proxy_calibration_rows(
     holdout_keys: set[tuple[str, str]],
 ) -> list[dict]:
+    rows = required_holdout_family_proxy_rows(
+        holdout_keys,
+        reviewer=REQUIRED_HOLDOUT_FAMILY_PROXY_CALIB_REVIEWER,
+        reason="required holdout-family antonym calibration proxy",
+    )
+    return dedupe(
+        boost_calibration_anchor_row(row, ANTONYM_CALIB_ANCHOR_WEIGHT)
+        for row in rows
+    )
+
+
+def required_holdout_family_proxy_rows(
+    holdout_keys: set[tuple[str, str]],
+    *,
+    reviewer: str,
+    reason: str,
+) -> list[dict]:
+    """Build non-holdout emotion-family bridges without duplicating the holdout."""
     if canonical_pair("高兴", "难过") not in holdout_keys:
         return []
 
     rows = []
     for answer, user_input in sorted(REQUIRED_HOLDOUT_FAMILY_PROXY_CALIB_PAIRS):
+        if canonical_pair(answer, user_input) in holdout_keys:
+            continue
         normalized = normalize_row(
             {
                 "answer": answer,
@@ -511,15 +548,25 @@ def required_holdout_family_proxy_calibration_rows(
                 "relation_tag": "antonym_mid",
                 "expected_range": ANTONYM_RANGE,
                 "score_0_100": str(ANTONYM_SCORE),
-                "reason": "required holdout-family antonym calibration proxy",
-                "reviewer": "required_antonym_proxy_calib",
-                "sample_weight": "4.0",
+                "reason": reason,
+                "reviewer": reviewer,
+                "sample_weight": REQUIRED_HOLDOUT_FAMILY_PROXY_SAMPLE_WEIGHT,
             },
-            "required_antonym_proxy_calib",
+            reviewer,
         )
         if normalized is not None:
-            rows.append(boost_calibration_anchor_row(normalized, ANTONYM_CALIB_ANCHOR_WEIGHT))
+            rows.append(normalized)
     return dedupe(rows)
+
+
+def required_holdout_family_proxy_training_rows(
+    holdout_keys: set[tuple[str, str]],
+) -> list[dict]:
+    return required_holdout_family_proxy_rows(
+        holdout_keys,
+        reviewer=REQUIRED_HOLDOUT_FAMILY_PROXY_TRAIN_REVIEWER,
+        reason="required holdout-family antonym training proxy",
+    )
 
 
 def reroute_eval_rows_to_calib(
@@ -544,7 +591,12 @@ def is_allowed_train_calib_overlap(train_row: dict, calib_row: dict) -> bool:
         return False
     train_reviewer = (train_row.get("reviewer") or "").strip()
     calib_reviewer = (calib_row.get("reviewer") or "").strip()
-    if not train_reviewer.startswith("nightly_patch") or train_reviewer != calib_reviewer:
+    same_patch_mirror = train_reviewer.startswith("nightly_patch") and train_reviewer == calib_reviewer
+    proxy_mirror = (
+        train_reviewer == REQUIRED_HOLDOUT_FAMILY_PROXY_TRAIN_REVIEWER
+        and calib_reviewer == REQUIRED_HOLDOUT_FAMILY_PROXY_CALIB_REVIEWER
+    )
+    if not (same_patch_mirror or proxy_mirror):
         return False
     try:
         train_weight = float(train_row.get("sample_weight") or "1.0")
@@ -707,7 +759,12 @@ def main() -> None:
     train_patch_rows.extend(required_antonym_train_patch_rows())
     train_patch_rows = dedupe(exclude_pairs(train_patch_rows, holdout_keys, symmetric=True))
     train_patch_rows, antonym_calib_anchor_rows = reserve_antonym_calibration_rows(train_patch_rows, SEED)
+    required_proxy_antonym_train_rows = required_holdout_family_proxy_training_rows(holdout_keys)
     required_proxy_antonym_calib_rows = required_holdout_family_proxy_calibration_rows(holdout_keys)
+    train_patch_rows = dedupe_with_preferred_rows(
+        required_proxy_antonym_train_rows,
+        train_patch_rows,
+    )
     curated_base_overlap_keys = pair_keys(
         [*supervised_gold_rows, *holdout_rows, *train_patch_rows],
         symmetric=True,
@@ -729,12 +786,14 @@ def main() -> None:
         eval_candidate_rows,
         EVAL_TO_CALIB_TAGS,
     )
-    calib_rows = dedupe([
-        *calib_rows,
-        *antonym_calib_anchor_rows,
-        *required_proxy_antonym_calib_rows,
-        *tagged_gold_calib_rows,
-    ])
+    calib_rows = dedupe_with_preferred_rows(
+        required_proxy_antonym_calib_rows,
+        [
+            *calib_rows,
+            *antonym_calib_anchor_rows,
+            *tagged_gold_calib_rows,
+        ],
+    )
     eval_rows = dedupe([*holdout_rows, *eval_candidate_rows])
     train_excluded = pair_keys([*holdout_rows, *calib_rows, *eval_candidate_rows], symmetric=True)
     non_patch_train_rows = exclude_pairs(
@@ -762,6 +821,7 @@ def main() -> None:
         "train_gold": len(train_gold_rows),
         "train_patch": len(train_patch_rows),
         "antonym_calib_anchor_rows": len(antonym_calib_anchor_rows),
+        "required_proxy_antonym_train_rows": len(required_proxy_antonym_train_rows),
         "required_proxy_antonym_calib_rows": len(required_proxy_antonym_calib_rows),
         "priority_antonym_calib_anchor_rows": sum(
             1 for row in antonym_calib_anchor_rows if row.get("_priority_antonym_calib_anchor") == "1"
@@ -804,6 +864,8 @@ def main() -> None:
     print(
         f"gold_pool={len(gold_pool_rows)} "
         f"train_gold={len(train_gold_rows)} train_patch={len(train_patch_rows)} "
+        f"required_proxy_antonym_train_rows={len(required_proxy_antonym_train_rows)} "
+        f"required_proxy_antonym_calib_rows={len(required_proxy_antonym_calib_rows)} "
         f"antonym_calib_anchor_rows={len(antonym_calib_anchor_rows)} calib={len(calib_rows)} "
         f"eval={len(eval_rows)} fixed_holdout={len(holdout_rows)}"
     )

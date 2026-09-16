@@ -131,6 +131,8 @@ Current hard-negative boost tags include the recurring real failure patterns fro
 
 The trainer also applies a smaller protective repeat boost to `alias_synonym_high`, `near_synonym_high`, `hint_like_high`, `same_category_mid`, `same_category_strong`, and `related_mid`. This keeps daily hard-negative fixes from collapsing legitimate same-category and synonym scores.
 
+The bucket and cosine objectives receive frozen pre-optimization base scores when `NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD=1` (the daily default). Rows already in the reviewed bucket get a small interior margin; rows in a wrong base bucket can still move toward the target, but a directional penalty prevents them from drifting farther away. This is a training-side no-degrade guard, not a promotion-gate relaxation, and `antonym_mid` remains on its dedicated midpoint path. The per-round report records both `bucket_band_base_guard_*` and `cosine_base_guard_*` counts so the next real run can prove that both paths received the guard.
+
 For high-value rows, the trainer can optionally enforce multi-angle coverage. Rows pinned by review/patch weight and protected positive rows can be repeated across up to all five production semantic angles:
 
 ```bash

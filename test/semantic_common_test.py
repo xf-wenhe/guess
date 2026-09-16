@@ -7,7 +7,12 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
-from semantic_common import apply_calibration, build_calibration  # noqa: E402
+from semantic_common import (  # noqa: E402
+    apply_calibration,
+    apply_relation_calibration,
+    build_calibration,
+    constrain_calibration_interval,
+)
 from semantic_common import (  # noqa: E402
     augment_masked_calibration_samples,
     augment_midpoint_calibration_samples,
@@ -84,6 +89,89 @@ class SemanticCommonTest(unittest.TestCase):
         self.assertLess(augmented_mid, baseline_mid)
         self.assertGreaterEqual(augmented_mid, 45.0)
         self.assertLessEqual(augmented_mid, 55.0)
+
+    def test_midpoint_calibration_margin_covers_raw_56_edge(self):
+        pred = [53.5, 58.5]
+        target = [50, 80]
+        weights = [10.0, 1.0]
+        midpoint_mask = [True, False]
+
+        baseline_pred, baseline_target, baseline_weights = augment_midpoint_calibration_samples(
+            pred,
+            target,
+            weights,
+            midpoint_mask,
+            radius=2.5,
+            steps=2,
+            weight_multiplier=0.5,
+        )
+        baseline = build_calibration(baseline_pred, baseline_target, baseline_weights)
+        baseline_edge = apply_calibration(56.93, baseline["x_pred"], baseline["y_calibrated"])
+
+        margin_pred, margin_target, margin_weights = augment_midpoint_calibration_samples(
+            pred,
+            target,
+            weights,
+            midpoint_mask,
+            radius=3.5,
+            steps=2,
+            weight_multiplier=0.5,
+        )
+        margin = build_calibration(margin_pred, margin_target, margin_weights)
+        margin_edge = apply_calibration(56.93, margin["x_pred"], margin["y_calibrated"])
+
+        self.assertGreater(baseline_edge, 55.0)
+        self.assertLessEqual(margin_edge, 55.0)
+
+    def test_constrain_calibration_interval_caps_midpoint_neighborhood(self):
+        calibration = build_calibration(
+            [40.0, 50.0, 55.0, 57.0, 60.0, 80.0],
+            [30.0, 45.0, 60.0, 70.0, 80.0, 90.0],
+        )
+
+        constrained = constrain_calibration_interval(
+            calibration,
+            lower=50.0,
+            upper=58.0,
+            target_low=45.0,
+            target_high=55.0,
+        )
+
+        self.assertEqual(constrained["x_pred"], sorted(constrained["x_pred"]))
+        self.assertEqual(
+            constrained["y_calibrated"],
+            sorted(constrained["y_calibrated"]),
+        )
+        for score in (50.0, 55.0, 57.0, 58.0):
+            calibrated = apply_calibration(
+                score,
+                constrained["x_pred"],
+                constrained["y_calibrated"],
+            )
+            self.assertGreaterEqual(calibrated, 45.0)
+            self.assertLessEqual(calibrated, 55.0)
+        self.assertGreater(
+            apply_calibration(60.0, constrained["x_pred"], constrained["y_calibrated"]),
+            55.0,
+        )
+
+    def test_relation_calibration_does_not_remap_unrelated_rows(self):
+        calibration = {
+            "x_pred": [0.0, 50.0, 100.0],
+            "y_calibrated": [0.0, 70.0, 100.0],
+            "relation_calibrations": {
+                "antonym_mid": {
+                    "x_pred": [0.0, 100.0],
+                    "y_calibrated": [0.0, 100.0],
+                    "target_low": 45.0,
+                    "target_high": 55.0,
+                }
+            },
+        }
+
+        self.assertEqual(apply_relation_calibration(50.0, calibration), 70.0)
+        self.assertEqual(apply_relation_calibration(50.0, calibration, "antonym_mid"), 50.0)
+        self.assertEqual(apply_relation_calibration(90.0, calibration, "antonym_mid"), 55.0)
 
     def test_augment_masked_calibration_samples_only_expands_selected_rows(self):
         pred = [20, 40, 60]

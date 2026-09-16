@@ -11,6 +11,55 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 AGENT_ID = "com.guess.nightly-train-v26"
+CANONICAL_SUP_MIN_TAG_BUCKET_ROWS = (
+    "same_category_mid@40-59:20,same_category_mid@60-79:12"
+)
+LEGACY_SUP_MIN_TAG_BUCKET_ROWS = (
+    "same_category_mid@40-59:20,same_category_mid@60-79:12,"
+    "hint_like_high@60-79:18,hint_like_high@80-100:18"
+)
+CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT = "2"
+LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT = "1"
+CANONICAL_SUP_MIDPOINT_BAND_LOW = "0.45"
+CANONICAL_SUP_MIDPOINT_BAND_HIGH = "0.55"
+LEGACY_SUP_MIDPOINT_BAND_LOW = "0.47"
+LEGACY_SUP_MIDPOINT_BAND_HIGH = "0.53"
+EXPECTED_CALIB_MIDPOINT_AUGMENT = {
+    "NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS": "3.5",
+    "NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS": "2",
+    "NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT": "0.5",
+}
+
+
+def effective_sup_min_tag_bucket_rows(value: object) -> str:
+    """Do not let a pre-canonicalization plist become the next report's expectation."""
+    loaded = str(value or "").strip()
+    if loaded == LEGACY_SUP_MIN_TAG_BUCKET_ROWS:
+        return CANONICAL_SUP_MIN_TAG_BUCKET_ROWS
+    return loaded
+
+
+def effective_sup_bucket_band_hard_neg_repeat(value: object) -> str:
+    """Mirror nightly_train_v26.sh when launchd still has the old repeat budget."""
+    loaded = str(value or "").strip()
+    if not loaded or loaded == LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT:
+        return CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT
+    return loaded
+
+
+def effective_sup_midpoint_band(low: object, high: object) -> tuple[str, str]:
+    """Mirror nightly_train_v26.sh when launchd still has either legacy bound."""
+    loaded_low = str(low or "").strip()
+    loaded_high = str(high or "").strip()
+    if loaded_low == LEGACY_SUP_MIDPOINT_BAND_LOW or loaded_high == LEGACY_SUP_MIDPOINT_BAND_HIGH:
+        return CANONICAL_SUP_MIDPOINT_BAND_LOW, CANONICAL_SUP_MIDPOINT_BAND_HIGH
+    return loaded_low, loaded_high
+
+
+def effective_calib_midpoint_augment(value: object, key: str) -> str:
+    """Mirror nightly_train_v26.sh defaults when older plists omit the new keys."""
+    loaded = str(value or "").strip()
+    return loaded or EXPECTED_CALIB_MIDPOINT_AUGMENT[key]
 
 
 def parse_args() -> argparse.Namespace:
@@ -169,14 +218,21 @@ def check(root: Path, home: Path) -> dict[str, object]:
         warnings.append(
             f"NIGHTLY_SUP_MIN_TAG_ROWS is {env.get('NIGHTLY_SUP_MIN_TAG_ROWS')!r}, expected 'antonym_mid:45'"
         )
-    expected_bucket_rows = (
-        "same_category_mid@40-59:20,same_category_mid@60-79:12"
-    )
-    if env.get("NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS") != expected_bucket_rows:
+    expected_bucket_rows = CANONICAL_SUP_MIN_TAG_BUCKET_ROWS
+    loaded_bucket_rows = str(env.get("NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS") or "").strip()
+    if loaded_bucket_rows != expected_bucket_rows:
         warnings.append(
             "NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS is "
-            f"{env.get('NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS')!r}, expected {expected_bucket_rows!r}"
+            f"{loaded_bucket_rows!r}, expected {expected_bucket_rows!r}"
         )
+    effective_bucket_rows = effective_sup_min_tag_bucket_rows(loaded_bucket_rows)
+    loaded_bucket_repeat = str(env.get("NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT") or "").strip()
+    if loaded_bucket_repeat != CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT:
+        warnings.append(
+            "NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT is "
+            f"{loaded_bucket_repeat!r}, expected {CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT!r}"
+        )
+    effective_bucket_repeat = effective_sup_bucket_band_hard_neg_repeat(loaded_bucket_repeat)
     if env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS") != "antonym_mid":
         warnings.append(
             "NIGHTLY_SUP_COSENT_EXCLUDE_TAGS is "
@@ -192,15 +248,21 @@ def check(root: Path, home: Path) -> dict[str, object]:
             "NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST is "
             f"{env.get('NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST')!r}, expected '2.0'"
         )
-    if env.get("NIGHTLY_SUP_MIDPOINT_BAND_LOW") != "0.45":
+    loaded_midpoint_band_low = str(env.get("NIGHTLY_SUP_MIDPOINT_BAND_LOW") or "").strip()
+    loaded_midpoint_band_high = str(env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH") or "").strip()
+    effective_midpoint_band_low, effective_midpoint_band_high = effective_sup_midpoint_band(
+        loaded_midpoint_band_low,
+        loaded_midpoint_band_high,
+    )
+    if loaded_midpoint_band_low != CANONICAL_SUP_MIDPOINT_BAND_LOW:
         warnings.append(
             "NIGHTLY_SUP_MIDPOINT_BAND_LOW is "
-            f"{env.get('NIGHTLY_SUP_MIDPOINT_BAND_LOW')!r}, expected '0.45'"
+            f"{loaded_midpoint_band_low!r}, expected {CANONICAL_SUP_MIDPOINT_BAND_LOW!r}"
         )
-    if env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH") != "0.55":
+    if loaded_midpoint_band_high != CANONICAL_SUP_MIDPOINT_BAND_HIGH:
         warnings.append(
             "NIGHTLY_SUP_MIDPOINT_BAND_HIGH is "
-            f"{env.get('NIGHTLY_SUP_MIDPOINT_BAND_HIGH')!r}, expected '0.55'"
+            f"{loaded_midpoint_band_high!r}, expected {CANONICAL_SUP_MIDPOINT_BAND_HIGH!r}"
         )
     if env.get("NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT") != "4.0":
         warnings.append(
@@ -212,6 +274,9 @@ def check(root: Path, home: Path) -> dict[str, object]:
             "NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT is "
             f"{env.get('NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT')!r}, expected '1.0'"
         )
+    for key, expected in EXPECTED_CALIB_MIDPOINT_AUGMENT.items():
+        if env.get(key) != expected:
+            warnings.append(f"{key} is {env.get(key)!r}, expected {expected!r}")
     hour = calendar.get("Hour")
     minute = calendar.get("Minute")
     if hour != 23 or minute != 0:
@@ -303,18 +368,44 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "nightly_total_runs": env.get("NIGHTLY_TOTAL_RUNS"),
         "antonym_gate": env.get("NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT"),
         "sup_min_tag_rows": env.get("NIGHTLY_SUP_MIN_TAG_ROWS"),
-        "sup_min_tag_bucket_rows": env.get("NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS"),
+        "sup_min_tag_bucket_rows": effective_bucket_rows,
+        "sup_min_tag_bucket_rows_loaded": loaded_bucket_rows,
+        "sup_bucket_band_hard_negative_repeat": effective_bucket_repeat,
+        "sup_bucket_band_hard_negative_repeat_loaded": loaded_bucket_repeat,
         "sup_min_angle_repeat_tag_buckets": env.get("NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS"),
         "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
         "sup_cosine_exclude_tags": env.get("NIGHTLY_SUP_COSINE_EXCLUDE_TAGS"),
         "sup_midpoint_tags": env.get("NIGHTLY_SUP_MIDPOINT_TAGS"),
         "sup_midpoint_repeat_boost": env.get("NIGHTLY_SUP_MIDPOINT_REPEAT_BOOST"),
-        "sup_midpoint_band_low": env.get("NIGHTLY_SUP_MIDPOINT_BAND_LOW"),
-        "sup_midpoint_band_high": env.get("NIGHTLY_SUP_MIDPOINT_BAND_HIGH"),
+        "sup_midpoint_band_low": effective_midpoint_band_low,
+        "sup_midpoint_band_high": effective_midpoint_band_high,
+        "sup_midpoint_band_low_loaded": loaded_midpoint_band_low,
+        "sup_midpoint_band_high_loaded": loaded_midpoint_band_high,
         "sup_midpoint_band_weight": env.get("NIGHTLY_SUP_MIDPOINT_BAND_WEIGHT"),
         "sup_midpoint_center_weight": env.get("NIGHTLY_SUP_MIDPOINT_CENTER_WEIGHT"),
         "sup_midpoint_objective_repeats": env.get("NIGHTLY_SUP_MIDPOINT_OBJECTIVE_REPEATS"),
         "calib_support_positive_target_low": env.get("NIGHTLY_CALIB_SUPPORT_POSITIVE_TARGET_LOW"),
+        "calib_midpoint_augment_radius": effective_calib_midpoint_augment(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS"),
+            "NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS",
+        ),
+        "calib_midpoint_augment_steps": effective_calib_midpoint_augment(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS"),
+            "NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS",
+        ),
+        "calib_midpoint_augment_weight": effective_calib_midpoint_augment(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT"),
+            "NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT",
+        ),
+        "calib_midpoint_augment_radius_loaded": str(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS") or ""
+        ).strip(),
+        "calib_midpoint_augment_steps_loaded": str(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS") or ""
+        ).strip(),
+        "calib_midpoint_augment_weight_loaded": str(
+            env.get("NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT") or ""
+        ).strip(),
         "stderr_log": str(stderr_log),
         "fatal_stderr_lines": fatal_stderr,
         "stdout_log": str(stdout_log),
@@ -352,10 +443,15 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"sup_midpoint_repeat_boost={payload['sup_midpoint_repeat_boost']}")
     print(f"sup_midpoint_band_low={payload['sup_midpoint_band_low']}")
     print(f"sup_midpoint_band_high={payload['sup_midpoint_band_high']}")
+    print(f"sup_midpoint_band_low_loaded={payload['sup_midpoint_band_low_loaded']}")
+    print(f"sup_midpoint_band_high_loaded={payload['sup_midpoint_band_high_loaded']}")
     print(f"sup_midpoint_band_weight={payload['sup_midpoint_band_weight']}")
     print(f"sup_midpoint_center_weight={payload['sup_midpoint_center_weight']}")
     print(f"sup_midpoint_objective_repeats={payload['sup_midpoint_objective_repeats']}")
     print(f"calib_support_positive_target_low={payload['calib_support_positive_target_low']}")
+    print(f"calib_midpoint_augment_radius={payload['calib_midpoint_augment_radius']}")
+    print(f"calib_midpoint_augment_steps={payload['calib_midpoint_augment_steps']}")
+    print(f"calib_midpoint_augment_weight={payload['calib_midpoint_augment_weight']}")
     print(f"latest_real_report={payload['latest_real_report']}")
     print(f"latest_real_stamp={payload['latest_real_stamp']}")
     if payload["problems"]:

@@ -146,6 +146,54 @@ def parse_tag_bucket_json(value: object) -> dict[str, int]:
     return result
 
 
+CALIBRATION_REPORT_FIELDS = {
+    "calib_midpoint_augment_radius": (
+        "calib_midpoint_augment_radius_loaded",
+        "NIGHTLY_CALIB_MIDPOINT_AUGMENT_RADIUS",
+    ),
+    "calib_midpoint_augment_steps": (
+        "calib_midpoint_augment_steps_loaded",
+        "NIGHTLY_CALIB_MIDPOINT_AUGMENT_STEPS",
+    ),
+    "calib_midpoint_augment_weight": (
+        "calib_midpoint_augment_weight_loaded",
+        "NIGHTLY_CALIB_MIDPOINT_AUGMENT_WEIGHT",
+    ),
+}
+
+PARTITION_REPORT_FIELDS = (
+    "eval_antonym_rows",
+    "eval_holdout_antonym_rows",
+    "eval_non_holdout_antonym_rows",
+    "unexpected_train_calib_symmetric_overlap",
+)
+
+ROUND_ROBIN_REPORT_FIELDS = (
+    "objective_count",
+    "round_robin_steps_per_epoch",
+    "round_robin_original_min_batches",
+    "round_robin_target_batches_per_objective",
+    "round_robin_protected_min_batches",
+    "round_robin_padded_examples",
+    "round_robin_noop_padded_examples",
+)
+
+SENTENCE_TRANSFORMER_FIT_REPORT_FIELDS = (
+    "fit_steps_per_epoch",
+    "fit_warmup_steps",
+)
+SENTENCE_TRANSFORMER_FIT_BACKEND = "SentenceTransformer.fit"
+
+
+def calibration_value_matches(key: str, expected: str, actual: str) -> bool:
+    try:
+        if key.endswith("_steps"):
+            return int(actual) == int(expected)
+        return abs(float(actual) - float(expected)) <= 1e-9
+    except (TypeError, ValueError):
+        return actual == expected
+
+
 def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, object]) -> dict[str, object]:
     warnings = [str(item) for item in health.get("warnings", [])]
     report_predates_install = any("predates current launchd install" in item for item in warnings)
@@ -153,22 +201,171 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
     expected_cosine_exclude = str(health.get("sup_cosine_exclude_tags") or "").strip()
     expected_midpoint = str(health.get("sup_midpoint_tags") or "antonym_mid").strip()
     expected_bucket_rows = str(health.get("sup_min_tag_bucket_rows") or "").strip()
+    expected_bucket_repeat = str(
+        health.get("sup_bucket_band_hard_negative_repeat") or ""
+    ).strip()
+    expected_midpoint_band = {
+        "sup_midpoint_band_low": str(health.get("sup_midpoint_band_low") or "").strip(),
+        "sup_midpoint_band_high": str(health.get("sup_midpoint_band_high") or "").strip(),
+    }
     expected_support_low = str(health.get("calib_support_positive_target_low") or "").strip()
+    expected_calib = {
+        key: str(health.get(key) or "").strip()
+        for key in CALIBRATION_REPORT_FIELDS
+    }
+    loaded_calib = {
+        loaded_key: str(health.get(loaded_key) or "").strip()
+        for loaded_key in (item[0] for item in CALIBRATION_REPORT_FIELDS.values())
+    }
     rows = analysis.get("train_sampling") or []
     issues: list[str] = []
+    calibration_report_values: dict[str, str] = {}
+    calibration_report_verified = False
+    midpoint_band_report_values: dict[str, str] = {}
+    midpoint_band_report_verified = False
+    partition_report_values: list[dict[str, object]] = []
+    partition_report_verified = False
+    round_robin_report_values: list[dict[str, object]] = []
+    round_robin_report_verified = False
+    fit_report_values: list[dict[str, object]] = []
+    fit_report_verified = False
 
-    if report_predates_install:
-        return {
-            "ok": True,
-            "skipped": True,
-            "reason": "latest real report predates current launchd install",
+    def make_result(
+        *,
+        ok: bool,
+        skipped: bool,
+        reason: str,
+        missing_evidence: list[str] | None = None,
+    ) -> dict[str, object]:
+        result: dict[str, object] = {
+            "ok": ok,
+            "skipped": skipped,
+            "reason": reason,
             "expected_cosent_exclude_tags": expected_exclude,
             "expected_cosine_exclude_tags": expected_cosine_exclude,
             "expected_midpoint_tags": expected_midpoint,
             "expected_min_tag_bucket_rows": expected_bucket_rows,
+            "expected_bucket_band_hard_negative_repeat": expected_bucket_repeat,
+            "expected_midpoint_band_low": expected_midpoint_band["sup_midpoint_band_low"],
+            "expected_midpoint_band_high": expected_midpoint_band["sup_midpoint_band_high"],
             "expected_calib_support_positive_target_low": expected_support_low,
+            "expected_calib_midpoint_augment_radius": expected_calib[
+                "calib_midpoint_augment_radius"
+            ],
+            "expected_calib_midpoint_augment_steps": expected_calib[
+                "calib_midpoint_augment_steps"
+            ],
+            "expected_calib_midpoint_augment_weight": expected_calib[
+                "calib_midpoint_augment_weight"
+            ],
+            "calib_midpoint_augment_radius_loaded": loaded_calib[
+                "calib_midpoint_augment_radius_loaded"
+            ],
+            "calib_midpoint_augment_steps_loaded": loaded_calib[
+                "calib_midpoint_augment_steps_loaded"
+            ],
+            "calib_midpoint_augment_weight_loaded": loaded_calib[
+                "calib_midpoint_augment_weight_loaded"
+            ],
+            "calib_midpoint_report_verified": calibration_report_verified,
+            "calib_midpoint_report_values": calibration_report_values,
+            "midpoint_band_report_verified": midpoint_band_report_verified,
+            "midpoint_band_report_values": midpoint_band_report_values,
+            "partition_report_verified": partition_report_verified,
+            "partition_report_values": partition_report_values,
+            "round_robin_report_verified": round_robin_report_verified,
+            "round_robin_report_values": round_robin_report_values,
+            "fit_report_verified": fit_report_verified,
+            "fit_report_values": fit_report_values,
             "issues": issues,
         }
+        if missing_evidence is not None:
+            result["missing_evidence"] = missing_evidence
+        return result
+
+    if report_predates_install:
+        return make_result(
+            ok=True,
+            skipped=True,
+            reason="latest real report predates current launchd install",
+        )
+
+    if all(expected_calib.values()) and analysis.get("three_rounds_ok"):
+        launchd_mismatches = []
+        for report_key, (loaded_key, env_key) in CALIBRATION_REPORT_FIELDS.items():
+            loaded_value = loaded_calib[loaded_key]
+            expected_code_value = str(
+                check_nightly_launchd_v26.EXPECTED_CALIB_MIDPOINT_AUGMENT[env_key]
+            )
+            if loaded_value and not calibration_value_matches(
+                report_key, expected_code_value, loaded_value
+            ):
+                launchd_mismatches.append(
+                    f"{loaded_key}={loaded_value!r} != code default {expected_code_value!r}"
+                )
+        if launchd_mismatches:
+            return make_result(
+                ok=True,
+                skipped=True,
+                reason="launchd midpoint calibration settings differ from current code defaults",
+            )
+
+        report_config = analysis.get("config")
+        if not isinstance(report_config, dict):
+            report_config = {}
+        missing_calibration = [
+            key
+            for key in expected_calib
+            if not str(report_config.get(key) or "").strip()
+        ]
+        if missing_calibration:
+            return make_result(
+                ok=True,
+                skipped=True,
+                reason="latest real report lacks midpoint calibration evidence",
+                missing_evidence=missing_calibration,
+            )
+        calibration_report_values = {
+            key: str(report_config.get(key) or "").strip()
+            for key in expected_calib
+        }
+        for key, expected_value in expected_calib.items():
+            actual_value = calibration_report_values[key]
+            if not calibration_value_matches(key, expected_value, actual_value):
+                issues.append(
+                    f"report config {key}={actual_value!r} != effective launchd value {expected_value!r}"
+                )
+        calibration_report_verified = not any(
+            issue.startswith("report config calib_midpoint_augment_") for issue in issues
+        )
+
+    if all(expected_midpoint_band.values()) and analysis.get("three_rounds_ok"):
+        report_config = analysis.get("config")
+        if not isinstance(report_config, dict):
+            report_config = {}
+        missing_band = [
+            key for key in expected_midpoint_band if not str(report_config.get(key) or "").strip()
+        ]
+        if missing_band:
+            return make_result(
+                ok=True,
+                skipped=True,
+                reason="latest real report lacks midpoint band evidence",
+                missing_evidence=missing_band,
+            )
+        midpoint_band_report_values = {
+            key: str(report_config.get(key) or "").strip()
+            for key in expected_midpoint_band
+        }
+        for key, expected_value in expected_midpoint_band.items():
+            actual_value = midpoint_band_report_values[key]
+            if not calibration_value_matches(key, expected_value, actual_value):
+                issues.append(
+                    f"report config {key}={actual_value!r} != effective launchd value {expected_value!r}"
+                )
+        midpoint_band_report_verified = not any(
+            issue.startswith("report config sup_midpoint_band_") for issue in issues
+        )
 
     if rows:
         required_cosine_evidence = {
@@ -179,23 +376,19 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "bucket_band_tags",
             "bucket_band_examples_after_repeat",
         }
+        if expected_bucket_repeat and analysis.get("three_rounds_ok"):
+            required_cosine_evidence.add("bucket_band_hard_negative_repeat")
         missing_evidence = sorted(
             key for key in required_cosine_evidence
             if any(key not in row for row in rows)
         )
         if missing_evidence:
-            return {
-                "ok": True,
-                "skipped": True,
-                "reason": "latest real report lacks cosine/bucket training evidence",
-                "expected_cosent_exclude_tags": expected_exclude,
-                "expected_cosine_exclude_tags": expected_cosine_exclude,
-                "expected_midpoint_tags": expected_midpoint,
-                "expected_min_tag_bucket_rows": expected_bucket_rows,
-                "expected_calib_support_positive_target_low": expected_support_low,
-                "missing_evidence": missing_evidence,
-                "issues": issues,
-            }
+            return make_result(
+                ok=True,
+                skipped=True,
+                reason="latest real report lacks cosine/bucket training evidence",
+                missing_evidence=missing_evidence,
+            )
 
     if expected_cosine_exclude == "":
         if not rows:
@@ -232,6 +425,18 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             if excluded_examples != 0:
                 issues.append(
                     f"round {round_id}: cosine_excluded_examples_after_repeat={excluded_examples}, expected 0"
+                )
+
+    if expected_bucket_repeat and analysis.get("three_rounds_ok"):
+        for row in rows:
+            round_id = row.get("round", "?")
+            actual_bucket_repeat = str(
+                row.get("bucket_band_hard_negative_repeat") or ""
+            ).strip()
+            if parse_int(actual_bucket_repeat) != parse_int(expected_bucket_repeat):
+                issues.append(
+                    f"round {round_id}: bucket_band_hard_negative_repeat="
+                    f"{actual_bucket_repeat!r} != expected {expected_bucket_repeat!r}"
                 )
 
     if expected_exclude == "antonym_mid":
@@ -292,17 +497,205 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
                         f"round {round_id}: min_tag_bucket_rows {key} {actual_count} < expected {expected_count}"
                     )
 
-    return {
-        "ok": not issues,
-        "skipped": False,
-        "reason": "",
-        "expected_cosent_exclude_tags": expected_exclude,
-        "expected_cosine_exclude_tags": expected_cosine_exclude,
-        "expected_midpoint_tags": expected_midpoint,
-        "expected_min_tag_bucket_rows": expected_bucket_rows,
-        "expected_calib_support_positive_target_low": expected_support_low,
-        "issues": issues,
-    }
+    if rows and analysis.get("three_rounds_ok"):
+        missing_partition = sorted(
+            field
+            for field in PARTITION_REPORT_FIELDS
+            if any(not str(row.get(field) or "").strip() for row in rows)
+        )
+        if missing_partition:
+            issues.append(
+                "latest real report lacks train/calib/eval partition evidence: "
+                + ", ".join(missing_partition)
+            )
+        else:
+            partition_issues: list[str] = []
+            for row in rows:
+                round_id = row.get("round", "?")
+                values = {
+                    field: parse_int(row.get(field))
+                    for field in PARTITION_REPORT_FIELDS
+                }
+                partition_report_values.append({"round": round_id, **values})
+                if any(value is None for value in values.values()):
+                    partition_issues.append(f"round {round_id}: invalid partition evidence")
+                    continue
+                if values["eval_non_holdout_antonym_rows"] != 0:
+                    partition_issues.append(
+                        f"round {round_id}: eval_non_holdout_antonym_rows="
+                        f"{values['eval_non_holdout_antonym_rows']}, expected 0"
+                    )
+                if values["eval_antonym_rows"] != values["eval_holdout_antonym_rows"]:
+                    partition_issues.append(
+                        f"round {round_id}: eval_antonym_rows="
+                        f"{values['eval_antonym_rows']} != eval_holdout_antonym_rows="
+                        f"{values['eval_holdout_antonym_rows']}"
+                    )
+                if values["unexpected_train_calib_symmetric_overlap"] != 0:
+                    partition_issues.append(
+                        f"round {round_id}: unexpected_train_calib_symmetric_overlap="
+                        f"{values['unexpected_train_calib_symmetric_overlap']}, expected 0"
+                    )
+            issues.extend(partition_issues)
+            partition_report_verified = not partition_issues
+
+        missing_round_robin = sorted(
+            field
+            for field in ROUND_ROBIN_REPORT_FIELDS
+            if any(not str(row.get(field) or "").strip() for row in rows)
+        )
+        if missing_round_robin:
+            issues.append(
+                "latest real report lacks round-robin schedule evidence: "
+                + ", ".join(missing_round_robin)
+            )
+        else:
+            round_robin_issues: list[str] = []
+            for row in rows:
+                round_id = row.get("round", "?")
+                values = {
+                    field: parse_int(row.get(field))
+                    for field in ROUND_ROBIN_REPORT_FIELDS
+                }
+                round_robin_report_values.append({"round": round_id, **values})
+                if any(value is None for value in values.values()):
+                    round_robin_issues.append(f"round {round_id}: invalid round-robin evidence")
+                    continue
+                objective_count = values["objective_count"]
+                steps_per_epoch = values["round_robin_steps_per_epoch"]
+                original_min = values["round_robin_original_min_batches"]
+                target_batches = values["round_robin_target_batches_per_objective"]
+                protected_batches = values["round_robin_protected_min_batches"]
+                padded_examples = values["round_robin_padded_examples"]
+                noop_padded_examples = values["round_robin_noop_padded_examples"]
+                if objective_count <= 0:
+                    round_robin_issues.append(
+                        f"round {round_id}: objective_count={objective_count}, expected positive"
+                    )
+                if original_min <= 0 or target_batches <= 0 or protected_batches <= 0:
+                    round_robin_issues.append(
+                        f"round {round_id}: invalid positive batch budget "
+                        f"original={original_min} target={target_batches} protected={protected_batches}"
+                    )
+                if target_batches < max(original_min, protected_batches):
+                    round_robin_issues.append(
+                        f"round {round_id}: target_batches={target_batches} is below "
+                        f"original/protected budget {max(original_min, protected_batches)}"
+                    )
+                if steps_per_epoch != target_batches * objective_count:
+                    round_robin_issues.append(
+                        f"round {round_id}: steps_per_epoch={steps_per_epoch} != "
+                        f"target_batches*objective_count={target_batches * objective_count}"
+                    )
+                if padded_examples < 0:
+                    round_robin_issues.append(
+                        f"round {round_id}: round_robin_padded_examples={padded_examples}, expected non-negative"
+                    )
+                if noop_padded_examples < 0 or noop_padded_examples > padded_examples:
+                    round_robin_issues.append(
+                        f"round {round_id}: round_robin_noop_padded_examples={noop_padded_examples}, "
+                        f"expected between 0 and round_robin_padded_examples={padded_examples}"
+                    )
+            issues.extend(round_robin_issues)
+            round_robin_report_verified = not round_robin_issues
+
+        fit_backend_required = analysis.get("actual_device_inferred") in {"mps", "cuda"}
+        fit_rows = (
+            rows
+            if fit_backend_required
+            else [
+                row
+                for row in rows
+                if str(row.get("trainer_backend") or "").strip()
+                == SENTENCE_TRANSFORMER_FIT_BACKEND
+            ]
+        )
+        if fit_rows:
+            fit_issues: list[str] = []
+            if fit_backend_required:
+                missing_backend_rounds = [
+                    str(row.get("round", "?"))
+                    for row in fit_rows
+                    if not str(row.get("trainer_backend") or "").strip()
+                ]
+                unexpected_backend = sorted(
+                    {
+                        str(row.get("trainer_backend") or "").strip()
+                        for row in fit_rows
+                        if str(row.get("trainer_backend") or "").strip()
+                        and str(row.get("trainer_backend") or "").strip()
+                        != SENTENCE_TRANSFORMER_FIT_BACKEND
+                    }
+                )
+                if missing_backend_rounds:
+                    fit_issues.append(
+                        "MPS/CUDA report missing trainer_backend in rounds: "
+                        + ", ".join(missing_backend_rounds)
+                    )
+                if unexpected_backend:
+                    fit_issues.append(
+                        "MPS/CUDA report uses unexpected trainer_backend: "
+                        + ", ".join(unexpected_backend)
+                    )
+            missing_fit = sorted(
+                field
+                for field in SENTENCE_TRANSFORMER_FIT_REPORT_FIELDS
+                if any(not str(row.get(field) or "").strip() for row in fit_rows)
+            )
+            if missing_fit:
+                fit_issues.append(
+                    "latest real report lacks SentenceTransformer.fit schedule evidence: "
+                    + ", ".join(missing_fit)
+                )
+            else:
+                for row in fit_rows:
+                    round_id = row.get("round", "?")
+                    values = {
+                        field: parse_int(row.get(field))
+                        for field in SENTENCE_TRANSFORMER_FIT_REPORT_FIELDS
+                    }
+                    fit_report_values.append({"round": round_id, **values})
+                    if any(value is None for value in values.values()):
+                        fit_issues.append(
+                            f"round {round_id}: invalid SentenceTransformer.fit schedule evidence"
+                        )
+                        continue
+                    round_robin_steps = parse_int(row.get("round_robin_steps_per_epoch"))
+                    objective_count = parse_int(row.get("objective_count"))
+                    target_batches = parse_int(
+                        row.get("round_robin_target_batches_per_objective")
+                    )
+                    warmup_steps = parse_int(row.get("warmup_steps"))
+                    if (
+                        round_robin_steps is None
+                        or objective_count is None
+                        or target_batches is None
+                        or warmup_steps is None
+                    ):
+                        fit_issues.append(
+                            f"round {round_id}: missing round-robin or warmup evidence for SentenceTransformer.fit check"
+                        )
+                        continue
+                    if values["fit_steps_per_epoch"] != round_robin_steps:
+                        fit_issues.append(
+                            f"round {round_id}: fit_steps_per_epoch="
+                            f"{values['fit_steps_per_epoch']} != "
+                            f"round_robin_steps_per_epoch={round_robin_steps}"
+                        )
+                    if values["fit_steps_per_epoch"] != target_batches * objective_count:
+                        fit_issues.append(
+                            f"round {round_id}: fit_steps_per_epoch="
+                            f"{values['fit_steps_per_epoch']} must equal target_batches_per_objective*objective_count"
+                        )
+                    if values["fit_warmup_steps"] != warmup_steps:
+                        fit_issues.append(
+                            f"round {round_id}: fit_warmup_steps="
+                            f"{values['fit_warmup_steps']} != warmup_steps={warmup_steps}"
+                        )
+            issues.extend(fit_issues)
+            fit_report_verified = not fit_issues
+
+    return make_result(ok=not issues, skipped=False, reason="")
 
 
 def triage_status(
@@ -432,6 +825,7 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
             "best_round": analysis.get("best_round"),
             "gate_status_available": bool(analysis.get("gate_status")),
             "failed_gates": analysis.get("failed_gates"),
+            "gate_failure_counts": analysis.get("gate_failure_counts"),
             "group_regressions": analysis.get("group_regressions"),
             "bucket_confusions": analysis.get("bucket_confusions"),
             "train_sampling": analysis.get("train_sampling"),
@@ -460,6 +854,12 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"nightly_total_runs={health['nightly_total_runs']}")
     print(f"sup_cosent_exclude_tags={health.get('sup_cosent_exclude_tags')}")
     print(f"sup_cosine_exclude_tags={health.get('sup_cosine_exclude_tags')}")
+    print(
+        "calib_midpoint_augment="
+        f"radius:{health.get('calib_midpoint_augment_radius')} "
+        f"steps:{health.get('calib_midpoint_augment_steps')} "
+        f"weight:{health.get('calib_midpoint_augment_weight')}"
+    )
     print(f"latest_run_log={health['latest_run_log']}")
     print(f"run_log_after_latest_schedule={health['run_log_after_latest_schedule']}")
     print(f"latest_partial_run_artifact={health.get('latest_partial_run_artifact', '')}")
@@ -479,6 +879,8 @@ def print_human(payload: dict[str, object]) -> None:
         print(f"best_round={analysis['best_round']}")
     if analysis["failed_gates"]:
         print("failed_gates=" + ",".join(analysis["failed_gates"]))
+        if analysis.get("gate_failure_counts"):
+            print(f"gate_failure_counts={analysis['gate_failure_counts']}")
     elif not analysis.get("gate_status_available"):
         print("failed_gates=(unavailable: matching gate log not found)")
     if analysis["group_regressions"]:
@@ -503,6 +905,9 @@ def print_human(payload: dict[str, object]) -> None:
                 f"round={item.get('round')} "
                 f"antonym_mid_rows={item.get('antonym_mid_rows', '-')} "
                 f"antonym_mid_examples={item.get('antonym_mid_examples_after_repeat', '-')} "
+                f"proxy_train={item.get('required_proxy_antonym_train_rows', '-')} "
+                f"proxy_calib={item.get('required_proxy_antonym_calib_rows', '-')} "
+                f"proxy_examples={item.get('proxy_antonym_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
                 f"cosine_examples={item.get('cosine_examples_after_repeat', '-')} "
                 f"cosine_excluded_examples={item.get('cosine_excluded_examples_after_repeat', '-')} "
@@ -512,6 +917,10 @@ def print_human(payload: dict[str, object]) -> None:
                 f"priority_antonym_weight_rows={item.get('priority_antonym_calib_weight_rows', '-')} "
                 f"cosent_exclude_tags={item.get('cosent_exclude_tags', '-')} "
                 f"cosine_exclude_tags={item.get('cosine_exclude_tags', '-')} "
+                f"rr_original_min={item.get('round_robin_original_min_batches', '-')} "
+                f"rr_target={item.get('round_robin_target_batches_per_objective', '-')} "
+                f"rr_protected={item.get('round_robin_protected_min_batches', '-')} "
+                f"rr_padded={item.get('round_robin_padded_examples', '-')} "
                 f"bucket_band_examples={item.get('bucket_band_examples_after_repeat', '-')} "
                 f"midpoint_examples={item.get('midpoint_examples_after_repeat', '-')} "
                 f"midpoint_tags={item.get('midpoint_tags', '-')} "
@@ -523,6 +932,10 @@ def print_human(payload: dict[str, object]) -> None:
     else:
         print("antonym_group=(missing)")
     print(f"strategy_checks_ok={strategy['ok']}")
+    print(f"calib_midpoint_report_verified={strategy.get('calib_midpoint_report_verified')}")
+    print(f"midpoint_band_report_verified={strategy.get('midpoint_band_report_verified')}")
+    print(f"partition_report_verified={strategy.get('partition_report_verified')}")
+    print(f"round_robin_report_verified={strategy.get('round_robin_report_verified')}")
     if strategy.get("skipped"):
         print(f"strategy_checks_skipped={strategy.get('reason')}")
     if strategy.get("issues"):
@@ -572,6 +985,9 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
         f"- sup_min_tag_rows: `{health.get('sup_min_tag_rows')}`",
         f"- sup_min_tag_bucket_rows: `{health.get('sup_min_tag_bucket_rows')}`",
         f"- calib_support_positive_target_low: `{health.get('calib_support_positive_target_low')}`",
+        f"- calib_midpoint_augment_radius: `{health.get('calib_midpoint_augment_radius')}`",
+        f"- calib_midpoint_augment_steps: `{health.get('calib_midpoint_augment_steps')}`",
+        f"- calib_midpoint_augment_weight: `{health.get('calib_midpoint_augment_weight')}`",
         f"- sup_cosent_exclude_tags: `{health.get('sup_cosent_exclude_tags')}`",
         f"- sup_cosine_exclude_tags: `{health.get('sup_cosine_exclude_tags')}`",
         f"- latest_real_report: `{health['latest_real_report']}`",
@@ -594,6 +1010,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     failed = analysis.get("failed_gates") or []
     if failed:
         lines.extend(f"- `{item}`" for item in failed)
+        if analysis.get("gate_failure_counts"):
+            lines.append(f"- failure_counts: `{analysis['gate_failure_counts']}`")
     elif not analysis.get("gate_status_available"):
         lines.append("- unavailable: matching gate log was not found; use regressed groups and bucket confusions below")
     else:
@@ -632,6 +1050,9 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
                 f"round `{item.get('round', '')}`: "
                 f"antonym_mid_rows `{item.get('antonym_mid_rows', '-')}`, "
                 f"antonym_mid_examples `{item.get('antonym_mid_examples_after_repeat', '-')}`, "
+                f"proxy_train `{item.get('required_proxy_antonym_train_rows', '-')}`, "
+                f"proxy_calib `{item.get('required_proxy_antonym_calib_rows', '-')}`, "
+                f"proxy_examples `{item.get('proxy_antonym_examples_after_repeat', '-')}`, "
                 f"cosent_excluded_examples `{item.get('cosent_excluded_examples_after_repeat', '-')}`, "
                 f"cosine_examples `{item.get('cosine_examples_after_repeat', '-')}`, "
                 f"cosine_excluded_examples `{item.get('cosine_excluded_examples_after_repeat', '-')}`, "
@@ -641,6 +1062,10 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
                 f"priority_antonym_weight_rows `{item.get('priority_antonym_calib_weight_rows', '-')}`, "
                 f"cosent_exclude_tags `{item.get('cosent_exclude_tags', '-')}`, "
                 f"cosine_exclude_tags `{item.get('cosine_exclude_tags', '-')}`, "
+                f"rr_original_min `{item.get('round_robin_original_min_batches', '-')}`, "
+                f"rr_target `{item.get('round_robin_target_batches_per_objective', '-')}`, "
+                f"rr_protected `{item.get('round_robin_protected_min_batches', '-')}`, "
+                f"rr_padded `{item.get('round_robin_padded_examples', '-')}`, "
                 f"bucket_band_examples `{item.get('bucket_band_examples_after_repeat', '-')}`, "
                 f"min_tag_rows `{item.get('min_tag_rows', '-')}`, "
                 f"min_tag_bucket_rows `{item.get('min_tag_bucket_rows', '-')}`"
@@ -660,11 +1085,40 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     lines.append(f"- expected_cosent_exclude_tags: `{strategy.get('expected_cosent_exclude_tags')}`")
     lines.append(f"- expected_cosine_exclude_tags: `{strategy.get('expected_cosine_exclude_tags')}`")
     lines.append(f"- expected_midpoint_tags: `{strategy.get('expected_midpoint_tags')}`")
+    lines.append(
+        f"- expected_midpoint_band: `[{strategy.get('expected_midpoint_band_low')}, "
+        f"{strategy.get('expected_midpoint_band_high')}]`"
+    )
     lines.append(f"- expected_min_tag_bucket_rows: `{strategy.get('expected_min_tag_bucket_rows')}`")
     lines.append(
         f"- expected_calib_support_positive_target_low: "
         f"`{strategy.get('expected_calib_support_positive_target_low')}`"
     )
+    lines.append(
+        f"- expected_calib_midpoint_augment: "
+        f"`radius={strategy.get('expected_calib_midpoint_augment_radius')}, "
+        f"steps={strategy.get('expected_calib_midpoint_augment_steps')}, "
+        f"weight={strategy.get('expected_calib_midpoint_augment_weight')}`"
+    )
+    lines.append(
+        f"- calib_midpoint_report_verified: `{strategy.get('calib_midpoint_report_verified')}`"
+    )
+    lines.append(
+        f"- midpoint_band_report_verified: `{strategy.get('midpoint_band_report_verified')}`"
+    )
+    lines.append(f"- partition_report_verified: `{strategy.get('partition_report_verified')}`")
+    lines.append(f"- round_robin_report_verified: `{strategy.get('round_robin_report_verified')}`")
+    lines.append(f"- fit_report_verified: `{strategy.get('fit_report_verified')}`")
+    if strategy.get("calib_midpoint_report_values"):
+        lines.append(
+            f"- calib_midpoint_report_values: `{strategy.get('calib_midpoint_report_values')}`"
+        )
+    if strategy.get("partition_report_values"):
+        lines.append(f"- partition_report_values: `{strategy.get('partition_report_values')}`")
+    if strategy.get("round_robin_report_values"):
+        lines.append(f"- round_robin_report_values: `{strategy.get('round_robin_report_values')}`")
+    if strategy.get("fit_report_values"):
+        lines.append(f"- fit_report_values: `{strategy.get('fit_report_values')}`")
     if strategy.get("skipped"):
         lines.append(f"- skipped: `{strategy.get('reason')}`")
     if strategy.get("missing_evidence"):

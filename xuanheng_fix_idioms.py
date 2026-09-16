@@ -9,7 +9,7 @@ import os
 import random
 
 # ==================== 路径配置 ====================
-PROJECT_ROOT = "/Volumes/新/work/flutter/guess"
+PROJECT_ROOT = "/Volumes/new_disk/work/flutter/guess"
 PUZZLES_PATH = os.path.join(PROJECT_ROOT, "assets/puzzles.json")
 TMP_DIR = os.path.join(PROJECT_ROOT, "tmp")
 
