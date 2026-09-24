@@ -47,6 +47,9 @@ LOSS_MODE = os.getenv("SEM_LOSS_MODE", "mixed").strip().lower()
 COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").strip()
 # Keep midpoint antonyms in cosine regression; only CoSENT must exclude them.
 COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "").strip()
+# Some hard negatives are useful for evaluator-aligned bucket repair but are
+# too noisy to share the global ranking/regression objectives.
+BUCKET_ONLY_TAGS_SPEC = os.getenv("SEM_BUCKET_ONLY_TAGS", "same_category_but_far").strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
 # Keep raw midpoint supervision centered on the fixed strict 45-55 gate; the
@@ -80,6 +83,10 @@ BUCKET_BAND_BASE_GUARD_MARGIN = min(
     0.09,
     max(0.0, float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", "0.02"))),
 )
+BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT = max(
+    0.0,
+    float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT", "0.25")),
+)
 BUCKET_BAND_TAGS_SPEC = os.getenv(
     "SEM_BUCKET_BAND_TAGS",
     "collocation_not_equivalent,function_word_low,function_word_vs_real_low,"
@@ -101,7 +108,14 @@ MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = int(os.getenv("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_V
 MIN_TRAIN_EXAMPLES = int(os.getenv("SEM_MIN_TRAIN_EXAMPLES", "200"))
 MIN_TAG_ROWS_SPEC = os.getenv("SEM_MIN_TAG_ROWS", "antonym_mid:45").strip()
 MIN_TAG_BUCKET_ROWS_SPEC = os.getenv("SEM_MIN_TAG_BUCKET_ROWS", "").strip()
-MIN_ANGLE_REPEAT_TAG_BUCKETS_SPEC = os.getenv("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", "").strip()
+DEFAULT_MIN_ANGLE_REPEAT_TAG_BUCKETS = (
+    "same_category_but_far@20-39:5,same_category_mid@20-39:5,"
+    "same_category_mid@40-59:5,same_category_mid@60-79:5"
+)
+MIN_ANGLE_REPEAT_TAG_BUCKETS_SPEC = os.getenv(
+    "SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS",
+    DEFAULT_MIN_ANGLE_REPEAT_TAG_BUCKETS,
+).strip()
 
 ANGLES = [
     "从含义角度看：",
@@ -209,6 +223,11 @@ COSINE_EXCLUDE_TAGS = {
     for item in COSINE_EXCLUDE_TAGS_SPEC.split(",")
     if item.strip()
 }
+BUCKET_ONLY_TAGS = {
+    item.strip()
+    for item in BUCKET_ONLY_TAGS_SPEC.split(",")
+    if item.strip()
+}
 MIDPOINT_TAGS = {
     item.strip()
     for item in MIDPOINT_TAGS_SPEC.split(",")
@@ -230,15 +249,27 @@ def validate_objective_scope() -> None:
             "midpoint tags must remain in the cosine objective; "
             f"remove them from SEM_COSINE_EXCLUDE_TAGS: {','.join(overlap)}"
         )
+    missing_bucket_tags = sorted(BUCKET_ONLY_TAGS - BUCKET_BAND_TAGS)
+    if missing_bucket_tags:
+        raise SystemExit(
+            "bucket-only tags must remain in the bucket-band objective; "
+            f"add them to SEM_BUCKET_BAND_TAGS: {','.join(missing_bucket_tags)}"
+        )
+    midpoint_bucket_only = sorted(BUCKET_ONLY_TAGS & MIDPOINT_TAGS)
+    if midpoint_bucket_only:
+        raise SystemExit(
+            "bucket-only tags cannot also be midpoint tags: "
+            f"{','.join(midpoint_bucket_only)}"
+        )
 
 
 def is_bucket_band_row(row: dict) -> bool:
-    """Avoid applying a generic bucket boundary to dedicated midpoint rows."""
-    return (
-        row["tag"] in BUCKET_BAND_TAGS
-        and row["tag"] not in COSINE_EXCLUDE_TAGS
-        and row["tag"] not in MIDPOINT_TAGS
-    )
+    """Keep bucket-only rows in the evaluator-aligned bucket objective."""
+    if row["tag"] not in BUCKET_BAND_TAGS or row["tag"] in MIDPOINT_TAGS:
+        return False
+    if row["tag"] in BUCKET_ONLY_TAGS:
+        return True
+    return row["tag"] not in COSINE_EXCLUDE_TAGS
 
 
 def bucket_band_repeat_for_row(row: dict) -> int:
@@ -403,6 +434,8 @@ def is_high_value_row(row: dict) -> bool:
 def contrastive_label(row: dict) -> float | None:
     score = row["score"]
     tag = row["tag"]
+    if tag in BUCKET_ONLY_TAGS:
+        return None
     if CONTRASTIVE_SCOPE == "all":
         if score >= CONTRASTIVE_POS_THRESHOLD:
             return 1.0
@@ -427,6 +460,9 @@ class MidpointBandLoss(torch.nn.Module):
         band_high: float,
         band_weight: float,
         center_weight: float,
+        base_guard_weight: float = 1.0,
+        base_guard_margin: float = 0.02,
+        base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__()
         self.model = model
@@ -434,6 +470,9 @@ class MidpointBandLoss(torch.nn.Module):
         self.band_high = band_high
         self.band_weight = band_weight
         self.center_weight = center_weight
+        self.base_guard_weight = base_guard_weight
+        self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
+        self.base_guard_anchor_weight = max(0.0, base_guard_anchor_weight)
 
     def forward(
         self,
@@ -442,12 +481,36 @@ class MidpointBandLoss(torch.nn.Module):
     ) -> torch.Tensor:
         embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
         scores = F.cosine_similarity(embeddings[0], embeddings[1])
-        labels = labels.view(-1).to(scores.device)
+        target_labels, base_scores = _unpack_guard_labels(labels, scores)
+        valid = torch.isfinite(target_labels)
+        if base_scores is not None:
+            valid &= torch.isfinite(base_scores)
+        if not torch.any(valid):
+            return scores.sum() * 0.0
+        scores = scores[valid]
+        labels = target_labels[valid].to(scores.device).clamp(0.0, 1.0)
+        if base_scores is not None:
+            base_scores = base_scores[valid]
         center_loss = F.mse_loss(scores, labels)
         lower_violation = torch.relu(self.band_low - scores)
         upper_violation = torch.relu(scores - self.band_high)
         band_loss = (lower_violation.square() + upper_violation.square()).mean()
-        return (self.center_weight * center_loss) + (self.band_weight * band_loss)
+        base_guard_loss = (
+            _base_bucket_guard_penalty(
+                scores,
+                labels,
+                base_scores,
+                self.base_guard_margin,
+                self.base_guard_anchor_weight,
+            )
+            if self.base_guard_weight > 0
+            else scores.sum() * 0.0
+        )
+        return (
+            (self.center_weight * center_loss)
+            + (self.band_weight * band_loss)
+            + (self.base_guard_weight * base_guard_loss)
+        )
 
 
 def _unpack_guard_labels(
@@ -470,6 +533,7 @@ def _base_bucket_guard_penalty(
     target_labels: torch.Tensor,
     base_scores: torch.Tensor | None,
     margin: float,
+    anchor_weight: float = 0.0,
 ) -> torch.Tensor:
     if base_scores is None:
         return scores.sum() * 0.0
@@ -488,6 +552,7 @@ def _base_bucket_guard_penalty(
     correct_upper = upper - margin
     correct_violation = torch.relu(correct_lower - scores).square()
     correct_violation += torch.relu(scores - correct_upper).square()
+    correct_violation += max(0.0, anchor_weight) * (scores - base_scores).square()
 
     # A wrong base bucket may move toward the target, but not farther away.
     lower_drift = torch.relu(base_scores - margin - scores).square()
@@ -516,6 +581,7 @@ class BucketBandLoss(torch.nn.Module):
         center_weight: float = 1.0,
         base_guard_weight: float = 1.0,
         base_guard_margin: float = 0.02,
+        base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__()
         self.model = model
@@ -523,6 +589,7 @@ class BucketBandLoss(torch.nn.Module):
         self.center_weight = center_weight
         self.base_guard_weight = base_guard_weight
         self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
+        self.base_guard_anchor_weight = max(0.0, base_guard_anchor_weight)
 
     def forward(
         self,
@@ -567,6 +634,7 @@ class BucketBandLoss(torch.nn.Module):
                 labels,
                 base_scores,
                 self.base_guard_margin,
+                self.base_guard_anchor_weight,
             )
             if self.base_guard_weight > 0
             else scores.sum() * 0.0
@@ -586,10 +654,12 @@ class BaseGuardedCosineLoss(CosineSimilarityLoss):
         model: SentenceTransformer,
         base_guard_weight: float = 1.0,
         base_guard_margin: float = 0.02,
+        base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__(model)
         self.base_guard_weight = base_guard_weight
         self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
+        self.base_guard_anchor_weight = max(0.0, base_guard_anchor_weight)
 
     def forward(
         self,
@@ -615,6 +685,7 @@ class BaseGuardedCosineLoss(CosineSimilarityLoss):
                 target_labels,
                 base_scores,
                 self.base_guard_margin,
+                self.base_guard_anchor_weight,
             )
             if self.base_guard_weight > 0
             else scores.sum() * 0.0
@@ -622,7 +693,67 @@ class BaseGuardedCosineLoss(CosineSimilarityLoss):
         return center_loss + (self.base_guard_weight * guard_loss)
 
 
-GUARDED_LOSS_TYPES = (BucketBandLoss, BaseGuardedCosineLoss)
+class BaseGuardedCoSENTLoss(CoSENTLoss):
+    """Keep CoSENT ranking from worsening a frozen base bucket."""
+
+    def __init__(
+        self,
+        model: SentenceTransformer,
+        scale: float = 20.0,
+        base_guard_weight: float = 1.0,
+        base_guard_margin: float = 0.02,
+        base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
+    ) -> None:
+        super().__init__(model=model, scale=scale)
+        self.base_guard_weight = base_guard_weight
+        self.base_guard_margin = min(0.09, max(0.0, base_guard_margin))
+        self.base_guard_anchor_weight = max(0.0, base_guard_anchor_weight)
+
+    def forward(
+        self,
+        sentence_features: list[dict[str, torch.Tensor]],
+        labels: torch.Tensor,
+    ) -> torch.Tensor:
+        embeddings = [self.model(features)["sentence_embedding"] for features in sentence_features]
+        scores = self.similarity_fct(embeddings[0], embeddings[1]).view(-1)
+        target_labels, base_scores = _unpack_guard_labels(labels, scores)
+        valid = torch.isfinite(target_labels)
+        if base_scores is not None:
+            valid &= torch.isfinite(base_scores)
+        if not torch.any(valid):
+            return scores.sum() * 0.0
+
+        scores = scores[valid]
+        target_labels = target_labels[valid].float()
+        if base_scores is not None:
+            base_scores = base_scores[valid]
+
+        pairwise_scores = scores * self.scale
+        pairwise_scores = pairwise_scores[:, None] - pairwise_scores[None, :]
+        relevant = (target_labels[:, None] < target_labels[None, :]).float()
+        pairwise_scores = pairwise_scores - (1 - relevant) * 1e12
+        pairwise_scores = torch.cat((pairwise_scores.new_zeros(1), pairwise_scores.reshape(-1)), dim=0)
+        ranking_loss = torch.logsumexp(pairwise_scores, dim=0)
+        guard_loss = (
+            _base_bucket_guard_penalty(
+                scores,
+                target_labels,
+                base_scores,
+                self.base_guard_margin,
+                self.base_guard_anchor_weight,
+            )
+            if self.base_guard_weight > 0
+            else scores.sum() * 0.0
+        )
+        return ranking_loss + (self.base_guard_weight * guard_loss)
+
+
+GUARDED_LOSS_TYPES = (
+    MidpointBandLoss,
+    BucketBandLoss,
+    BaseGuardedCosineLoss,
+    BaseGuardedCoSENTLoss,
+)
 
 
 def attach_base_bucket_scores(
@@ -633,27 +764,47 @@ def attach_base_bucket_scores(
     vector_cache: dict[str, torch.Tensor] | None = None,
     stats_prefix: str = "bucket_band",
 ) -> tuple[list[InputExample], dict[str, object]]:
-    """Attach frozen base scores so guarded objectives have a soft guard.
+    """Attach frozen base scores using the evaluator's multi-angle score.
 
-    The score is computed before optimization from the exact angle-prefixed
-    texts used by the objective. Rows whose base score is already in the target
-    bucket receive an interior guard; rows with a wrong base bucket remain free
-    to move toward the reviewed target.
+    Training examples contain one angle-prefixed pair, while evaluation uses a
+    trimmed mean across all production angles. The guard must classify the
+    frozen base bucket with that same aggregate score; otherwise a row can be
+    marked as base-wrong during training even though its evaluated bucket is
+    already correct.
     """
     stats_key = f"{stats_prefix}_base_guard"
     if not examples:
         return examples, {
             f"{stats_key}_examples": 0,
             f"{stats_key}_protected_examples": 0,
+            f"{stats_key}_multi_angle_examples": 0,
+            f"{stats_key}_fallback_examples": 0,
         }
     if batch_size <= 0:
         raise ValueError("batch_size must be positive")
 
     unique_texts = sorted({text for example in examples for text in example.texts})
+    base_texts = set()
+    has_angle_prefix = False
+    for text in unique_texts:
+        for angle in ANGLES:
+            if text.startswith(angle):
+                has_angle_prefix = True
+                base_texts.add(text[len(angle):])
+                break
+        else:
+            base_texts.add(text)
     vectors = vector_cache if vector_cache is not None else {}
     was_training = bool(model.training)
     try:
-        missing_texts = [text for text in unique_texts if text not in vectors]
+        requested_texts = set(unique_texts)
+        if has_angle_prefix:
+            requested_texts.update(
+                f"{angle}{text}"
+                for text in base_texts
+                for angle in ANGLES
+            )
+        missing_texts = sorted(text for text in requested_texts if text not in vectors)
         if missing_texts:
             encoded = model.encode(
                 missing_texts,
@@ -665,11 +816,36 @@ def attach_base_bucket_scores(
             vectors.update({text: vector for text, vector in zip(missing_texts, encoded)})
         enriched = []
         protected_examples = 0
+        multi_angle_examples = 0
+        fallback_examples = 0
         for example in examples:
             target = float(example.label)
-            left = torch.as_tensor(vectors[example.texts[0]])
-            right = torch.as_tensor(vectors[example.texts[1]])
-            base_score = float(torch.dot(left, right).detach().cpu().item())
+            text_bases = []
+            for text in example.texts[:2]:
+                for angle in ANGLES:
+                    if text.startswith(angle):
+                        text_bases.append(text[len(angle):])
+                        break
+                else:
+                    text_bases.append(text)
+            angle_scores = []
+            if has_angle_prefix and len(text_bases) == 2 and all(
+                f"{angle}{text_bases[0]}" in vectors
+                and f"{angle}{text_bases[1]}" in vectors
+                for angle in ANGLES
+            ):
+                for angle in ANGLES:
+                    left = torch.as_tensor(vectors[f"{angle}{text_bases[0]}"])
+                    right = torch.as_tensor(vectors[f"{angle}{text_bases[1]}"])
+                    angle_scores.append(float(torch.dot(left, right).detach().cpu().item()))
+                angle_scores.sort()
+                base_score = sum(angle_scores[1:-1]) / 3.0
+                multi_angle_examples += 1
+            else:
+                left = torch.as_tensor(vectors[example.texts[0]])
+                right = torch.as_tensor(vectors[example.texts[1]])
+                base_score = float(torch.dot(left, right).detach().cpu().item())
+                fallback_examples += 1
             if not math.isfinite(base_score):
                 base_score = 0.0
             base_score = max(0.0, min(1.0, base_score))
@@ -689,6 +865,8 @@ def attach_base_bucket_scores(
     return enriched, {
         f"{stats_key}_examples": len(enriched),
         f"{stats_key}_protected_examples": protected_examples,
+        f"{stats_key}_multi_angle_examples": multi_angle_examples,
+        f"{stats_key}_fallback_examples": fallback_examples,
     }
 
 
@@ -786,9 +964,10 @@ def load_examples(
                 label=row["score"],
             )
             examples.append(example)
-            if row["tag"] not in COSENT_EXCLUDE_TAGS:
+            is_bucket_only = row["tag"] in BUCKET_ONLY_TAGS
+            if row["tag"] not in COSENT_EXCLUDE_TAGS and not is_bucket_only:
                 cosent_examples.append(example)
-            if row["tag"] not in COSINE_EXCLUDE_TAGS:
+            if row["tag"] not in COSINE_EXCLUDE_TAGS and not is_bucket_only:
                 cosine_examples.append(example)
             if row["tag"] in MIDPOINT_TAGS:
                 midpoint_repeat = max(1, int(round(MIDPOINT_REPEAT_BOOST)))
@@ -865,6 +1044,14 @@ def load_examples(
     cosent_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSENT_EXCLUDE_TAGS)
     cosine_excluded_rows = sum(1 for row in rows if row["tag"] in COSINE_EXCLUDE_TAGS)
     cosine_excluded_examples = sum(row["repeat"] for row in rows if row["tag"] in COSINE_EXCLUDE_TAGS)
+    bucket_only_rows = sum(1 for row in rows if row["tag"] in BUCKET_ONLY_TAGS)
+    bucket_only_examples = sum(row["repeat"] for row in rows if row["tag"] in BUCKET_ONLY_TAGS)
+    cosent_bucket_only_excluded_rows = bucket_only_rows
+    cosent_bucket_only_excluded_examples = bucket_only_examples
+    cosine_bucket_only_excluded_rows = bucket_only_rows
+    cosine_bucket_only_excluded_examples = bucket_only_examples
+    contrastive_bucket_only_excluded_rows = bucket_only_rows
+    contrastive_bucket_only_excluded_examples = bucket_only_examples
     pinned_count = sum(1 for row in rows if is_high_value_row(row))
     regression_protected_count = sum(
         1
@@ -900,6 +1087,15 @@ def load_examples(
         "cosine_exclude_tags": sorted(COSINE_EXCLUDE_TAGS),
         "cosine_excluded_rows": cosine_excluded_rows,
         "cosine_excluded_examples_after_repeat": cosine_excluded_examples,
+        "bucket_only_tags": sorted(BUCKET_ONLY_TAGS),
+        "bucket_only_rows": bucket_only_rows,
+        "bucket_only_examples_after_repeat": bucket_only_examples,
+        "cosent_bucket_only_excluded_rows": cosent_bucket_only_excluded_rows,
+        "cosent_bucket_only_excluded_examples_after_repeat": cosent_bucket_only_excluded_examples,
+        "cosine_bucket_only_excluded_rows": cosine_bucket_only_excluded_rows,
+        "cosine_bucket_only_excluded_examples_after_repeat": cosine_bucket_only_excluded_examples,
+        "contrastive_bucket_only_excluded_rows": contrastive_bucket_only_excluded_rows,
+        "contrastive_bucket_only_excluded_examples_after_repeat": contrastive_bucket_only_excluded_examples,
         "midpoint_tags": sorted(MIDPOINT_TAGS),
         "midpoint_repeat_boost": MIDPOINT_REPEAT_BOOST,
         "midpoint_band_low": MIDPOINT_BAND_LOW,
@@ -1288,6 +1484,7 @@ def main() -> None:
     print(f"hard_neg_boost={HARD_NEG_BOOST} max_repeat={MAX_REPEAT} angle_mode={ANGLE_MODE} loss_mode={LOSS_MODE}")
     print(f"cosent_exclude_tags={','.join(sorted(COSENT_EXCLUDE_TAGS)) or '-'}")
     print(f"cosine_exclude_tags={','.join(sorted(COSINE_EXCLUDE_TAGS)) or '-'}")
+    print(f"bucket_only_tags={','.join(sorted(BUCKET_ONLY_TAGS)) or '-'}")
     print(
         f"midpoint_tags={','.join(sorted(MIDPOINT_TAGS)) or '-'} "
         f"midpoint_repeat_boost={MIDPOINT_REPEAT_BOOST} "
@@ -1327,6 +1524,7 @@ def main() -> None:
         "bucket_band_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
         "bucket_band_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
         "bucket_band_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "bucket_band_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
         "bucket_band_base_guard_examples": 0,
         "bucket_band_base_guard_protected_examples": 0,
     }
@@ -1334,10 +1532,45 @@ def main() -> None:
         "cosine_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
         "cosine_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
         "cosine_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosine_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
         "cosine_base_guard_examples": 0,
         "cosine_base_guard_protected_examples": 0,
     }
+    cosent_guard_stats = {
+        "cosent_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "cosent_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "cosent_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosent_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
+        "cosent_base_guard_examples": 0,
+        "cosent_base_guard_protected_examples": 0,
+    }
+    midpoint_guard_stats = {
+        "midpoint_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "midpoint_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "midpoint_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "midpoint_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
+        "midpoint_base_guard_examples": 0,
+        "midpoint_base_guard_protected_examples": 0,
+    }
     base_vector_cache: dict[str, torch.Tensor] = {}
+    if BUCKET_BAND_BASE_GUARD and cosent_examples:
+        cosent_examples, attached_stats = attach_base_bucket_scores(
+            model,
+            cosent_examples,
+            BATCH_SIZE,
+            vector_cache=base_vector_cache,
+            stats_prefix="cosent",
+        )
+        cosent_guard_stats.update(attached_stats)
+    if BUCKET_BAND_BASE_GUARD and midpoint_examples:
+        midpoint_examples, attached_stats = attach_base_bucket_scores(
+            model,
+            midpoint_examples,
+            BATCH_SIZE,
+            vector_cache=base_vector_cache,
+            stats_prefix="midpoint",
+        )
+        midpoint_guard_stats.update(attached_stats)
     if BUCKET_BAND_BASE_GUARD and bucket_band_examples:
         bucket_band_examples, attached_stats = attach_base_bucket_scores(
             model,
@@ -1357,16 +1590,34 @@ def main() -> None:
         cosine_guard_stats.update(attached_stats)
     stats.update(bucket_guard_stats)
     stats.update(cosine_guard_stats)
+    stats.update(cosent_guard_stats)
+    stats.update(midpoint_guard_stats)
+    print(
+        f"cosent_base_guard={BUCKET_BAND_BASE_GUARD} "
+        f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
+        f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"anchor_weight={BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT} "
+        f"protected_examples={cosent_guard_stats['cosent_base_guard_protected_examples']}"
+    )
+    print(
+        f"midpoint_base_guard={BUCKET_BAND_BASE_GUARD} "
+        f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
+        f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"anchor_weight={BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT} "
+        f"protected_examples={midpoint_guard_stats['midpoint_base_guard_protected_examples']}"
+    )
     print(
         f"bucket_band_base_guard={BUCKET_BAND_BASE_GUARD} "
         f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
         f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"anchor_weight={BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT} "
         f"protected_examples={bucket_guard_stats['bucket_band_base_guard_protected_examples']}"
     )
     print(
         f"cosine_base_guard={BUCKET_BAND_BASE_GUARD} "
         f"weight={BUCKET_BAND_BASE_GUARD_WEIGHT} "
         f"margin={BUCKET_BAND_BASE_GUARD_MARGIN} "
+        f"anchor_weight={BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT} "
         f"protected_examples={cosine_guard_stats['cosine_base_guard_protected_examples']}"
     )
     print("train_stats=" + json.dumps(stats, ensure_ascii=False))
@@ -1427,7 +1678,17 @@ def main() -> None:
             pin_memory=False,
         )
         train_objectives = [
-            (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
+            (
+                cosent_loader,
+                BaseGuardedCoSENTLoss(
+                    model=model,
+                    scale=SCALE,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            ),
             (
                 cosine_loader,
                 BaseGuardedCosineLoss(
@@ -1450,6 +1711,10 @@ def main() -> None:
                             band_high=MIDPOINT_BAND_HIGH,
                             band_weight=MIDPOINT_BAND_WEIGHT,
                             center_weight=MIDPOINT_CENTER_WEIGHT,
+                            base_guard_weight=(
+                                BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                            ),
+                            base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
                         ),
                     )
                 )
@@ -1486,7 +1751,17 @@ def main() -> None:
             pin_memory=False,
         )
         train_objectives = [
-            (cosent_loader, CoSENTLoss(model=model, scale=SCALE)),
+            (
+                cosent_loader,
+                BaseGuardedCoSENTLoss(
+                    model=model,
+                    scale=SCALE,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            ),
             (
                 cosine_loader,
                 BaseGuardedCosineLoss(
@@ -1510,6 +1785,10 @@ def main() -> None:
                             band_high=MIDPOINT_BAND_HIGH,
                             band_weight=MIDPOINT_BAND_WEIGHT,
                             center_weight=MIDPOINT_CENTER_WEIGHT,
+                            base_guard_weight=(
+                                BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                            ),
+                            base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
                         ),
                     )
                 )
@@ -1529,7 +1808,19 @@ def main() -> None:
                 )
             )
     else:
-        train_objectives = [(cosent_loader, CoSENTLoss(model=model, scale=SCALE))]
+        train_objectives = [
+            (
+                cosent_loader,
+                BaseGuardedCoSENTLoss(
+                    model=model,
+                    scale=SCALE,
+                    base_guard_weight=(
+                        BUCKET_BAND_BASE_GUARD_WEIGHT if BUCKET_BAND_BASE_GUARD else 0.0
+                    ),
+                    base_guard_margin=BUCKET_BAND_BASE_GUARD_MARGIN,
+                ),
+            )
+        ]
 
     protected_min_batches = (
         len(midpoint_loader)
@@ -1635,6 +1926,7 @@ def main() -> None:
         "bucket_band_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
         "bucket_band_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
         "bucket_band_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "bucket_band_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
         "bucket_band_base_guard_examples": stats["bucket_band_base_guard_examples"],
         "bucket_band_base_guard_protected_examples": stats[
             "bucket_band_base_guard_protected_examples"
@@ -1642,9 +1934,26 @@ def main() -> None:
         "cosine_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
         "cosine_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
         "cosine_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosine_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
         "cosine_base_guard_examples": stats["cosine_base_guard_examples"],
         "cosine_base_guard_protected_examples": stats[
             "cosine_base_guard_protected_examples"
+        ],
+        "cosent_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "cosent_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "cosent_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "cosent_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
+        "cosent_base_guard_examples": stats["cosent_base_guard_examples"],
+        "cosent_base_guard_protected_examples": stats[
+            "cosent_base_guard_protected_examples"
+        ],
+        "midpoint_base_guard_enabled": BUCKET_BAND_BASE_GUARD,
+        "midpoint_base_guard_weight": BUCKET_BAND_BASE_GUARD_WEIGHT,
+        "midpoint_base_guard_margin": BUCKET_BAND_BASE_GUARD_MARGIN,
+        "midpoint_base_guard_anchor_weight": BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
+        "midpoint_base_guard_examples": stats["midpoint_base_guard_examples"],
+        "midpoint_base_guard_protected_examples": stats[
+            "midpoint_base_guard_protected_examples"
         ],
         "bucket_band_hard_negative_rows": stats["bucket_band_hard_negative_rows"],
         "bucket_band_hard_negative_examples_before_repeat": stats[

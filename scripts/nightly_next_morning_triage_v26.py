@@ -373,6 +373,16 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "cosine_exclude_tags",
             "cosine_excluded_rows",
             "cosine_excluded_examples_after_repeat",
+            "cosent_base_guard_enabled",
+            "cosent_base_guard_weight",
+            "cosent_base_guard_margin",
+            "cosent_base_guard_examples",
+            "cosent_base_guard_protected_examples",
+            "midpoint_base_guard_enabled",
+            "midpoint_base_guard_weight",
+            "midpoint_base_guard_margin",
+            "midpoint_base_guard_examples",
+            "midpoint_base_guard_protected_examples",
             "bucket_band_tags",
             "bucket_band_examples_after_repeat",
         }
@@ -386,7 +396,7 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             return make_result(
                 ok=True,
                 skipped=True,
-                reason="latest real report lacks cosine/bucket training evidence",
+                reason="latest real report lacks CoSENT/cosine/bucket training evidence",
                 missing_evidence=missing_evidence,
             )
 
@@ -909,6 +919,12 @@ def print_human(payload: dict[str, object]) -> None:
                 f"proxy_calib={item.get('required_proxy_antonym_calib_rows', '-')} "
                 f"proxy_examples={item.get('proxy_antonym_examples_after_repeat', '-')} "
                 f"cosent_excluded_examples={item.get('cosent_excluded_examples_after_repeat', '-')} "
+                f"cosent_base_guard={item.get('cosent_base_guard_enabled', '-')} "
+                f"cosent_guard_margin={item.get('cosent_base_guard_margin', '-')} "
+                f"cosent_guard_protected={item.get('cosent_base_guard_protected_examples', '-')} "
+                f"midpoint_base_guard={item.get('midpoint_base_guard_enabled', '-')} "
+                f"midpoint_guard_margin={item.get('midpoint_base_guard_margin', '-')} "
+                f"midpoint_guard_protected={item.get('midpoint_base_guard_protected_examples', '-')} "
                 f"cosine_examples={item.get('cosine_examples_after_repeat', '-')} "
                 f"cosine_excluded_examples={item.get('cosine_excluded_examples_after_repeat', '-')} "
                 f"gold_to_calib_rows={item.get('gold_to_calib_rows', '-')} "
@@ -1054,6 +1070,9 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
                 f"proxy_calib `{item.get('required_proxy_antonym_calib_rows', '-')}`, "
                 f"proxy_examples `{item.get('proxy_antonym_examples_after_repeat', '-')}`, "
                 f"cosent_excluded_examples `{item.get('cosent_excluded_examples_after_repeat', '-')}`, "
+                f"midpoint_base_guard `{item.get('midpoint_base_guard_enabled', '-')}`, "
+                f"midpoint_guard_margin `{item.get('midpoint_base_guard_margin', '-')}`, "
+                f"midpoint_guard_protected `{item.get('midpoint_base_guard_protected_examples', '-')}`, "
                 f"cosine_examples `{item.get('cosine_examples_after_repeat', '-')}`, "
                 f"cosine_excluded_examples `{item.get('cosine_excluded_examples_after_repeat', '-')}`, "
                 f"gold_to_calib_rows `{item.get('gold_to_calib_rows', '-')}`, "

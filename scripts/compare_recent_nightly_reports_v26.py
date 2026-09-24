@@ -126,6 +126,19 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "fit_warmup_steps": sampling.get("fit_warmup_steps"),
         "cosent_exclude_tags": sampling.get("cosent_exclude_tags"),
         "cosent_excluded_examples_after_repeat": sampling.get("cosent_excluded_examples_after_repeat"),
+        "cosent_base_guard_enabled": sampling.get("cosent_base_guard_enabled"),
+        "cosent_base_guard_weight": sampling.get("cosent_base_guard_weight"),
+        "cosent_base_guard_margin": sampling.get("cosent_base_guard_margin"),
+        "cosent_base_guard_protected_examples": sampling.get(
+            "cosent_base_guard_protected_examples"
+        ),
+        "midpoint_base_guard_enabled": sampling.get("midpoint_base_guard_enabled"),
+        "midpoint_base_guard_weight": sampling.get("midpoint_base_guard_weight"),
+        "midpoint_base_guard_margin": sampling.get("midpoint_base_guard_margin"),
+        "midpoint_base_guard_examples": sampling.get("midpoint_base_guard_examples"),
+        "midpoint_base_guard_protected_examples": sampling.get(
+            "midpoint_base_guard_protected_examples"
+        ),
         "cosine_examples_after_repeat": sampling.get("cosine_examples_after_repeat"),
         "cosine_exclude_tags": sampling.get("cosine_exclude_tags"),
         "cosine_excluded_rows": sampling.get("cosine_excluded_rows"),
@@ -217,6 +230,12 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"proxy_examples={row['proxy_antonym_examples_after_repeat'] or '-'} "
             f"cosent_excluded={row['cosent_excluded_examples_after_repeat'] or '-'} "
             f"cosent_exclude_tags={row['cosent_exclude_tags'] or '-'} "
+            f"cosent_base_guard={row['cosent_base_guard_enabled'] or '-'} "
+            f"cosent_guard_margin={row['cosent_base_guard_margin'] or '-'} "
+            f"cosent_guard_protected={row['cosent_base_guard_protected_examples'] or '-'} "
+            f"midpoint_base_guard={row['midpoint_base_guard_enabled'] or '-'} "
+            f"midpoint_guard_margin={row['midpoint_base_guard_margin'] or '-'} "
+            f"midpoint_guard_protected={row['midpoint_base_guard_protected_examples'] or '-'} "
             f"cosine_examples={row['cosine_examples_after_repeat'] or '-'} "
             f"cosine_excluded={row['cosine_excluded_examples_after_repeat'] or '-'} "
             f"cosine_exclude_tags={row['cosine_exclude_tags'] or '-'} "

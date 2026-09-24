@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-09-16 08:30 CST
+Last updated: 2026-09-24 09:00 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -32,7 +32,7 @@ This goal is complete only when all items below are proven by current repo state
 
 Overall status: not complete. Real nightlies are running stably again, but no candidate has passed the strict promotion gate yet.
 
-The pipeline is much stronger and safer than before. The current blocker is no longer antonym strict 45-55 rollback; it is overall no-degrade quality, especially same-category bucket accuracy and repeated hard-negative over-scoring.
+The pipeline is much stronger and safer than before. The current blocker is no longer antonym strict 45-55 rollback; it is overall no-degrade quality, especially same-category bucket accuracy and repeated hard-negative over-scoring. The latest local isolation targets the `same_category_but_far` coupling, but it cannot be accepted until the next real MPS report passes the unchanged gates.
 
 The 2026-08-21 real run proved that fixed train/calib/eval partitions and fixed capped-row sampling are active across all three MPS rounds. The 2026-09-13 real run then validated the fixed partition (`eval_non_holdout_antonym_rows=0`, `unexpected_train_calib_symmetric_overlap=0`) and the bucket-aware auxiliary objective on all three MPS rounds (`bucket_band_hard_negative_repeat=2`), without changing any promotion threshold or antonym path. The objective improved hard-negative calibration but still allowed raw bucket accuracy and same-category quality to regress. The trainer-side boundary tag set covers evaluator-only `abstract_confusion` and `same_category_weak` families, while keeping `antonym_mid` excluded. Rejected runs retain their small calibration JSON artifacts for curve-level diagnosis while still deleting rejected model directories.
 
@@ -57,6 +57,38 @@ The previous `BucketBandLoss` applied its exact-label center term even when a sc
 ### 2026-09-16 Base-Bucket Guard Audit
 
 Read-only baseline inference showed that several fixed-eval same-category pairs started in the correct `40-60` bucket but the rejected candidate moved them below `20`, while hard-negative corrections remained useful. Both the bucket objective and the general cosine objective now record frozen pre-optimization scores for their exact angle-prefixed examples. They add an interior guard when the base score already shares the target bucket; for a base-wrong row, the directional guard only rejects movement farther from the reviewed target bucket, so correction toward the target remains unblocked. `antonym_mid` remains excluded from CoSENT and stays on its dedicated midpoint path. The guard keeps the same five-objective round-robin schedule and all promotion predicates unchanged, and still requires the next real MPS report for validation.
+
+### 2026-09-17 CoSENT Base-Bucket Guard Audit
+
+The 2026-09-16 real run proved that the bucket and cosine guards were active, but the candidate still fell from `68.36%` to `60.94%` raw bucket accuracy and degraded `same_category` calibrated MAE/accuracy from `4.923/76.60%` to `6.893/61.70%`. The remaining mixed schedule included an unguarded CoSENT ranking objective, so its batch-wise ordering could move already-correct base buckets even while the two pointwise objectives were protected. `BaseGuardedCoSENTLoss` now applies the same interior/directional frozen-base guard to that ranking path; `antonym_mid` remains excluded from CoSENT and continues through cosine plus the dedicated midpoint objective. This changes no gate, seed, round, device, or objective budget, and requires the next real MPS report for validation; no local training was started.
+
+### 2026-09-17 Midpoint Materialization Audit
+
+The same real run had `midpoint_examples_after_repeat=370` but a protected budget of `47 * 8 = 376`, so the old unguarded midpoint objective copied 12 real antonym examples to fill its final batch (`round_robin_padded_examples=12`, `round_robin_noop_padded_examples=0`). `MidpointBandLoss` now carries the frozen-base interior/directional guard and is included in the guarded objective set, making those synthetic labels `[NaN, NaN]` no-ops while keeping the same objective count, steps, seeds, device, gates, and midpoint examples. The report chain records midpoint guard counts, and the next real MPS report is required to validate the effect; no local training was started.
+
+### 2026-09-18 Targeted Multi-Angle Coverage Audit
+
+The first real report after the CoSENT and midpoint guards proved those guards were active and kept antonym `40-60`/strict `45-55` at `100%`, but raw bucket accuracy remained `60.94%` versus the base `68.36%`, with the largest same-category misses in the `40-60` and `60-80` target buckets. A read-only replay of the exact capped selection found that every selected `same_category_mid` row in those buckets had only two angle-prefixed copies, while evaluation averages five angle scores. The nightly shell and direct trainer defaults now require `same_category_mid@40-59:5,same_category_mid@60-79:5`; this is targeted coverage, not the disabled global high-value five-angle mode, and does not change the round-robin budget or any gate. The next real MPS report is required to validate the effect; no local training was started.
+
+### 2026-09-20 Same-Category Boundary Follow-Up
+
+The 2026-09-19 real report confirmed that the preceding two-bucket fix was active (`tag_bucket_angle_repeat_rows=24/14`) but did not remove the remaining candidate failures: `same_category` calibrated MAE/accuracy regressed from `4.923/76.60%` to `6.792/61.70%`, and the largest bucket miss cluster was still `same_category_mid` in the `20-40` target bucket. The same report also retained high-score `same_category_but_far` false positives (`飞机->轮船`, `猫->狗`, `医生->老师`). The daily and direct trainer defaults now add five-angle coverage for `same_category_mid@20-39` and `same_category_but_far@20-39`, without changing the three-round MPS path, fixed partition, antonym exclusion, objective budget, or promotion gates. The report still proves `eval_non_holdout_antonym_rows=0`, antonym `40-60`/strict `45-55` at `100%`, and regression `35/35`; the next real report is required, and no local training was started.
+
+### 2026-09-23 Real Report and Evaluator-Aligned Guard
+
+The complete 2026-09-22 real report completed all three MPS rounds with `NIGHTLY_SUP_COSENT_EXCLUDE_TAGS=antonym_mid`, `eval_non_holdout_antonym_rows=0`, antonym `40-60`/strict `45-55` at `100%`, and regression `35/35`. The remaining failures were `acc_ok`, `raw_acc_no_degrade`, and `no_degrade_all`; the candidate improved calibrated MAE and hard-negative metrics but still moved same-category and raw bucket scores across boundaries. The trainer guard previously classified each angle independently even though evaluation uses a five-angle trimmed mean. The local fix now freezes that evaluator-aligned aggregate and adds a small teacher anchor only for base-correct buckets, while preserving directional movement for base-wrong rows and all existing gates, seeds, rounds, MPS path, and holdout partition. No local training was started; the next complete real report is required to validate the change.
+### 2026-09-24 Local Same-Category Isolation
+
+The latest available real report, `.nightly/reports/nightly_promotion_20260923_230005.md`,
+completed all three MPS rounds with `antonym_mid` CoSENT exclusion, no non-holdout
+eval antonyms, antonym `40-60`/strict `45-55` at `100.0`, and regression `35/35`.
+The remaining failures were `acc_ok`, `raw_acc_no_degrade`, and `no_degrade_all`.
+A read-only replay showed that `same_category_but_far` was entering the CoSENT,
+absolute cosine, and bucket paths together. The local fix makes it bucket-only by
+default (`NIGHTLY_SUP_BUCKET_ONLY_TAGS=same_category_but_far`) and adds explicit
+per-objective exclusion counts. This changes no gate, partition, round count,
+device policy, or antonym path. No local training was started; the next real
+MPS report is required before judging whether the candidate can pass.
 
 ### 2026-09-13 Real Three-Round MPS Run
 
@@ -247,6 +279,7 @@ The repeated error families in the latest real report are:
 - [x] Add next-morning strategy checks so reports after the new install must prove `antonym_mid` was excluded from CoSENT.
 - [x] Make next-morning triage fail with `semantic_strategy_failed` if a fresh report does not prove the CoSENT antonym exclusion strategy.
 - [x] Add a recent-report comparison command so several real nightlies can be checked together for GPU/MPS, three-round stability, failed gates, antonym 50% behavior, and CoSENT exclusion evidence.
+- [x] Isolate `same_category_but_far` to the evaluator-aligned bucket/base-guard path without weakening gates; wait for the next real MPS report before marking the quality blocker complete.
 - [x] Make next-morning triage report `waiting_for_next_real_strategy_report` when the latest real report predates the newly installed strategy.
 - [x] Keep train/calib/eval data partitioning fixed across multi-round nightly seeds while preserving each round's independent training seed.
 - [x] Keep the supervised capped-row sample fixed across rounds via `SEM_SAMPLE_SEED`, while preserving per-round model/training randomness via `SEM_SEED`.

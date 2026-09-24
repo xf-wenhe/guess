@@ -131,7 +131,15 @@ Current hard-negative boost tags include the recurring real failure patterns fro
 
 The trainer also applies a smaller protective repeat boost to `alias_synonym_high`, `near_synonym_high`, `hint_like_high`, `same_category_mid`, `same_category_strong`, and `related_mid`. This keeps daily hard-negative fixes from collapsing legitimate same-category and synonym scores.
 
-The bucket and cosine objectives receive frozen pre-optimization base scores when `NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD=1` (the daily default). Rows already in the reviewed bucket get a small interior margin; rows in a wrong base bucket can still move toward the target, but a directional penalty prevents them from drifting farther away. This is a training-side no-degrade guard, not a promotion-gate relaxation, and `antonym_mid` remains on its dedicated midpoint path. The per-round report records both `bucket_band_base_guard_*` and `cosine_base_guard_*` counts so the next real run can prove that both paths received the guard.
+The CoSENT, midpoint, bucket, and cosine objectives receive frozen pre-optimization base scores when `NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD=1` (the daily default). With angle-prefixed training examples, the frozen bucket is now computed from the same five-angle trimmed mean used by evaluation; rows already in the reviewed bucket also receive a small teacher anchor (`NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT`, default `0.25`), while wrong-base-bucket rows can still move toward the target under a directional penalty. This is a training-side no-degrade guard, not a promotion-gate relaxation, and `antonym_mid` remains on its dedicated midpoint path. The per-round report records `cosent_base_guard_*`, `midpoint_base_guard_*`, `bucket_band_base_guard_*`, and `cosine_base_guard_*` counts, including multi-angle/fallback counts, so the next real run can prove that every supervised path received the evaluator-aligned guard.
+The current default also isolates the recurring `same_category_but_far` coupling:
+`NIGHTLY_SUP_BUCKET_ONLY_TAGS=same_category_but_far` keeps these rows in the
+evaluator-aligned bucket/base-guard objective, but removes them from CoSENT,
+absolute cosine regression, and contrastive mining. This is intended to stop
+far same-category negatives from pulling the whole same-category manifold down;
+it does not alter the five-objective schedule, fixed partition, gates, or
+antonym midpoint path. The report records `bucket_only_*` and
+`*_bucket_only_excluded_*` counts so the next real MPS run can validate the effect.
 
 For high-value rows, the trainer can optionally enforce multi-angle coverage. Rows pinned by review/patch weight and protected positive rows can be repeated across up to all five production semantic angles:
 
@@ -140,6 +148,10 @@ SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE=5
 ```
 
 This is intentionally off by default. The 2026-06-02 smoke run showed stronger hard-negative MAE but worse overall accuracy and slower MPS training when forced to five angles. Keep it as an experiment knob rather than the daily default.
+
+The daily default separately applies five-angle coverage to the two evaluator-facing `same_category_mid` boundary buckets (`40-59` and `60-79`). A 2026-09-18 read-only replay showed that these rows otherwise received only two angle copies while evaluation averaged five angles; the targeted setting is passed as `SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS` and leaves the global high-value knob above disabled.
+
+The 2026-09-19 follow-up extends the targeted five-angle coverage to `same_category_mid@20-39` and `same_category_but_far@20-39`, in addition to the existing `same_category_mid@40-59` and `same_category_mid@60-79` buckets. This targets the remaining same-category and high-score hard-negative misses without changing the fixed schedule or promotion gates.
 
 Use the full profile for slower multi-seed evidence runs:
 
@@ -264,6 +276,9 @@ Reports include per-round metrics, project-vs-candidate metrics, group metrics, 
 Rejected candidates also write diagnostics. A failed nightly is still useful: use the rejected candidate's worst cases to add or correct labels before the next run.
 
 Each non-dry-run report also includes per-round training data distribution: train rows, supervised gold split sizes, fixed holdout count, gold score buckets, and top training tags. Supervised runs also include `实际训练抽样 Round N`, which is the capped subset that actually reached the trainer; for the current antonym policy, check `antonym_mid_rows`, `antonym_mid_examples_after_repeat`, `cosent_excluded_examples_after_repeat`, `cosent_exclude_tags`, and `min_tag_rows`.
+For the same-category coupling audit, also check `bucket_only_tags`,
+`bucket_only_rows`, `bucket_only_examples_after_repeat`, and the
+`cosent_bucket_only_excluded_*` / `cosine_bucket_only_excluded_*` fields.
 
 Run the next-morning triage without touching models:
 

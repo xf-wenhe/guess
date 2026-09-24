@@ -188,6 +188,7 @@ SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
 SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
 SUP_COSENT_EXCLUDE_TAGS="${NIGHTLY_SUP_COSENT_EXCLUDE_TAGS:-antonym_mid}"
 SUP_COSINE_EXCLUDE_TAGS="${NIGHTLY_SUP_COSINE_EXCLUDE_TAGS:-}"
+SUP_BUCKET_ONLY_TAGS="${NIGHTLY_SUP_BUCKET_ONLY_TAGS:-same_category_but_far}"
 SUP_MIDPOINT_TAGS="${NIGHTLY_SUP_MIDPOINT_TAGS:-antonym_mid}"
 if [[ ",${SUP_MIDPOINT_TAGS}," != *,antonym_mid,* ]]; then
   echo "[nightly] invalid midpoint strategy: SUP_MIDPOINT_TAGS must contain antonym_mid"
@@ -222,6 +223,7 @@ SUP_BUCKET_BAND_CENTER_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_CENTER_WEIGHT:-1.0}"
 SUP_BUCKET_BAND_BASE_GUARD="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD:-1}"
 SUP_BUCKET_BAND_BASE_GUARD_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_WEIGHT:-1.0}"
 SUP_BUCKET_BAND_BASE_GUARD_MARGIN="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_MARGIN:-0.02}"
+SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT:-0.25}"
 CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT="2"
 LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT="1"
 SUP_BUCKET_BAND_HARD_NEG_REPEAT="${NIGHTLY_SUP_BUCKET_BAND_HARD_NEG_REPEAT:-$CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT}"
@@ -239,13 +241,14 @@ SUP_CONTRASTIVE_SCOPE="${NIGHTLY_SUP_CONTRASTIVE_SCOPE:-selective}"
 SUP_CONTRASTIVE_POS_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_POS_THRESHOLD:-0.7}"
 SUP_CONTRASTIVE_NEG_THRESHOLD="${NIGHTLY_SUP_CONTRASTIVE_NEG_THRESHOLD:-0.3}"
 CANONICAL_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12"
+CANONICAL_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS="same_category_but_far@20-39:5,same_category_mid@20-39:5,same_category_mid@40-59:5,same_category_mid@60-79:5"
 LEGACY_SUP_MIN_TAG_BUCKET_ROWS="same_category_mid@40-59:20,same_category_mid@60-79:12,hint_like_high@60-79:18,hint_like_high@80-100:18"
 SUP_MIN_TAG_BUCKET_ROWS="${NIGHTLY_SUP_MIN_TAG_BUCKET_ROWS:-$CANONICAL_SUP_MIN_TAG_BUCKET_ROWS}"
 if [[ "$SUP_MIN_TAG_BUCKET_ROWS" == "$LEGACY_SUP_MIN_TAG_BUCKET_ROWS" ]]; then
   echo "[nightly] replacing stale supervised bucket quotas from the loaded launchd environment"
   SUP_MIN_TAG_BUCKET_ROWS="$CANONICAL_SUP_MIN_TAG_BUCKET_ROWS"
 fi
-SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS="${NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS:-}"
+SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS="${NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS:-$CANONICAL_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS}"
 MIN_HARD_NEG_MAE_IMPROVEMENT="${NIGHTLY_MIN_HARD_NEG_MAE_IMPROVEMENT:-0.0}"
 MIN_SYNONYM_RECALL_IMPROVEMENT="${NIGHTLY_MIN_SYNONYM_RECALL_IMPROVEMENT:-0.0}"
 MIN_ANTONYM_MID_RECALL_IMPROVEMENT="${NIGHTLY_MIN_ANTONYM_MID_RECALL_IMPROVEMENT:-0.0}"
@@ -521,6 +524,7 @@ run_single_round() {
       SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS \
       SEM_COSENT_EXCLUDE_TAGS=\"${SUP_COSENT_EXCLUDE_TAGS}\" \
       SEM_COSINE_EXCLUDE_TAGS=\"${SUP_COSINE_EXCLUDE_TAGS}\" \
+      SEM_BUCKET_ONLY_TAGS=\"${SUP_BUCKET_ONLY_TAGS}\" \
       SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
       SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
       SEM_MIDPOINT_BAND_LOW=$SUP_MIDPOINT_BAND_LOW \
@@ -533,6 +537,7 @@ run_single_round() {
       SEM_BUCKET_BAND_BASE_GUARD=$SUP_BUCKET_BAND_BASE_GUARD \
       SEM_BUCKET_BAND_BASE_GUARD_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_WEIGHT \
       SEM_BUCKET_BAND_BASE_GUARD_MARGIN=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN \
+      SEM_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT \
       SEM_BUCKET_BAND_HARD_NEG_REPEAT=$SUP_BUCKET_BAND_HARD_NEG_REPEAT \
       SEM_BUCKET_BAND_TAGS=$SUP_BUCKET_BAND_TAGS \
       SEM_TRAIN_STATS_JSON=$train_stats_json \
@@ -566,6 +571,7 @@ run_single_round() {
           SEM_MIN_TAG_BUCKET_ROWS=$SUP_MIN_TAG_BUCKET_ROWS \
           SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS=$SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS \
           SEM_COSENT_EXCLUDE_TAGS=\"${SUP_COSENT_EXCLUDE_TAGS}\" \
+          SEM_BUCKET_ONLY_TAGS=\"${SUP_BUCKET_ONLY_TAGS}\" \
           SEM_COSINE_EXCLUDE_TAGS=\"${SUP_COSINE_EXCLUDE_TAGS}\" \
           SEM_MIDPOINT_TAGS=$SUP_MIDPOINT_TAGS \
           SEM_MIDPOINT_REPEAT_BOOST=$SUP_MIDPOINT_REPEAT_BOOST \
@@ -579,6 +585,7 @@ run_single_round() {
           SEM_BUCKET_BAND_BASE_GUARD=$SUP_BUCKET_BAND_BASE_GUARD \
           SEM_BUCKET_BAND_BASE_GUARD_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_WEIGHT \
           SEM_BUCKET_BAND_BASE_GUARD_MARGIN=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN \
+          SEM_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT=$SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT \
           SEM_BUCKET_BAND_HARD_NEG_REPEAT=$SUP_BUCKET_BAND_HARD_NEG_REPEAT \
           SEM_BUCKET_BAND_TAGS=$SUP_BUCKET_BAND_TAGS \
           SEM_TRAIN_STATS_JSON=$train_stats_json \
@@ -1100,10 +1107,35 @@ for key in (
     "cosent_exclude_tags",
     "cosent_excluded_rows",
     "cosent_excluded_examples_after_repeat",
+    "cosent_base_guard_enabled",
+    "cosent_base_guard_weight",
+    "cosent_base_guard_margin",
+    "cosent_base_guard_anchor_weight",
+    "cosent_base_guard_examples",
+    "cosent_base_guard_protected_examples",
+    "cosent_base_guard_multi_angle_examples",
+    "cosent_base_guard_fallback_examples",
+    "midpoint_base_guard_enabled",
+    "midpoint_base_guard_weight",
+    "midpoint_base_guard_margin",
+    "midpoint_base_guard_anchor_weight",
+    "midpoint_base_guard_examples",
+    "midpoint_base_guard_protected_examples",
+    "midpoint_base_guard_multi_angle_examples",
+    "midpoint_base_guard_fallback_examples",
     "cosine_examples_after_repeat",
     "cosine_exclude_tags",
     "cosine_excluded_rows",
     "cosine_excluded_examples_after_repeat",
+    "bucket_only_tags",
+    "bucket_only_rows",
+    "bucket_only_examples_after_repeat",
+    "cosent_bucket_only_excluded_rows",
+    "cosent_bucket_only_excluded_examples_after_repeat",
+    "cosine_bucket_only_excluded_rows",
+    "cosine_bucket_only_excluded_examples_after_repeat",
+    "contrastive_bucket_only_excluded_rows",
+    "contrastive_bucket_only_excluded_examples_after_repeat",
     "midpoint_tags",
     "midpoint_repeat_boost",
     "midpoint_band_low",
@@ -1117,13 +1149,19 @@ for key in (
     "bucket_band_base_guard_enabled",
     "bucket_band_base_guard_weight",
     "bucket_band_base_guard_margin",
+    "bucket_band_base_guard_anchor_weight",
     "bucket_band_base_guard_examples",
     "bucket_band_base_guard_protected_examples",
+    "bucket_band_base_guard_multi_angle_examples",
+    "bucket_band_base_guard_fallback_examples",
     "cosine_base_guard_enabled",
     "cosine_base_guard_weight",
     "cosine_base_guard_margin",
+    "cosine_base_guard_anchor_weight",
     "cosine_base_guard_examples",
     "cosine_base_guard_protected_examples",
+    "cosine_base_guard_multi_angle_examples",
+    "cosine_base_guard_fallback_examples",
     "bucket_band_hard_negative_repeat",
     "bucket_band_rows",
     "bucket_band_hard_negative_rows",
@@ -1240,6 +1278,7 @@ done
   echo "| sup_min_angle_repeat_tag_buckets | $SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS |"
   echo "| sup_cosent_exclude_tags | $SUP_COSENT_EXCLUDE_TAGS |"
   echo "| sup_cosine_exclude_tags | $SUP_COSINE_EXCLUDE_TAGS |"
+  echo "| sup_bucket_only_tags | $SUP_BUCKET_ONLY_TAGS |"
   echo "| sup_midpoint_tags | $SUP_MIDPOINT_TAGS |"
   echo "| sup_midpoint_repeat_boost | $SUP_MIDPOINT_REPEAT_BOOST |"
   echo "| sup_midpoint_band_low | $SUP_MIDPOINT_BAND_LOW |"
@@ -1247,14 +1286,24 @@ done
   echo "| sup_midpoint_band_weight | $SUP_MIDPOINT_BAND_WEIGHT |"
   echo "| sup_midpoint_center_weight | $SUP_MIDPOINT_CENTER_WEIGHT |"
   echo "| sup_midpoint_objective_repeats | $SUP_MIDPOINT_OBJECTIVE_REPEATS |"
+  echo "| sup_midpoint_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
+  echo "| sup_midpoint_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
+  echo "| sup_midpoint_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_midpoint_base_guard_anchor_weight | $SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT |"
   echo "| sup_bucket_band_weight | $SUP_BUCKET_BAND_WEIGHT |"
   echo "| sup_bucket_band_center_weight | $SUP_BUCKET_BAND_CENTER_WEIGHT |"
   echo "| sup_bucket_band_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
   echo "| sup_bucket_band_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
   echo "| sup_bucket_band_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_bucket_band_base_guard_anchor_weight | $SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT |"
+  echo "| sup_cosent_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
+  echo "| sup_cosent_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
+  echo "| sup_cosent_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_cosent_base_guard_anchor_weight | $SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT |"
   echo "| sup_cosine_base_guard | $SUP_BUCKET_BAND_BASE_GUARD |"
   echo "| sup_cosine_base_guard_weight | $SUP_BUCKET_BAND_BASE_GUARD_WEIGHT |"
   echo "| sup_cosine_base_guard_margin | $SUP_BUCKET_BAND_BASE_GUARD_MARGIN |"
+  echo "| sup_cosine_base_guard_anchor_weight | $SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT |"
   echo "| sup_bucket_band_hard_negative_repeat | $SUP_BUCKET_BAND_HARD_NEG_REPEAT |"
   echo "| sup_bucket_band_tags | $SUP_BUCKET_BAND_TAGS |"
   echo "| calib_support_positive_target_low | $CALIB_SUPPORT_POSITIVE_TARGET_LOW |"

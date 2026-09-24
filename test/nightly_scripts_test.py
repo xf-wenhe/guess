@@ -145,6 +145,16 @@ class NightlyScriptsTest(unittest.TestCase):
                     "cosine_examples_after_repeat": "579",
                     "cosent_exclude_tags": '["antonym_mid"]',
                     "cosent_excluded_examples_after_repeat": "153",
+                    "cosent_base_guard_enabled": "True",
+                    "cosent_base_guard_weight": "1.0",
+                    "cosent_base_guard_margin": "0.02",
+                    "cosent_base_guard_examples": "426",
+                    "cosent_base_guard_protected_examples": "180",
+                    "midpoint_base_guard_enabled": "True",
+                    "midpoint_base_guard_weight": "1.0",
+                    "midpoint_base_guard_margin": "0.02",
+                    "midpoint_base_guard_examples": "306",
+                    "midpoint_base_guard_protected_examples": "180",
                     "cosine_exclude_tags": "[]",
                     "cosine_excluded_rows": "0",
                     "cosine_excluded_examples_after_repeat": "0",
@@ -856,6 +866,16 @@ class NightlyScriptsTest(unittest.TestCase):
                     | antonym_mid_examples_after_repeat | 153 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 153 |
+                    | cosent_base_guard_enabled | True |
+                    | cosent_base_guard_weight | 1.0 |
+                    | cosent_base_guard_margin | 0.02 |
+                    | cosent_base_guard_examples | 426 |
+                    | cosent_base_guard_protected_examples | 180 |
+                    | midpoint_base_guard_enabled | True |
+                    | midpoint_base_guard_weight | 1.0 |
+                    | midpoint_base_guard_margin | 0.02 |
+                    | midpoint_base_guard_examples | 306 |
+                    | midpoint_base_guard_protected_examples | 180 |
                     | priority_antonym_calib_anchor_rows | 7 |
                     | priority_antonym_calib_weight_rows | 4 |
                     | midpoint_tags | ["antonym_mid"] |
@@ -1275,6 +1295,16 @@ class NightlyScriptsTest(unittest.TestCase):
                     | antonym_mid_examples_after_repeat | 153 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 153 |
+                    | cosent_base_guard_enabled | True |
+                    | cosent_base_guard_weight | 1.0 |
+                    | cosent_base_guard_margin | 0.02 |
+                    | cosent_base_guard_examples | 426 |
+                    | cosent_base_guard_protected_examples | 180 |
+                    | midpoint_base_guard_enabled | True |
+                    | midpoint_base_guard_weight | 1.0 |
+                    | midpoint_base_guard_margin | 0.02 |
+                    | midpoint_base_guard_examples | 306 |
+                    | midpoint_base_guard_protected_examples | 180 |
                     | priority_antonym_calib_anchor_rows | 7 |
                     | priority_antonym_calib_weight_rows | 4 |
                     | min_tag_rows | {"antonym_mid": 45} |
@@ -1466,6 +1496,16 @@ class NightlyScriptsTest(unittest.TestCase):
                     | cosine_examples_after_repeat | 659 |
                     | cosent_exclude_tags | ["antonym_mid"] |
                     | cosent_excluded_examples_after_repeat | 150 |
+                    | cosent_base_guard_enabled | True |
+                    | cosent_base_guard_weight | 1.0 |
+                    | cosent_base_guard_margin | 0.02 |
+                    | cosent_base_guard_examples | 426 |
+                    | cosent_base_guard_protected_examples | 180 |
+                    | midpoint_base_guard_enabled | True |
+                    | midpoint_base_guard_weight | 1.0 |
+                    | midpoint_base_guard_margin | 0.02 |
+                    | midpoint_base_guard_examples | 300 |
+                    | midpoint_base_guard_protected_examples | 180 |
                     | cosine_exclude_tags | [] |
                     | cosine_excluded_rows | 0 |
                     | cosine_excluded_examples_after_repeat | 0 |
@@ -3506,16 +3546,26 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("SEM_MIN_TAG_BUCKET_ROWS", source)
         self.assertIn('SEM_COSENT_EXCLUDE_TAGS", "antonym_mid"', source)
         self.assertIn('SEM_COSINE_EXCLUDE_TAGS", "").strip()', source)
+        self.assertIn('SEM_BUCKET_ONLY_TAGS", "same_category_but_far"', source)
         self.assertIn("def validate_objective_scope", source)
         self.assertIn("MIDPOINT_TAGS & COSINE_EXCLUDE_TAGS", source)
         self.assertIn("antonym_mid must remain excluded from CoSENT", nightly_source)
         self.assertIn("antonym_mid must remain in cosine regression", nightly_source)
         self.assertIn('SEM_COSINE_EXCLUDE_TAGS=\\"${SUP_COSINE_EXCLUDE_TAGS}\\"', nightly_source)
+        self.assertIn('SEM_BUCKET_ONLY_TAGS=\\"${SUP_BUCKET_ONLY_TAGS}\\"', nightly_source)
         self.assertIn("cosent_excluded_examples_after_repeat", source)
         self.assertIn("cosine_excluded_examples_after_repeat", source)
         self.assertIn("SEM_TRAIN_STATS_JSON", source)
         self.assertIn("SEM_MIN_ANGLE_REPEAT_FOR_HIGH_VALUE", source)
         self.assertIn("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", source)
+        self.assertIn("DEFAULT_MIN_ANGLE_REPEAT_TAG_BUCKETS", source)
+        for bucket_spec in (
+            "same_category_but_far@20-39:5",
+            "same_category_mid@20-39:5",
+            "same_category_mid@40-59:5",
+            "same_category_mid@60-79:5",
+        ):
+            self.assertIn(bucket_spec, source)
         self.assertIn("SEM_REQUIRED_ANTONYM_MIN_ANGLE_REPEAT", source)
         self.assertIn("SEM_PRIORITY_ANTONYM_MIN_ANGLE_REPEAT", source)
         self.assertIn("SEM_PROXY_ANTONYM_MIN_ANGLE_REPEAT", source)
@@ -3542,8 +3592,14 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("attach_base_bucket_scores", source)
         self.assertIn("bucket_band_base_guard_protected_examples", source)
         self.assertIn("cosine_base_guard_protected_examples", source)
+        self.assertIn("BaseGuardedCoSENTLoss", source)
+        self.assertIn("cosent_base_guard_protected_examples", source)
+        self.assertIn("midpoint_base_guard_protected_examples", source)
         self.assertIn("cosine_base_guard_enabled", nightly_source)
         self.assertIn("sup_cosine_base_guard", nightly_source)
+        self.assertIn("sup_cosent_base_guard", nightly_source)
+        self.assertIn("sup_midpoint_base_guard", nightly_source)
+        self.assertIn("CANONICAL_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS", nightly_source)
         self.assertIn("bucket_band_center_weight", source)
         self.assertIn("bucket_band_hard_negative_repeat", source)
         self.assertIn("bucket_band_hard_negative_examples_after_repeat", source)
@@ -3582,7 +3638,7 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("round_robin_target_batches_per_objective", source)
         self.assertIn("round_robin_padded_examples", source)
         self.assertIn("round_robin_noop_padded_examples", source)
-        self.assertIn('pad_label = float("nan") if isinstance(loss_fn, BucketBandLoss) else None', source)
+        self.assertIn('pad_label = float("nan") if isinstance(loss_fn, GUARDED_LOSS_TYPES) else None', source)
         self.assertIn("seed=SEED", source)
         eval_source = (REPO_ROOT / "scripts" / "eval_v26_gold.py").read_text(encoding="utf-8")
         self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_RADIUS", eval_source)
@@ -4185,6 +4241,66 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertTrue(all(label[0] != label[0] and label[1] != label[1] for label in [
             example.label for example in materialized[2:]
         ]))
+        self.assertIn(trainer.MidpointBandLoss, trainer.GUARDED_LOSS_TYPES)
+
+        midpoint_loader = trainer.DataLoader(enriched, batch_size=2, shuffle=False)
+        midpoint_materialized = trainer.materialize_padded_objectives(
+            [(
+                midpoint_loader,
+                trainer.MidpointBandLoss(
+                    None,
+                    band_low=0.45,
+                    band_high=0.55,
+                    band_weight=1.0,
+                    center_weight=1.0,
+                ),
+            )],
+            batch_size=2,
+            protected_min_batches=2,
+        )[0][0]
+        self.assertTrue(all(label[0] != label[0] and label[1] != label[1] for label in [
+            example.label for example in midpoint_materialized[2:]
+        ]))
+
+    def test_base_bucket_guard_uses_trimmed_multi_angle_score(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_multi_angle_base_guard",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        import torch
+
+        class FakeModel:
+            training = False
+
+            def encode(self, texts, **kwargs):
+                angle_scores = [0.25, 0.45, 0.55, 0.65, 0.75]
+                vectors = {}
+                for angle, score in zip(trainer.ANGLES, angle_scores):
+                    vectors[f"{angle}a"] = [1.0, 0.0]
+                    vectors[f"{angle}b"] = [score, (1.0 - score * score) ** 0.5]
+                return torch.tensor([vectors[text] for text in texts], dtype=torch.float32)
+
+            def train(self, mode=True):
+                self.training = mode
+                return self
+
+        angle = trainer.ANGLES[0]
+        examples = [
+            trainer.InputExample(texts=[f"{angle}a", f"{angle}b"], label=0.50),
+        ]
+        enriched, stats = trainer.attach_base_bucket_scores(FakeModel(), examples, batch_size=5)
+
+        self.assertEqual(stats["bucket_band_base_guard_multi_angle_examples"], 1)
+        self.assertEqual(stats["bucket_band_base_guard_fallback_examples"], 0)
+        self.assertEqual(stats["bucket_band_base_guard_protected_examples"], 1)
+        self.assertAlmostEqual(enriched[0].label[1], 0.55, places=6)
 
     def test_cosine_loss_uses_the_same_directional_base_guard(self):
         spec = importlib.util.spec_from_file_location(
@@ -4244,6 +4360,169 @@ class NightlyScriptsTest(unittest.TestCase):
             float(loss(features(0.78), base_wrong_high)),
             float(unguarded(features(0.78), base_wrong_high)),
         )
+
+    def test_cosent_loss_uses_the_same_directional_base_guard(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_cosent_base_guard",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0], [1.0, 0.0]], dtype=torch.float32)
+
+        def features(scores):
+            right = torch.tensor(
+                [[score, (1.0 - score * score) ** 0.5] for score in scores],
+                dtype=torch.float32,
+            )
+            return [{"embedding": left}, {"embedding": right}]
+
+        loss = trainer.BaseGuardedCoSENTLoss(
+            FakeModel(),
+            scale=20.0,
+            base_guard_weight=1.0,
+            base_guard_margin=0.02,
+        )
+        unguarded = trainer.BaseGuardedCoSENTLoss(
+            FakeModel(),
+            scale=20.0,
+            base_guard_weight=0.0,
+            base_guard_margin=0.02,
+        )
+        labels = torch.tensor([[0.20, 0.25], [0.80, 0.75]], dtype=torch.float32)
+        self.assertGreater(
+            float(loss(features([0.39, 0.79]), labels)),
+            float(unguarded(features([0.39, 0.79]), labels)),
+        )
+        self.assertGreater(
+            float(loss(features([0.30, 0.85]), labels)),
+            float(unguarded(features([0.30, 0.85]), labels)),
+        )
+
+    def test_midpoint_loss_uses_the_same_directional_base_guard(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_midpoint_base_guard",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0]], dtype=torch.float32)
+
+        def features(score):
+            right = torch.tensor(
+                [[score, (1.0 - score * score) ** 0.5]],
+                dtype=torch.float32,
+            )
+            return [{"embedding": left}, {"embedding": right}]
+
+        loss = trainer.MidpointBandLoss(
+            FakeModel(),
+            band_low=0.45,
+            band_high=0.55,
+            band_weight=0.0,
+            center_weight=0.0,
+            base_guard_weight=1.0,
+            base_guard_margin=0.02,
+        )
+        unguarded = trainer.MidpointBandLoss(
+            FakeModel(),
+            band_low=0.45,
+            band_high=0.55,
+            band_weight=0.0,
+            center_weight=0.0,
+            base_guard_weight=0.0,
+            base_guard_margin=0.02,
+        )
+        base_correct = torch.tensor([[0.50, 0.55]], dtype=torch.float32)
+        self.assertGreater(
+            float(loss(features(0.59), base_correct)),
+            float(unguarded(features(0.59), base_correct)),
+        )
+        self.assertAlmostEqual(
+            float(loss(features(0.55), base_correct)),
+            float(unguarded(features(0.55), base_correct)),
+            places=6,
+        )
+
+        base_wrong_high = torch.tensor([[0.50, 0.75]], dtype=torch.float32)
+        self.assertAlmostEqual(
+            float(loss(features(0.55), base_wrong_high)),
+            float(unguarded(features(0.55), base_wrong_high)),
+            places=6,
+        )
+        self.assertGreater(
+            float(loss(features(0.78), base_wrong_high)),
+            float(unguarded(features(0.78), base_wrong_high)),
+        )
+
+    def test_guarded_losses_ignore_nan_padding_labels(self):
+        spec = importlib.util.spec_from_file_location(
+            "train_v28c_mse_contrastive_guarded_loss_padding",
+            REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+        )
+        self.assertIsNotNone(spec)
+        trainer = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+            spec.loader.exec_module(trainer)
+
+        class FakeModel:
+            def __call__(self, features):
+                return {"sentence_embedding": features["embedding"]}
+
+        import torch
+
+        left = torch.tensor([[1.0, 0.0], [1.0, 0.0]], dtype=torch.float32)
+
+        def features(scores):
+            right = torch.tensor(
+                [[score, (1.0 - score * score) ** 0.5] for score in scores],
+                dtype=torch.float32,
+            )
+            return [{"embedding": left[: len(scores)]}, {"embedding": right}]
+
+        labels = torch.tensor(
+            [[0.50, 0.55], [float("nan"), float("nan")]],
+            dtype=torch.float32,
+        )
+        cosent = trainer.BaseGuardedCoSENTLoss(FakeModel(), base_guard_weight=1.0)
+        midpoint = trainer.MidpointBandLoss(
+            FakeModel(),
+            band_low=0.45,
+            band_high=0.55,
+            band_weight=4.0,
+            center_weight=1.0,
+            base_guard_weight=1.0,
+        )
+        self.assertTrue(torch.isfinite(cosent(features([0.50, 0.40]), labels)))
+        self.assertTrue(torch.isfinite(midpoint(features([0.50, 0.40]), labels)))
+
+        all_padding = torch.tensor([[float("nan"), float("nan")]], dtype=torch.float32)
+        self.assertAlmostEqual(float(cosent(features([0.50]), all_padding)), 0.0, places=6)
+        self.assertAlmostEqual(float(midpoint(features([0.50]), all_padding)), 0.0, places=6)
 
     def test_supervised_trainer_bucket_band_covers_abstract_and_weak_category_negatives(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -4385,26 +4664,32 @@ class NightlyScriptsTest(unittest.TestCase):
             previous_max_repeat = trainer.MAX_REPEAT
             previous_excluded = trainer.COSENT_EXCLUDE_TAGS
             previous_cosine_excluded = trainer.COSINE_EXCLUDE_TAGS
+            previous_bucket_only_tags = trainer.BUCKET_ONLY_TAGS
             previous_midpoint_tags = trainer.MIDPOINT_TAGS
             previous_midpoint_boost = trainer.MIDPOINT_REPEAT_BOOST
             previous_priority_repeat = trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT
+            previous_min_angle_repeat_tag_buckets = trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS
             try:
                 trainer.MAX_TRAIN_ROWS = 0
                 trainer.MAX_REPEAT = 3
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.COSINE_EXCLUDE_TAGS = set()
+                trainer.BUCKET_ONLY_TAGS = {"same_category_but_far"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_REPEAT_BOOST = 2.0
                 trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = 0
-                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, _, stats = trainer.load_examples(train_csv, 123)
+                trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS = {}
+                examples, cosent_examples, cosine_examples, contrastive_examples, midpoint_examples, bucket_band_examples, stats = trainer.load_examples(train_csv, 123)
             finally:
                 trainer.MAX_TRAIN_ROWS = previous_max_rows
                 trainer.MAX_REPEAT = previous_max_repeat
                 trainer.COSENT_EXCLUDE_TAGS = previous_excluded
                 trainer.COSINE_EXCLUDE_TAGS = previous_cosine_excluded
+                trainer.BUCKET_ONLY_TAGS = previous_bucket_only_tags
                 trainer.MIDPOINT_TAGS = previous_midpoint_tags
                 trainer.MIDPOINT_REPEAT_BOOST = previous_midpoint_boost
                 trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = previous_priority_repeat
+                trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS = previous_min_angle_repeat_tag_buckets
 
             self.assertEqual(stats["antonym_mid_rows"], 1)
             self.assertEqual(stats["antonym_mid_examples_after_repeat"], 3)
@@ -4414,6 +4699,12 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["cosine_excluded_rows"], 0)
             self.assertEqual(stats["cosine_excluded_examples_after_repeat"], 0)
             self.assertEqual(stats["cosine_exclude_tags"], [])
+            self.assertEqual(stats["bucket_only_tags"], ["same_category_but_far"])
+            self.assertEqual(stats["bucket_only_rows"], 1)
+            self.assertEqual(stats["bucket_only_examples_after_repeat"], 2)
+            self.assertEqual(stats["cosent_bucket_only_excluded_rows"], 1)
+            self.assertEqual(stats["cosine_bucket_only_excluded_rows"], 1)
+            self.assertEqual(stats["contrastive_bucket_only_excluded_rows"], 1)
             self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
             self.assertEqual(stats["midpoint_band_low"], 0.45)
@@ -4422,10 +4713,14 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["midpoint_center_weight"], 1.0)
             self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
             self.assertEqual(len(examples), 7)
-            self.assertEqual(len(cosent_examples), 4)
-            self.assertEqual(len(cosine_examples), 7)
-            self.assertEqual(len(contrastive_examples), 4)
+            self.assertEqual(len(cosent_examples), 2)
+            self.assertEqual(len(cosine_examples), 5)
+            self.assertEqual(len(contrastive_examples), 2)
             self.assertEqual(len(midpoint_examples), 6)
+            self.assertEqual(len(bucket_band_examples), 4)
+            self.assertFalse(any("飞机" in example.texts[0] for example in cosent_examples))
+            self.assertFalse(any("飞机" in example.texts[0] for example in cosine_examples))
+            self.assertTrue(any(abs(example.label - 0.22) < 1e-9 for example in bucket_band_examples))
             self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in examples))
             self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosent_examples))
             self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in cosine_examples))
@@ -4812,6 +5107,99 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(label_counts[0.8], 2)
             self.assertEqual(label_counts[0.22], 2)
 
+    def test_supervised_trainer_default_covers_eval_angles_for_category_boundary_rows(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            train_csv = Path(tmp) / "train.csv"
+            train_csv.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "低分同类,低分近义,same_category_mid,30,1.0,review\n"
+                "中分同类,中分近义,same_category_mid,55,1.0,review\n"
+                "高分同类,高分近义,same_category_mid,70,1.0,review\n"
+                "同类远负,同类远负对,same_category_but_far,22,1.0,review\n"
+                "医生,大夫,alias_synonym_high,90,1.0,review\n",
+                encoding="utf-8",
+            )
+
+            previous_env = os.environ.pop("SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS", None)
+            try:
+                spec = importlib.util.spec_from_file_location(
+                    "train_v28c_mse_contrastive_default_angle_coverage",
+                    REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
+                )
+                self.assertIsNotNone(spec)
+                trainer = importlib.util.module_from_spec(spec)
+                self.assertIsNotNone(spec.loader)
+                with warnings.catch_warnings():
+                    warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
+                    spec.loader.exec_module(trainer)
+            finally:
+                if previous_env is not None:
+                    os.environ["SEM_MIN_ANGLE_REPEAT_TAG_BUCKETS"] = previous_env
+
+            previous_values = {
+                "MAX_TRAIN_ROWS": trainer.MAX_TRAIN_ROWS,
+                "MAX_REPEAT": trainer.MAX_REPEAT,
+                "ANGLE_MODE": trainer.ANGLE_MODE,
+                "MIN_ANGLE_REPEAT_FOR_HIGH_VALUE": trainer.MIN_ANGLE_REPEAT_FOR_HIGH_VALUE,
+                "MIN_TAG_ROWS": trainer.MIN_TAG_ROWS,
+                "MIN_TAG_BUCKET_ROWS": trainer.MIN_TAG_BUCKET_ROWS,
+            }
+            try:
+                trainer.MAX_TRAIN_ROWS = 0
+                trainer.MAX_REPEAT = 3
+                trainer.ANGLE_MODE = "cycle"
+                trainer.MIN_ANGLE_REPEAT_FOR_HIGH_VALUE = 0
+                trainer.MIN_TAG_ROWS = {}
+                trainer.MIN_TAG_BUCKET_ROWS = {}
+                examples, _, _, _, _, _, stats = trainer.load_examples(train_csv, 123)
+            finally:
+                for name, value in previous_values.items():
+                    setattr(trainer, name, value)
+
+            self.assertEqual(
+                trainer.MIN_ANGLE_REPEAT_TAG_BUCKETS,
+                {
+                    ("same_category_but_far", "20-39"): 5,
+                    ("same_category_mid", "20-39"): 5,
+                    ("same_category_mid", "40-59"): 5,
+                    ("same_category_mid", "60-79"): 5,
+                },
+            )
+            self.assertEqual(
+                stats["tag_bucket_angle_repeat_rows"],
+                {
+                    "same_category_but_far@20-39": 1,
+                    "same_category_mid@20-39": 1,
+                    "same_category_mid@40-59": 1,
+                    "same_category_mid@60-79": 1,
+                },
+            )
+            self.assertEqual(
+                stats["tag_bucket_angle_repeat_examples_after_repeat"],
+                {
+                    "same_category_but_far@20-39": 5,
+                    "same_category_mid@20-39": 5,
+                    "same_category_mid@40-59": 5,
+                    "same_category_mid@60-79": 5,
+                },
+            )
+            for answer, user_input in (
+                ("低分同类", "低分近义"),
+                ("中分同类", "中分近义"),
+                ("高分同类", "高分近义"),
+                ("同类远负", "同类远负对"),
+            ):
+                covered_angles = {
+                    angle
+                    for angle in trainer.ANGLES
+                    if any(
+                        example.texts[0] == f"{angle}{answer}"
+                        and example.texts[1] == f"{angle}{user_input}"
+                        for example in examples
+                    )
+                }
+                self.assertEqual(covered_angles, set(trainer.ANGLES))
+
     def _prepare_fake_repo(self, root: Path) -> None:
         (root / "scripts").mkdir(parents=True)
         (root / "assets").mkdir(parents=True)
@@ -4927,6 +5315,16 @@ if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_
             'cosent_exclude_tags': ['antonym_mid'],
             'cosent_excluded_rows': 51,
             'cosent_excluded_examples_after_repeat': 153,
+            'cosent_base_guard_enabled': True,
+            'cosent_base_guard_weight': 1.0,
+            'cosent_base_guard_margin': 0.02,
+            'cosent_base_guard_examples': 426,
+            'cosent_base_guard_protected_examples': 180,
+            'midpoint_base_guard_enabled': True,
+            'midpoint_base_guard_weight': 1.0,
+            'midpoint_base_guard_margin': 0.02,
+            'midpoint_base_guard_examples': 306,
+            'midpoint_base_guard_protected_examples': 180,
             'midpoint_tags': ['antonym_mid'],
             'midpoint_repeat_boost': 2.0,
             'midpoint_examples_after_repeat': 306,
@@ -5037,6 +5435,16 @@ if script == '-' or script == '':
             f.write('| antonym_mid_rows | ' + str(stats.get('antonym_mid_rows')) + ' |\\n')
             f.write('| antonym_mid_examples_after_repeat | ' + str(stats.get('antonym_mid_examples_after_repeat')) + ' |\\n')
             f.write('| cosent_excluded_examples_after_repeat | ' + str(stats.get('cosent_excluded_examples_after_repeat')) + ' |\\n')
+            f.write('| cosent_base_guard_enabled | ' + str(stats.get('cosent_base_guard_enabled')) + ' |\\n')
+            f.write('| cosent_base_guard_weight | ' + str(stats.get('cosent_base_guard_weight')) + ' |\\n')
+            f.write('| cosent_base_guard_margin | ' + str(stats.get('cosent_base_guard_margin')) + ' |\\n')
+            f.write('| cosent_base_guard_examples | ' + str(stats.get('cosent_base_guard_examples')) + ' |\\n')
+            f.write('| cosent_base_guard_protected_examples | ' + str(stats.get('cosent_base_guard_protected_examples')) + ' |\\n')
+            f.write('| midpoint_base_guard_enabled | ' + str(stats.get('midpoint_base_guard_enabled')) + ' |\\n')
+            f.write('| midpoint_base_guard_weight | ' + str(stats.get('midpoint_base_guard_weight')) + ' |\\n')
+            f.write('| midpoint_base_guard_margin | ' + str(stats.get('midpoint_base_guard_margin')) + ' |\\n')
+            f.write('| midpoint_base_guard_examples | ' + str(stats.get('midpoint_base_guard_examples')) + ' |\\n')
+            f.write('| midpoint_base_guard_protected_examples | ' + str(stats.get('midpoint_base_guard_protected_examples')) + ' |\\n')
             f.write('| min_tag_rows | ' + json.dumps(stats.get('min_tag_rows'), ensure_ascii=False, sort_keys=True) + ' |\\n')
             f.write('| min_tag_bucket_rows | ' + json.dumps(stats.get('min_tag_bucket_rows'), ensure_ascii=False, sort_keys=True) + ' |\\n')
             f.write('\\n### Selected Tag Counts\\n')
