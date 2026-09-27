@@ -143,6 +143,15 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "cosine_exclude_tags": sampling.get("cosine_exclude_tags"),
         "cosine_excluded_rows": sampling.get("cosine_excluded_rows"),
         "cosine_excluded_examples_after_repeat": sampling.get("cosine_excluded_examples_after_repeat"),
+        "bucket_only_tags": sampling.get("bucket_only_tags"),
+        "bucket_only_rows": sampling.get("bucket_only_rows"),
+        "bucket_only_examples_after_repeat": sampling.get("bucket_only_examples_after_repeat"),
+        "cosent_bucket_only_excluded_examples_after_repeat": sampling.get(
+            "cosent_bucket_only_excluded_examples_after_repeat"
+        ),
+        "cosine_bucket_only_excluded_examples_after_repeat": sampling.get(
+            "cosine_bucket_only_excluded_examples_after_repeat"
+        ),
         "bucket_band_tags": sampling.get("bucket_band_tags"),
         "bucket_band_base_guard_enabled": sampling.get("bucket_band_base_guard_enabled"),
         "bucket_band_base_guard_weight": sampling.get("bucket_band_base_guard_weight"),
@@ -239,6 +248,10 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"cosine_examples={row['cosine_examples_after_repeat'] or '-'} "
             f"cosine_excluded={row['cosine_excluded_examples_after_repeat'] or '-'} "
             f"cosine_exclude_tags={row['cosine_exclude_tags'] or '-'} "
+            f"bucket_only={row['bucket_only_tags'] or '-'} "
+            f"bucket_only_examples={row['bucket_only_examples_after_repeat'] or '-'} "
+            f"bucket_only_excluded=cosent:{row['cosent_bucket_only_excluded_examples_after_repeat'] or '-'},"
+            f"cosine:{row['cosine_bucket_only_excluded_examples_after_repeat'] or '-'} "
             f"base_bucket_guard={row['bucket_band_base_guard_enabled'] or '-'} "
             f"guard_margin={row['bucket_band_base_guard_margin'] or '-'} "
             f"guard_protected={row['bucket_band_base_guard_protected_examples'] or '-'} "

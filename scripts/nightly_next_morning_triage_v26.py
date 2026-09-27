@@ -373,6 +373,13 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "cosine_exclude_tags",
             "cosine_excluded_rows",
             "cosine_excluded_examples_after_repeat",
+            "bucket_only_tags",
+            "bucket_only_rows",
+            "bucket_only_examples_after_repeat",
+            "cosent_bucket_only_excluded_rows",
+            "cosent_bucket_only_excluded_examples_after_repeat",
+            "cosine_bucket_only_excluded_rows",
+            "cosine_bucket_only_excluded_examples_after_repeat",
             "cosent_base_guard_enabled",
             "cosent_base_guard_weight",
             "cosent_base_guard_margin",
@@ -408,23 +415,63 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             total_examples = parse_int(row.get("train_examples_after_repeat"))
             cosent_examples = parse_int(row.get("cosent_examples_after_repeat"))
             cosent_excluded_examples = parse_int(row.get("cosent_excluded_examples_after_repeat"))
+            cosent_bucket_only_examples = parse_int(
+                row.get("cosent_bucket_only_excluded_examples_after_repeat")
+            )
             cosine_examples = parse_int(row.get("cosine_examples_after_repeat"))
             tags = str(row.get("cosine_exclude_tags") or "")
             excluded_rows = parse_int(row.get("cosine_excluded_rows"))
             excluded_examples = parse_int(row.get("cosine_excluded_examples_after_repeat"))
-            if total_examples is not None and cosine_examples is not None and excluded_examples is not None:
-                if cosine_examples + excluded_examples != total_examples:
+            cosine_bucket_only_examples = parse_int(
+                row.get("cosine_bucket_only_excluded_examples_after_repeat")
+            )
+            bucket_only_examples = parse_int(row.get("bucket_only_examples_after_repeat"))
+            if (
+                total_examples is not None
+                and cosine_examples is not None
+                and excluded_examples is not None
+                and cosine_bucket_only_examples is not None
+            ):
+                accounted_examples = (
+                    cosine_examples + excluded_examples + cosine_bucket_only_examples
+                )
+                if accounted_examples != total_examples:
                     issues.append(
                         f"round {round_id}: cosine_examples_after_repeat {cosine_examples} + "
-                        f"cosine_excluded_examples_after_repeat {excluded_examples} != "
+                        f"cosine_excluded_examples_after_repeat {excluded_examples} + "
+                        f"cosine_bucket_only_excluded_examples_after_repeat "
+                        f"{cosine_bucket_only_examples} != "
                         f"train_examples_after_repeat {total_examples}"
                     )
-            if total_examples is not None and cosent_examples is not None and cosent_excluded_examples is not None:
-                if cosent_examples + cosent_excluded_examples != total_examples:
+            if (
+                total_examples is not None
+                and cosent_examples is not None
+                and cosent_excluded_examples is not None
+                and cosent_bucket_only_examples is not None
+            ):
+                accounted_examples = (
+                    cosent_examples + cosent_excluded_examples + cosent_bucket_only_examples
+                )
+                if accounted_examples != total_examples:
                     issues.append(
                         f"round {round_id}: cosent_examples_after_repeat {cosent_examples} + "
-                        f"cosent_excluded_examples_after_repeat {cosent_excluded_examples} != "
+                        f"cosent_excluded_examples_after_repeat {cosent_excluded_examples} + "
+                        f"cosent_bucket_only_excluded_examples_after_repeat "
+                        f"{cosent_bucket_only_examples} != "
                         f"train_examples_after_repeat {total_examples}"
+                    )
+            if bucket_only_examples is not None:
+                if cosine_bucket_only_examples != bucket_only_examples:
+                    issues.append(
+                        f"round {round_id}: cosine_bucket_only_excluded_examples_after_repeat "
+                        f"{cosine_bucket_only_examples} != bucket_only_examples_after_repeat "
+                        f"{bucket_only_examples}"
+                    )
+                if cosent_bucket_only_examples != bucket_only_examples:
+                    issues.append(
+                        f"round {round_id}: cosent_bucket_only_excluded_examples_after_repeat "
+                        f"{cosent_bucket_only_examples} != bucket_only_examples_after_repeat "
+                        f"{bucket_only_examples}"
                     )
             if "antonym_mid" in tags:
                 issues.append(f"round {round_id}: cosine_exclude_tags must retain antonym_mid")

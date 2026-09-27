@@ -188,7 +188,7 @@ SUP_LOSS_MODE="${NIGHTLY_SUP_LOSS_MODE:-mixed}"
 SUP_MIN_TAG_ROWS="${NIGHTLY_SUP_MIN_TAG_ROWS:-antonym_mid:45}"
 SUP_COSENT_EXCLUDE_TAGS="${NIGHTLY_SUP_COSENT_EXCLUDE_TAGS:-antonym_mid}"
 SUP_COSINE_EXCLUDE_TAGS="${NIGHTLY_SUP_COSINE_EXCLUDE_TAGS:-}"
-SUP_BUCKET_ONLY_TAGS="${NIGHTLY_SUP_BUCKET_ONLY_TAGS:-same_category_but_far}"
+SUP_BUCKET_ONLY_TAGS="${NIGHTLY_SUP_BUCKET_ONLY_TAGS:-same_category_but_far,same_category_mid}"
 SUP_MIDPOINT_TAGS="${NIGHTLY_SUP_MIDPOINT_TAGS:-antonym_mid}"
 if [[ ",${SUP_MIDPOINT_TAGS}," != *,antonym_mid,* ]]; then
   echo "[nightly] invalid midpoint strategy: SUP_MIDPOINT_TAGS must contain antonym_mid"

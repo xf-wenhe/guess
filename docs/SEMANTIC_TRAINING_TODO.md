@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-09-24 09:00 CST
+Last updated: 2026-09-27 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -32,7 +32,7 @@ This goal is complete only when all items below are proven by current repo state
 
 Overall status: not complete. Real nightlies are running stably again, but no candidate has passed the strict promotion gate yet.
 
-The pipeline is much stronger and safer than before. The current blocker is no longer antonym strict 45-55 rollback; it is overall no-degrade quality, especially same-category bucket accuracy and repeated hard-negative over-scoring. The latest local isolation targets the `same_category_but_far` coupling, but it cannot be accepted until the next real MPS report passes the unchanged gates.
+The current blocker is overall no-degrade quality, especially raw bucket accuracy and same-category accuracy. The latest 2026-09-26 real MPS report confirmed the `same_category_but_far` objective isolation was active, while the candidate still failed `acc_ok`, `raw_acc_no_degrade`, and `no_degrade_all`. Antonym strict 45-55 and the fixed regression set passed.
 
 The 2026-08-21 real run proved that fixed train/calib/eval partitions and fixed capped-row sampling are active across all three MPS rounds. The 2026-09-13 real run then validated the fixed partition (`eval_non_holdout_antonym_rows=0`, `unexpected_train_calib_symmetric_overlap=0`) and the bucket-aware auxiliary objective on all three MPS rounds (`bucket_band_hard_negative_repeat=2`), without changing any promotion threshold or antonym path. The objective improved hard-negative calibration but still allowed raw bucket accuracy and same-category quality to regress. The trainer-side boundary tag set covers evaluator-only `abstract_confusion` and `same_category_weak` families, while keeping `antonym_mid` excluded. Rejected runs retain their small calibration JSON artifacts for curve-level diagnosis while still deleting rejected model directories.
 
@@ -89,6 +89,59 @@ default (`NIGHTLY_SUP_BUCKET_ONLY_TAGS=same_category_but_far`) and adds explicit
 per-objective exclusion counts. This changes no gate, partition, round count,
 device policy, or antonym path. No local training was started; the next real
 MPS report is required before judging whether the candidate can pass.
+
+### 2026-09-25 Real Report and Triage Accounting
+
+Report: `.nightly/reports/nightly_promotion_20260924_230004.md`
+
+The scheduled run completed all three supervised v28c rounds on MPS. Each round
+reported `same_category_but_far` as bucket-only: 13 rows / 65 repeated examples,
+excluded from CoSENT, cosine regression, and contrastive mining while retained
+in the bucket objective. Partition evidence remained clean
+(`eval_non_holdout_antonym_rows=0`), antonym `40-60` and strict `45-55` remained
+at `100.0`, and regression passed `35/35`.
+
+The candidate improved calibrated MAE by `1.254` and calibrated bucket accuracy
+by `1.172` points, below the unchanged `2.0`-point requirement. Raw bucket
+accuracy fell `7.422` points. `same_category` calibrated accuracy fell `10.64`
+points and MAE worsened by `1.688`; `hard_negative` calibrated accuracy improved
+`5.217` points and MAE improved by `3.459`. `synonym_alias` accuracy and recall
+stayed at `100%`, but calibrated MAE worsened by `0.0049`. The remaining gates
+are real quality failures, not a partition or reporting artifact.
+
+The first triage pass exposed a separate accounting bug: objective sample totals
+did not include the new bucket-only exclusions. The validator now reconciles
+objective examples, explicit tag exclusions, and bucket-only exclusions, and the
+recent-report comparison shows the bucket-only counts. These diagnostics pass on
+the latest report; candidate promotion gates remain unchanged and still fail.
+No training was started locally. The next scheduled MPS report is needed to
+evaluate any further trainer change.
+
+### 2026-09-27 Persistent Same-Category Regression
+
+Report: `.nightly/reports/nightly_promotion_20260926_230005.md`
+
+The latest report again completed all three supervised v28c rounds on MPS.
+`same_category_but_far` remained isolated at 13 rows / 65 repeated examples,
+but the candidate still failed `acc_ok`, `raw_acc_no_degrade`, and
+`no_degrade_all`; calibrated bucket accuracy improved only 1.172 points against
+the unchanged 2.0-point requirement, and raw bucket accuracy fell 7.422 points.
+Same-category calibrated accuracy fell 10.64 points and MAE worsened by 1.688.
+Hard-negative MAE/accuracy improved. Synonym/alias recall and accuracy stayed at
+`100%`, while calibrated MAE worsened slightly (`0.010582` to `0.015504`);
+antonym `40-60` and strict `45-55` stayed at `100%`, and the fixed regression
+set passed (`35/35`). Eval still contained only the fixed holdout antonym
+(`eval_non_holdout_antonym_rows=0`).
+
+The report lists 44 selected `same_category_mid` rows, while the configured
+bucket-only set still contained only `same_category_but_far`; source inspection
+confirmed mid-band rows therefore continued into CoSENT/cosine as well as the
+bucket objective. The local follow-up now makes both same-category tags
+bucket-only, retaining them in the evaluator-aligned bucket objective and
+excluding them from CoSENT, cosine regression, and contrastive mining. This
+does not change any gate, partition, round count, device policy, or antonym
+path. No training was started; a later real MPS report is required to validate
+quality, and the strict gates remain pending.
 
 ### 2026-09-13 Real Three-Round MPS Run
 
@@ -291,6 +344,7 @@ The repeated error families in the latest real report are:
 - [x] Retain rejected candidate calibration artifacts so regression/calibration coupling can be audited after the nightly cleanup.
 - [x] Make the best-round promotion recheck read/report strict antonym 45-55 metrics instead of relying on an undefined local value.
 - [ ] Isolate and reduce the latest real-nightly bucket regressions in `same_category`, `hard_negative`, and `synonym_alias` without weakening the promotion gates.
+- [x] Reconcile bucket-only exclusions in next-morning strategy accounting and display their counts in recent-report comparisons.
 - [x] Validate the bucket-aware objective against the 2026-09-13 real three-round MPS report; it improved hard-negative calibration but did not satisfy the strict global gates; do not start a local training run.
 - [ ] Re-run smoke after tuning.
 - [ ] If smoke passes, run daily/full profile with multiple seeds.

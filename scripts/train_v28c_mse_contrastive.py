@@ -49,7 +49,9 @@ COSENT_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSENT_EXCLUDE_TAGS", "antonym_mid").s
 COSINE_EXCLUDE_TAGS_SPEC = os.getenv("SEM_COSINE_EXCLUDE_TAGS", "").strip()
 # Some hard negatives are useful for evaluator-aligned bucket repair but are
 # too noisy to share the global ranking/regression objectives.
-BUCKET_ONLY_TAGS_SPEC = os.getenv("SEM_BUCKET_ONLY_TAGS", "same_category_but_far").strip()
+BUCKET_ONLY_TAGS_SPEC = os.getenv(
+    "SEM_BUCKET_ONLY_TAGS", "same_category_but_far,same_category_mid"
+).strip()
 MIDPOINT_TAGS_SPEC = os.getenv("SEM_MIDPOINT_TAGS", "antonym_mid").strip()
 MIDPOINT_REPEAT_BOOST = float(os.getenv("SEM_MIDPOINT_REPEAT_BOOST", "2.0"))
 # Keep raw midpoint supervision centered on the fixed strict 45-55 gate; the
