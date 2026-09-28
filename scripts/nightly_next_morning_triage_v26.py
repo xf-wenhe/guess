@@ -146,6 +146,21 @@ def parse_tag_bucket_json(value: object) -> dict[str, int]:
     return result
 
 
+def parse_bucket_only_tags(value: object) -> tuple[str, ...]:
+    if isinstance(value, (list, tuple, set)):
+        raw_tags = value
+    else:
+        text = str(value or "").strip()
+        if not text:
+            return ()
+        try:
+            parsed = json.loads(text)
+        except json.JSONDecodeError:
+            parsed = text.split(",")
+        raw_tags = parsed if isinstance(parsed, (list, tuple, set)) else ()
+    return tuple(sorted({str(tag).strip() for tag in raw_tags if str(tag).strip()}))
+
+
 CALIBRATION_REPORT_FIELDS = {
     "calib_midpoint_augment_radius": (
         "calib_midpoint_augment_radius_loaded",
@@ -204,6 +219,15 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
     expected_bucket_repeat = str(
         health.get("sup_bucket_band_hard_negative_repeat") or ""
     ).strip()
+    expected_bucket_only_tags = parse_bucket_only_tags(
+        health.get("sup_bucket_only_tags")
+    )
+    report_config = analysis.get("config")
+    if not isinstance(report_config, dict):
+        report_config = {}
+    reported_bucket_only_tags = parse_bucket_only_tags(
+        report_config.get("sup_bucket_only_tags")
+    )
     expected_midpoint_band = {
         "sup_midpoint_band_low": str(health.get("sup_midpoint_band_low") or "").strip(),
         "sup_midpoint_band_high": str(health.get("sup_midpoint_band_high") or "").strip(),
@@ -246,6 +270,8 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "expected_midpoint_tags": expected_midpoint,
             "expected_min_tag_bucket_rows": expected_bucket_rows,
             "expected_bucket_band_hard_negative_repeat": expected_bucket_repeat,
+            "expected_bucket_only_tags": list(expected_bucket_only_tags),
+            "reported_bucket_only_tags": list(reported_bucket_only_tags),
             "expected_midpoint_band_low": expected_midpoint_band["sup_midpoint_band_low"],
             "expected_midpoint_band_high": expected_midpoint_band["sup_midpoint_band_high"],
             "expected_calib_support_positive_target_low": expected_support_low,
@@ -288,6 +314,33 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             ok=True,
             skipped=True,
             reason="latest real report predates current launchd install",
+        )
+
+    if (
+        expected_bucket_only_tags
+        and analysis.get("three_rounds_ok")
+        and not reported_bucket_only_tags
+    ):
+        return make_result(
+            ok=True,
+            skipped=True,
+            reason="latest real report lacks bucket-only policy evidence",
+            missing_evidence=["sup_bucket_only_tags"],
+        )
+    if (
+        expected_bucket_only_tags
+        and analysis.get("three_rounds_ok")
+        and reported_bucket_only_tags != expected_bucket_only_tags
+    ):
+        return make_result(
+            ok=True,
+            skipped=True,
+            reason="latest real report uses a different bucket-only policy",
+            missing_evidence=[
+                "sup_bucket_only_tags report="
+                f"{','.join(reported_bucket_only_tags)} expected="
+                f"{','.join(expected_bucket_only_tags)}"
+            ],
         )
 
     if all(expected_calib.values()) and analysis.get("three_rounds_ok"):
@@ -514,6 +567,17 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
                     )
             else:
                 issues.append(f"round {round_id}: missing cosent exclusion count")
+
+    if expected_bucket_only_tags and analysis.get("three_rounds_ok"):
+        for row in rows:
+            round_id = row.get("round", "?")
+            actual_tags = parse_bucket_only_tags(row.get("bucket_only_tags"))
+            if actual_tags != expected_bucket_only_tags:
+                issues.append(
+                    f"round {round_id}: bucket_only_tags="
+                    f"{','.join(actual_tags)!r} != expected "
+                    f"{','.join(expected_bucket_only_tags)!r}"
+                )
 
     if expected_midpoint == "antonym_mid":
         if not rows:
@@ -911,6 +975,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"nightly_total_runs={health['nightly_total_runs']}")
     print(f"sup_cosent_exclude_tags={health.get('sup_cosent_exclude_tags')}")
     print(f"sup_cosine_exclude_tags={health.get('sup_cosine_exclude_tags')}")
+    print(f"sup_bucket_only_tags={health.get('sup_bucket_only_tags')}")
     print(
         "calib_midpoint_augment="
         f"radius:{health.get('calib_midpoint_augment_radius')} "
@@ -1150,6 +1215,8 @@ def markdown_lines(payload: dict[str, object]) -> list[str]:
     lines.append(f"- ok: `{strategy.get('ok')}`")
     lines.append(f"- expected_cosent_exclude_tags: `{strategy.get('expected_cosent_exclude_tags')}`")
     lines.append(f"- expected_cosine_exclude_tags: `{strategy.get('expected_cosine_exclude_tags')}`")
+    lines.append(f"- expected_bucket_only_tags: `{strategy.get('expected_bucket_only_tags')}`")
+    lines.append(f"- reported_bucket_only_tags: `{strategy.get('reported_bucket_only_tags')}`")
     lines.append(f"- expected_midpoint_tags: `{strategy.get('expected_midpoint_tags')}`")
     lines.append(
         f"- expected_midpoint_band: `[{strategy.get('expected_midpoint_band_low')}, "

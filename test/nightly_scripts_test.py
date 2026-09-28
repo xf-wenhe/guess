@@ -158,7 +158,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     "cosine_exclude_tags": "[]",
                     "cosine_excluded_rows": "0",
                     "cosine_excluded_examples_after_repeat": "0",
-                    "bucket_only_tags": '["same_category_but_far", "same_category_mid"]',
+                    "bucket_only_tags": '["same_category_but_far"]',
                     "bucket_only_rows": "0",
                     "bucket_only_examples_after_repeat": "0",
                     "cosent_bucket_only_excluded_rows": "0",
@@ -192,6 +192,23 @@ class NightlyScriptsTest(unittest.TestCase):
         ok = triage.semantic_strategy_checks(health, analysis)
         self.assertTrue(ok["ok"])
         self.assertFalse(ok["skipped"])
+
+        route_health = {**health, "sup_bucket_only_tags": "same_category_but_far"}
+        route_analysis = {
+            **analysis,
+            "three_rounds_ok": True,
+            "config": {"sup_bucket_only_tags": "same_category_but_far"},
+        }
+        verified_route = triage.semantic_strategy_checks(route_health, route_analysis)
+        self.assertTrue(verified_route["ok"])
+        self.assertFalse(verified_route["skipped"])
+        route_analysis["config"]["sup_bucket_only_tags"] = (
+            "same_category_but_far,same_category_mid"
+        )
+        stale_route = triage.semantic_strategy_checks(route_health, route_analysis)
+        self.assertTrue(stale_route["ok"])
+        self.assertTrue(stale_route["skipped"])
+        self.assertIn("different bucket-only policy", stale_route["reason"])
 
         sampling_row = analysis["train_sampling"][0]
         bucket_only_tags = sampling_row["bucket_only_tags"]
@@ -907,7 +924,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     | cosine_exclude_tags | [] |
                     | cosine_excluded_rows | 0 |
                     | cosine_excluded_examples_after_repeat | 0 |
-                    | bucket_only_tags | ["same_category_but_far", "same_category_mid"] |
+                    | bucket_only_tags | ["same_category_but_far"] |
                     | bucket_only_rows | 0 |
                     | bucket_only_examples_after_repeat | 0 |
                     | cosent_bucket_only_excluded_rows | 0 |
@@ -3618,9 +3635,9 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("SEM_MIN_TAG_BUCKET_ROWS", source)
         self.assertIn('SEM_COSENT_EXCLUDE_TAGS", "antonym_mid"', source)
         self.assertIn('SEM_COSINE_EXCLUDE_TAGS", "").strip()', source)
-        self.assertIn('SEM_BUCKET_ONLY_TAGS", "same_category_but_far,same_category_mid"', source)
+        self.assertIn('SEM_BUCKET_ONLY_TAGS", "same_category_but_far"', source)
         self.assertIn(
-            'NIGHTLY_SUP_BUCKET_ONLY_TAGS:-same_category_but_far,same_category_mid',
+            'NIGHTLY_SUP_BUCKET_ONLY_TAGS:-same_category_but_far',
             nightly_source,
         )
         self.assertIn("def validate_objective_scope", source)
@@ -3971,6 +3988,14 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertEqual(
             checker.effective_sup_bucket_band_hard_neg_repeat("2"),
             "2",
+        )
+        self.assertEqual(
+            checker.effective_sup_bucket_only_tags(""),
+            "same_category_but_far",
+        )
+        self.assertEqual(
+            checker.effective_sup_bucket_only_tags("same_category_but_far,same_category_mid"),
+            "same_category_but_far,same_category_mid",
         )
         self.assertEqual(
             checker.effective_sup_midpoint_band("0.45", "0.55"),
@@ -4751,7 +4776,7 @@ class NightlyScriptsTest(unittest.TestCase):
                 trainer.MAX_REPEAT = 3
                 trainer.COSENT_EXCLUDE_TAGS = {"antonym_mid"}
                 trainer.COSINE_EXCLUDE_TAGS = set()
-                trainer.BUCKET_ONLY_TAGS = {"same_category_but_far", "same_category_mid"}
+                trainer.BUCKET_ONLY_TAGS = {"same_category_but_far"}
                 trainer.MIDPOINT_TAGS = {"antonym_mid"}
                 trainer.MIDPOINT_REPEAT_BOOST = 2.0
                 trainer.PRIORITY_ANTONYM_MIN_ANGLE_REPEAT = 0
@@ -4776,15 +4801,15 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["cosine_excluded_rows"], 0)
             self.assertEqual(stats["cosine_excluded_examples_after_repeat"], 0)
             self.assertEqual(stats["cosine_exclude_tags"], [])
-            self.assertEqual(stats["bucket_only_tags"], ["same_category_but_far", "same_category_mid"])
-            self.assertEqual(stats["bucket_only_rows"], 2)
-            self.assertEqual(stats["bucket_only_examples_after_repeat"], 4)
-            self.assertEqual(stats["cosent_bucket_only_excluded_rows"], 2)
-            self.assertEqual(stats["cosent_bucket_only_excluded_examples_after_repeat"], 4)
-            self.assertEqual(stats["cosine_bucket_only_excluded_rows"], 2)
-            self.assertEqual(stats["cosine_bucket_only_excluded_examples_after_repeat"], 4)
-            self.assertEqual(stats["contrastive_bucket_only_excluded_rows"], 2)
-            self.assertEqual(stats["contrastive_bucket_only_excluded_examples_after_repeat"], 4)
+            self.assertEqual(stats["bucket_only_tags"], ["same_category_but_far"])
+            self.assertEqual(stats["bucket_only_rows"], 1)
+            self.assertEqual(stats["bucket_only_examples_after_repeat"], 2)
+            self.assertEqual(stats["cosent_bucket_only_excluded_rows"], 1)
+            self.assertEqual(stats["cosent_bucket_only_excluded_examples_after_repeat"], 2)
+            self.assertEqual(stats["cosine_bucket_only_excluded_rows"], 1)
+            self.assertEqual(stats["cosine_bucket_only_excluded_examples_after_repeat"], 2)
+            self.assertEqual(stats["contrastive_bucket_only_excluded_rows"], 1)
+            self.assertEqual(stats["contrastive_bucket_only_excluded_examples_after_repeat"], 2)
             self.assertEqual(stats["midpoint_tags"], ["antonym_mid"])
             self.assertEqual(stats["midpoint_repeat_boost"], 2.0)
             self.assertEqual(stats["midpoint_band_low"], 0.45)
@@ -4793,19 +4818,19 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["midpoint_center_weight"], 1.0)
             self.assertEqual(stats["midpoint_examples_after_repeat"], 6)
             self.assertEqual(len(examples), 9)
-            self.assertEqual(len(cosent_examples), 2)
-            self.assertEqual(len(cosine_examples), 5)
+            self.assertEqual(len(cosent_examples), 4)
+            self.assertEqual(len(cosine_examples), 7)
             self.assertEqual(len(contrastive_examples), 2)
             self.assertEqual(len(midpoint_examples), 6)
             self.assertEqual(len(bucket_band_examples), 6)
             self.assertFalse(any("飞机" in example.texts[0] for example in cosent_examples))
             self.assertFalse(any("飞机" in example.texts[0] for example in cosine_examples))
-            self.assertFalse(any("风之谷" in example.texts[0] for example in cosent_examples))
-            self.assertFalse(any("风之谷" in example.texts[0] for example in cosine_examples))
+            self.assertTrue(any("风之谷" in example.texts[0] for example in cosent_examples))
+            self.assertTrue(any("风之谷" in example.texts[0] for example in cosine_examples))
             self.assertTrue(any(abs(example.label - 0.22) < 1e-9 for example in bucket_band_examples))
             self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in examples))
-            self.assertFalse(any(abs(example.label - 0.5) < 1e-9 for example in cosent_examples))
-            self.assertTrue(any(abs(example.label - 0.5) < 1e-9 for example in cosine_examples))
+            self.assertFalse(any("高兴" in example.texts[0] for example in cosent_examples))
+            self.assertTrue(any("高兴" in example.texts[0] for example in cosine_examples))
             self.assertTrue(all(abs(example.label - 0.5) < 1e-9 for example in midpoint_examples))
 
     def test_supervised_trainer_gives_priority_antonym_patch_rows_full_angle_coverage(self):

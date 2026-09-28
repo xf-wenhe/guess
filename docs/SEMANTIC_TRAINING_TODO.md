@@ -1,6 +1,6 @@
 # Semantic Training Goal TODO
 
-Last updated: 2026-09-27 CST
+Last updated: 2026-09-28 CST
 
 Goal: make the local semantic model's daily/nightly training produce substantial, verified improvements for the Chinese guessing game.
 
@@ -32,7 +32,7 @@ This goal is complete only when all items below are proven by current repo state
 
 Overall status: not complete. Real nightlies are running stably again, but no candidate has passed the strict promotion gate yet.
 
-The current blocker is overall no-degrade quality, especially raw bucket accuracy and same-category accuracy. The latest 2026-09-26 real MPS report confirmed the `same_category_but_far` objective isolation was active, while the candidate still failed `acc_ok`, `raw_acc_no_degrade`, and `no_degrade_all`. Antonym strict 45-55 and the fixed regression set passed.
+The current blocker is overall no-degrade quality, especially raw bucket accuracy and same-category accuracy. The latest 2026-09-27 real MPS report still failed `acc_ok`, `raw_acc_no_degrade`, and `no_degrade_all`; antonym strict 45-55 remained at `100%`, the eval partition contained no non-holdout antonyms, and regression passed `35/35`.
 
 The 2026-08-21 real run proved that fixed train/calib/eval partitions and fixed capped-row sampling are active across all three MPS rounds. The 2026-09-13 real run then validated the fixed partition (`eval_non_holdout_antonym_rows=0`, `unexpected_train_calib_symmetric_overlap=0`) and the bucket-aware auxiliary objective on all three MPS rounds (`bucket_band_hard_negative_repeat=2`), without changing any promotion threshold or antonym path. The objective improved hard-negative calibration but still allowed raw bucket accuracy and same-category quality to regress. The trainer-side boundary tag set covers evaluator-only `abstract_confusion` and `same_category_weak` families, while keeping `antonym_mid` excluded. Rejected runs retain their small calibration JSON artifacts for curve-level diagnosis while still deleting rejected model directories.
 
@@ -142,6 +142,31 @@ excluding them from CoSENT, cosine regression, and contrastive mining. This
 does not change any gate, partition, round count, device policy, or antonym
 path. No training was started; a later real MPS report is required to validate
 quality, and the strict gates remain pending.
+
+### 2026-09-28 Real Report and Mid-Band Isolation Rollback
+
+Report: `.nightly/reports/nightly_promotion_20260927_230004.md`
+
+The scheduled candidate used `same_category_but_far,same_category_mid` as
+bucket-only and completed all three rounds on MPS without CPU fallback. The
+antonym split remained correct (`eval_non_holdout_antonym_rows=0` in every
+round), strict `45-55` and `40-60` recall stayed at `100%`, and regression
+passed `35/35`. The candidate still failed `acc_ok`, `raw_acc_no_degrade`, and
+`no_degrade_all`.
+
+Compared with the preceding three reports on identical fixed data/seeds,
+excluding `same_category_mid` from continuous objectives reduced CoSENT examples
+from `556` to `342` and cosine examples from `741` to `527`. Same-category
+calibrated accuracy fell further from `65.96%` to `61.70%`, while its MAE
+worsened from `6.611` to `7.111`. Synonym/alias calibrated MAE increased from
+`0.0155` to `0.0833` despite recall and bucket accuracy remaining `100%`.
+Hard-negative MAE/accuracy improved, but the gains did not compensate for the
+same-category and overall bucket regressions. The mid-band bucket-only default
+has therefore been rolled back; those rows again retain CoSENT/cosine pointwise
+supervision in addition to the bucket objective. This is evidence against the
+broader routing change, not proof that the strict global gates now pass. No
+training was started locally; the next scheduled real MPS report must test the
+rollback before any further adjustment.
 
 ### 2026-09-13 Real Three-Round MPS Run
 

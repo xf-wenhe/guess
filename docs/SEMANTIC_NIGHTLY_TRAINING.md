@@ -132,18 +132,18 @@ Current hard-negative boost tags include the recurring real failure patterns fro
 The trainer also applies a smaller protective repeat boost to `alias_synonym_high`, `near_synonym_high`, `hint_like_high`, `same_category_mid`, `same_category_strong`, and `related_mid`. This keeps daily hard-negative fixes from collapsing legitimate same-category and synonym scores.
 
 The CoSENT, midpoint, bucket, and cosine objectives receive frozen pre-optimization base scores when `NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD=1` (the daily default). With angle-prefixed training examples, the frozen bucket is now computed from the same five-angle trimmed mean used by evaluation; rows already in the reviewed bucket also receive a small teacher anchor (`NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT`, default `0.25`), while wrong-base-bucket rows can still move toward the target under a directional penalty. This is a training-side no-degrade guard, not a promotion-gate relaxation, and `antonym_mid` remains on its dedicated midpoint path. The per-round report records `cosent_base_guard_*`, `midpoint_base_guard_*`, `bucket_band_base_guard_*`, and `cosine_base_guard_*` counts, including multi-angle/fallback counts, so the next real run can prove that every supervised path received the evaluator-aligned guard.
-The current default isolates recurring same-category coupling:
-`NIGHTLY_SUP_BUCKET_ONLY_TAGS=same_category_but_far,same_category_mid` keeps
-these rows in the evaluator-aligned bucket/base-guard objective, but removes
-them from CoSENT, absolute cosine regression, and contrastive mining. The
-`same_category_mid` addition responds to the 2026-09-26 real report: the earlier
-far-only isolation was active, but same-category quality and raw bucket
-accuracy still regressed while mid-band rows remained shared across ranking and
-bucket objectives. This is a targeted objective-routing change, not a claimed
-quality fix until a future real MPS report validates it. It does not alter the
-five-objective schedule, fixed partition, gates, or antonym midpoint path. The
-report records `bucket_only_*` and `*_bucket_only_excluded_*` counts so the next
-real MPS run can verify the routing.
+The current default isolates only the recurring far-negative coupling:
+`NIGHTLY_SUP_BUCKET_ONLY_TAGS=same_category_but_far` keeps those rows in the
+evaluator-aligned bucket/base-guard objective, but removes them from CoSENT,
+absolute cosine regression, and contrastive mining. A 2026-09-27 real run
+tested adding `same_category_mid` to this set; it reduced CoSENT examples from
+556 to 342 and cosine examples from 741 to 527, while same-category accuracy
+and synonym/alias calibrated MAE regressed further. That broader isolation was
+therefore rolled back. Mid-band rows remain in CoSENT and cosine as well as the
+bucket objective, preserving their continuous score supervision. No promotion
+gate or antonym path changed. The next real MPS report must validate any later
+same-category intervention; the report records `bucket_only_*` and
+`*_bucket_only_excluded_*` counts to prove objective routing.
 
 For high-value rows, the trainer can optionally enforce multi-angle coverage. Rows pinned by review/patch weight and protected positive rows can be repeated across up to all five production semantic angles:
 

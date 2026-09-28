@@ -20,6 +20,7 @@ LEGACY_SUP_MIN_TAG_BUCKET_ROWS = (
 )
 CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT = "2"
 LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT = "1"
+CANONICAL_SUP_BUCKET_ONLY_TAGS = "same_category_but_far"
 CANONICAL_SUP_MIDPOINT_BAND_LOW = "0.45"
 CANONICAL_SUP_MIDPOINT_BAND_HIGH = "0.55"
 LEGACY_SUP_MIDPOINT_BAND_LOW = "0.47"
@@ -45,6 +46,11 @@ def effective_sup_bucket_band_hard_neg_repeat(value: object) -> str:
     if not loaded or loaded == LEGACY_SUP_BUCKET_BAND_HARD_NEG_REPEAT:
         return CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT
     return loaded
+
+
+def effective_sup_bucket_only_tags(value: object) -> str:
+    """Mirror the nightly shell's bucket-only default when launchd omits it."""
+    return str(value or "").strip() or CANONICAL_SUP_BUCKET_ONLY_TAGS
 
 
 def effective_sup_midpoint_band(low: object, high: object) -> tuple[str, str]:
@@ -233,6 +239,8 @@ def check(root: Path, home: Path) -> dict[str, object]:
             f"{loaded_bucket_repeat!r}, expected {CANONICAL_SUP_BUCKET_BAND_HARD_NEG_REPEAT!r}"
         )
     effective_bucket_repeat = effective_sup_bucket_band_hard_neg_repeat(loaded_bucket_repeat)
+    loaded_bucket_only_tags = str(env.get("NIGHTLY_SUP_BUCKET_ONLY_TAGS") or "").strip()
+    effective_bucket_only_tags = effective_sup_bucket_only_tags(loaded_bucket_only_tags)
     if env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS") != "antonym_mid":
         warnings.append(
             "NIGHTLY_SUP_COSENT_EXCLUDE_TAGS is "
@@ -372,6 +380,8 @@ def check(root: Path, home: Path) -> dict[str, object]:
         "sup_min_tag_bucket_rows_loaded": loaded_bucket_rows,
         "sup_bucket_band_hard_negative_repeat": effective_bucket_repeat,
         "sup_bucket_band_hard_negative_repeat_loaded": loaded_bucket_repeat,
+        "sup_bucket_only_tags": effective_bucket_only_tags,
+        "sup_bucket_only_tags_loaded": loaded_bucket_only_tags,
         "sup_min_angle_repeat_tag_buckets": env.get("NIGHTLY_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS"),
         "sup_cosent_exclude_tags": env.get("NIGHTLY_SUP_COSENT_EXCLUDE_TAGS"),
         "sup_cosine_exclude_tags": env.get("NIGHTLY_SUP_COSINE_EXCLUDE_TAGS"),
@@ -436,6 +446,7 @@ def print_human(payload: dict[str, object]) -> None:
     print(f"nightly_total_runs={payload['nightly_total_runs']}")
     print(f"antonym_gate={payload['antonym_gate']}")
     print(f"sup_min_tag_rows={payload['sup_min_tag_rows']}")
+    print(f"sup_bucket_only_tags={payload['sup_bucket_only_tags']}")
     print(f"sup_min_angle_repeat_tag_buckets={payload['sup_min_angle_repeat_tag_buckets']}")
     print(f"sup_cosent_exclude_tags={payload['sup_cosent_exclude_tags']}")
     print(f"sup_cosine_exclude_tags={payload['sup_cosine_exclude_tags']}")
