@@ -197,11 +197,26 @@ class NightlyScriptsTest(unittest.TestCase):
         route_analysis = {
             **analysis,
             "three_rounds_ok": True,
-            "config": {"sup_bucket_only_tags": "same_category_but_far"},
+            "config": {
+                "sup_bucket_only_tags": "same_category_but_far",
+                "calibration_eval_mode": "global_curve_v1",
+                "base_guard_score_mode": "angle_view_v1",
+            },
         }
         verified_route = triage.semantic_strategy_checks(route_health, route_analysis)
         self.assertTrue(verified_route["ok"])
         self.assertFalse(verified_route["skipped"])
+        old_eval_route = {
+            **route_analysis,
+            "config": {"sup_bucket_only_tags": "same_category_but_far"},
+        }
+        waiting_for_new_eval = triage.semantic_strategy_checks(
+            route_health,
+            old_eval_route,
+        )
+        self.assertTrue(waiting_for_new_eval["skipped"])
+        self.assertIn("global calibration or base-guard strategy", waiting_for_new_eval["reason"])
+        self.assertIn("calibration_eval_mode", waiting_for_new_eval["missing_evidence"][0])
         route_analysis["config"]["sup_bucket_only_tags"] = (
             "same_category_but_far,same_category_mid"
         )
@@ -258,7 +273,10 @@ class NightlyScriptsTest(unittest.TestCase):
         calibration_analysis = {
             **analysis,
             "three_rounds_ok": True,
-            "config": {},
+            "config": {
+                "calibration_eval_mode": "global_curve_v1",
+                "base_guard_score_mode": "angle_view_v1",
+            },
         }
         waiting_for_calibration = triage.semantic_strategy_checks(
             calibration_health,
@@ -275,6 +293,8 @@ class NightlyScriptsTest(unittest.TestCase):
             "calib_midpoint_augment_radius": "3.5",
             "calib_midpoint_augment_steps": "2",
             "calib_midpoint_augment_weight": "0.5",
+            "calibration_eval_mode": "global_curve_v1",
+            "base_guard_score_mode": "angle_view_v1",
         }
         verified_calibration = triage.semantic_strategy_checks(
             calibration_health,
@@ -295,6 +315,8 @@ class NightlyScriptsTest(unittest.TestCase):
                 "calib_midpoint_augment_radius": "3.5",
                 "calib_midpoint_augment_steps": "2",
                 "calib_midpoint_augment_weight": "0.5",
+                "calibration_eval_mode": "global_curve_v1",
+                "base_guard_score_mode": "angle_view_v1",
                 "sup_midpoint_band_low": "0.47",
                 "sup_midpoint_band_high": "0.53",
             },
@@ -3686,6 +3708,7 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("bucket_band_base_guard_protected_examples", source)
         self.assertIn("cosine_base_guard_protected_examples", source)
         self.assertIn("BaseGuardedCoSENTLoss", source)
+        self.assertIn('BASE_GUARD_SCORE_MODE = "angle_view_v1"', source)
         self.assertIn("cosent_base_guard_protected_examples", source)
         self.assertIn("midpoint_base_guard_protected_examples", source)
         self.assertIn("cosine_base_guard_enabled", nightly_source)
@@ -3736,13 +3759,17 @@ class NightlyScriptsTest(unittest.TestCase):
         eval_source = (REPO_ROOT / "scripts" / "eval_v26_gold.py").read_text(encoding="utf-8")
         self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_RADIUS", eval_source)
         self.assertIn("'3.5'", eval_source)
-        self.assertIn("apply_relation_calibration", eval_source)
-        self.assertIn('calib["relation_calibrations"]', eval_source)
-        self.assertIn('midpoint_calibration_profile', eval_source)
+        self.assertIn("apply_global_calibration(raw, calib)", eval_source)
+        self.assertNotIn("apply_relation_calibration", eval_source)
+        self.assertNotIn('calib["relation_calibrations"]', eval_source)
+        self.assertIn("CALIBRATION_EVAL_MODE = 'global_curve_v1'", eval_source)
         self.assertIn("global_midpoint_pred_aug", eval_source)
         self.assertNotIn("calib = constrain_calibration_interval(", eval_source)
         regression_source = (REPO_ROOT / "scripts" / "run_regression_pairs_v23.py").read_text(encoding="utf-8")
-        self.assertIn("apply_relation_calibration", regression_source)
+        self.assertIn("apply_global_calibration(raw_sem, calib)", regression_source)
+        self.assertNotIn("apply_relation_calibration", regression_source)
+        self.assertIn('echo "| calibration_eval_mode | global_curve_v1 |"', nightly_source)
+        self.assertIn('echo "| base_guard_score_mode | angle_view_v1 |"', nightly_source)
         self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_STEPS", nightly_source)
         self.assertIn("SEM_CALIB_MIDPOINT_AUGMENT_WEIGHT", nightly_source)
 
@@ -4363,7 +4390,7 @@ class NightlyScriptsTest(unittest.TestCase):
             example.label for example in midpoint_materialized[2:]
         ]))
 
-    def test_base_bucket_guard_uses_trimmed_multi_angle_score(self):
+    def test_base_bucket_guard_uses_the_matching_angle_view(self):
         spec = importlib.util.spec_from_file_location(
             "train_v28c_mse_contrastive_multi_angle_base_guard",
             REPO_ROOT / "scripts" / "train_v28c_mse_contrastive.py",
@@ -4393,15 +4420,18 @@ class NightlyScriptsTest(unittest.TestCase):
                 return self
 
         angle = trainer.ANGLES[0]
+        middle_angle = trainer.ANGLES[2]
         examples = [
             trainer.InputExample(texts=[f"{angle}a", f"{angle}b"], label=0.50),
+            trainer.InputExample(texts=[f"{middle_angle}a", f"{middle_angle}b"], label=0.50),
         ]
         enriched, stats = trainer.attach_base_bucket_scores(FakeModel(), examples, batch_size=5)
 
-        self.assertEqual(stats["bucket_band_base_guard_multi_angle_examples"], 1)
+        self.assertEqual(stats["bucket_band_base_guard_multi_angle_examples"], 2)
         self.assertEqual(stats["bucket_band_base_guard_fallback_examples"], 0)
         self.assertEqual(stats["bucket_band_base_guard_protected_examples"], 1)
-        self.assertAlmostEqual(enriched[0].label[1], 0.55, places=6)
+        self.assertAlmostEqual(enriched[0].label[1], 0.25, places=6)
+        self.assertAlmostEqual(enriched[1].label[1], 0.55, places=6)
 
     def test_cosine_loss_uses_the_same_directional_base_guard(self):
         spec = importlib.util.spec_from_file_location(

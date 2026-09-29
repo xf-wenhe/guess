@@ -28,11 +28,11 @@ The normal unattended route is the user LaunchAgent installed by `install_nightl
 - `build_nightly_semantic_sets.py`
   Builds the nightly supervised train/eval/calibration files under `.nightly/data/gold/`. Fixed holdout rows are excluded from training and calibration. Antonym rows are normalized to `antonym_mid`, score `50`, range `45-55`, with protected sample weights, and a prioritized non-regression antonym patch subset is reserved as heavier-weight calibration anchors, preferring the newer `nightly_patch_v2` regression-family rows first.
 - `train_v28c_mse_contrastive.py`
-  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, dedicated midpoint anchors plus a midpoint band loss for `antonym_mid`, keeps midpoint antonyms in cosine regression while excluding them from CoSENT by default, and supports optional multi-angle coverage for high-value rows.
+  Current supervised trainer. The filename is historical; the implementation supports `CoSENTLoss`, `CosineSimilarityLoss`, experimental `OnlineContrastiveLoss` mixed mode, hard-negative boost tags, protected positive/antonym tag boosts, pinned high-value review rows, dedicated midpoint anchors plus a midpoint band loss for `antonym_mid`, keeps midpoint antonyms in cosine regression while excluding them from CoSENT by default, and supports optional multi-angle coverage for high-value rows. Base-bucket guards compare each single-angle training score with the frozen score for that same angle view.
 - `eval_v26_gold.py`
-  Evaluates model/calibration metrics and emits group metrics plus worst cases, including antonym 40-60 and stricter 45-55 mid-score recall. Calibration now honors per-row `sample_weight`, so protected antonym anchors can shape the isotonic curve.
+  Evaluates model/calibration metrics and emits group metrics plus worst cases, including antonym 40-60 and stricter 45-55 mid-score recall. Calibration honors per-row `sample_weight`, so protected antonym anchors can shape the isotonic curve; all groups use the deployable global curve, never a relation label available only in evaluation data.
 - `run_regression_pairs_v23.py`
-  Fixed semantic regression gate, including antonym/opposite pairs that must score in the 45-55 semantic range.
+  Fixed semantic regression gate, including antonym/opposite pairs that must score in the 45-55 semantic range using the same global calibration path as production.
 - `analyze_nightly_report_v26.py`
   Summarizes the latest non-dry-run promotion report, GPU/MPS evidence, failed gates, regressed groups, and antonym behavior.
 - `compare_recent_nightly_reports_v26.py`
@@ -40,7 +40,7 @@ The normal unattended route is the user LaunchAgent installed by `install_nightl
 - `check_nightly_launchd_v26.py`
   Verifies the active macOS LaunchAgent wrapper, three-run config, antonym gate env, current stderr health, and latest scheduled-run/report status.
 - `nightly_next_morning_triage_v26.py`
-  Preferred next-morning entrypoint. Combines launchd health, latest real-report analysis, device status, failed gates, actual train sampling stats, and optional worst-case review CSV generation.
+  Preferred next-morning entrypoint. Combines launchd health, latest real-report analysis, device status, failed gates, actual train sampling stats, versioned calibration/base-guard evidence, and optional worst-case review CSV generation.
 - `semantic_training_todo_status.py`
   Prints the live goal checklist from `docs/SEMANTIC_TRAINING_TODO.md`, including completed/pending counts and the remaining blocking items.
 - `validate_semantic_script_manifest.py`

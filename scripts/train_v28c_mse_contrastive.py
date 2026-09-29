@@ -89,6 +89,7 @@ BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT = max(
     0.0,
     float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT", "0.25")),
 )
+BASE_GUARD_SCORE_MODE = "angle_view_v1"
 BUCKET_BAND_TAGS_SPEC = os.getenv(
     "SEM_BUCKET_BAND_TAGS",
     "collocation_not_equivalent,function_word_low,function_word_vs_real_low,"
@@ -766,13 +767,11 @@ def attach_base_bucket_scores(
     vector_cache: dict[str, torch.Tensor] | None = None,
     stats_prefix: str = "bucket_band",
 ) -> tuple[list[InputExample], dict[str, object]]:
-    """Attach frozen base scores using the evaluator's multi-angle score.
+    """Attach frozen base scores for the same angle view used by each loss.
 
-    Training examples contain one angle-prefixed pair, while evaluation uses a
-    trimmed mean across all production angles. The guard must classify the
-    frozen base bucket with that same aggregate score; otherwise a row can be
-    marked as base-wrong during training even though its evaluated bucket is
-    already correct.
+    Each objective batch scores one angle-prefixed pair. Comparing that score
+    with the evaluator's five-angle mean mixes two different views and can
+    misclassify whether the base prediction was already in the target bucket.
     """
     stats_key = f"{stats_prefix}_base_guard"
     if not examples:
@@ -823,25 +822,29 @@ def attach_base_bucket_scores(
         for example in examples:
             target = float(example.label)
             text_bases = []
+            text_angles = []
             for text in example.texts[:2]:
                 for angle in ANGLES:
                     if text.startswith(angle):
                         text_bases.append(text[len(angle):])
+                        text_angles.append(angle)
                         break
                 else:
                     text_bases.append(text)
-            angle_scores = []
-            if has_angle_prefix and len(text_bases) == 2 and all(
+                    text_angles.append(None)
+            same_angle_view = (
+                len(text_angles) == 2
+                and text_angles[0] is not None
+                and text_angles[0] == text_angles[1]
+            )
+            if same_angle_view and has_angle_prefix and all(
                 f"{angle}{text_bases[0]}" in vectors
                 and f"{angle}{text_bases[1]}" in vectors
                 for angle in ANGLES
             ):
-                for angle in ANGLES:
-                    left = torch.as_tensor(vectors[f"{angle}{text_bases[0]}"])
-                    right = torch.as_tensor(vectors[f"{angle}{text_bases[1]}"])
-                    angle_scores.append(float(torch.dot(left, right).detach().cpu().item()))
-                angle_scores.sort()
-                base_score = sum(angle_scores[1:-1]) / 3.0
+                left = torch.as_tensor(vectors[example.texts[0]])
+                right = torch.as_tensor(vectors[example.texts[1]])
+                base_score = float(torch.dot(left, right).detach().cpu().item())
                 multi_angle_examples += 1
             else:
                 left = torch.as_tensor(vectors[example.texts[0]])
@@ -1462,6 +1465,7 @@ def main() -> None:
     ) = load_examples(TRAIN_CSV, SAMPLE_SEED)
     stats["sample_seed"] = SAMPLE_SEED
     stats["device"] = device
+    stats["base_guard_score_mode"] = BASE_GUARD_SCORE_MODE
     trainer_backend = "SentenceTransformerTrainer" if device == "cpu" else "SentenceTransformer.fit"
     trainer_seed = SEED if device == "cpu" else LEGACY_MODEL_FIT_SEED
     stats["trainer_backend"] = trainer_backend

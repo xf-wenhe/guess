@@ -913,16 +913,14 @@ for group in groups:
         interval_high = cand.get('midpoint_calibration_interval_high')
         if interval_low is not None and interval_high is not None:
             extra += (
-                f"; calibrated_interval {interval_low}-{interval_high} "
+                f"; midpoint_raw_support_interval {interval_low}-{interval_high} "
                 f"target {cand.get('midpoint_calibration_target_low', '-')}"
                 f"-{cand.get('midpoint_calibration_target_high', '-')}"
             )
-        profile = cand.get('midpoint_calibration_profile')
-        if profile:
-            extra += (
-                f"; profile {profile} rows {cand.get('midpoint_calibration_rows', '-')} "
-                f"augmented {cand.get('midpoint_calibration_augmented_rows', '-')}"
-            )
+        extra += (
+            f"; global_curve_midpoint_rows {cand.get('midpoint_calibration_rows', '-')} "
+            f"augmented {cand.get('midpoint_calibration_augmented_rows', '-')}"
+        )
     lines.append(
         f"| {group} | {b.get('cal_mae', '-')} | {c.get('cal_mae', '-')} | "
         f"{b.get('cal_bucket_acc', '-')} | {c.get('cal_bucket_acc', '-')} | {extra} |"
@@ -1310,6 +1308,8 @@ done
   echo "| calib_midpoint_augment_radius | $CALIB_MIDPOINT_AUGMENT_RADIUS |"
   echo "| calib_midpoint_augment_steps | $CALIB_MIDPOINT_AUGMENT_STEPS |"
   echo "| calib_midpoint_augment_weight | $CALIB_MIDPOINT_AUGMENT_WEIGHT |"
+  echo "| calibration_eval_mode | global_curve_v1 |"
+  echo "| base_guard_score_mode | angle_view_v1 |"
   echo "| data_split_seed | $DATA_SPLIT_SEED |"
   echo "| train_sample_seed | $DATA_SPLIT_SEED |"
   echo "| sup_contrastive_scope | $SUP_CONTRASTIVE_SCOPE |"

@@ -9,6 +9,7 @@ sys.path.insert(0, str(REPO_ROOT / "scripts"))
 
 from semantic_common import (  # noqa: E402
     apply_calibration,
+    apply_global_calibration,
     apply_relation_calibration,
     build_calibration,
     constrain_calibration_interval,
@@ -172,6 +173,26 @@ class SemanticCommonTest(unittest.TestCase):
         self.assertEqual(apply_relation_calibration(50.0, calibration), 70.0)
         self.assertEqual(apply_relation_calibration(50.0, calibration, "antonym_mid"), 50.0)
         self.assertEqual(apply_relation_calibration(90.0, calibration, "antonym_mid"), 55.0)
+
+    def test_global_calibration_ignores_relation_specific_profiles(self):
+        calibration = {
+            "x_pred": [0.0, 100.0],
+            "y_calibrated": [0.0, 100.0],
+            "relation_calibrations": {
+                "antonym_mid": {
+                    "x_pred": [0.0, 100.0],
+                    "y_calibrated": [0.0, 100.0],
+                    "target_low": 45.0,
+                    "target_high": 55.0,
+                }
+            },
+        }
+
+        self.assertAlmostEqual(apply_global_calibration(60.87, calibration), 60.87)
+        self.assertEqual(
+            apply_relation_calibration(60.87, calibration, "antonym_mid"),
+            55.0,
+        )
 
     def test_augment_masked_calibration_samples_only_expands_selected_rows(self):
         pred = [20, 40, 60]

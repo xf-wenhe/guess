@@ -92,6 +92,8 @@ def compact_row(summary: dict[str, Any]) -> dict[str, Any]:
         "sup_loss_mode": config.get("sup_loss_mode"),
         "sup_min_tag_rows": config.get("sup_min_tag_rows"),
         "sup_min_tag_bucket_rows": config.get("sup_min_tag_bucket_rows"),
+        "calibration_eval_mode": config.get("calibration_eval_mode"),
+        "base_guard_score_mode": config.get("base_guard_score_mode"),
         "calib_support_positive_target_low": config.get("calib_support_positive_target_low"),
         "calib_midpoint_augment_radius": config.get("calib_midpoint_augment_radius"),
         "calib_midpoint_augment_steps": config.get("calib_midpoint_augment_steps"),
@@ -221,6 +223,8 @@ def print_human(comparison: dict[str, Any]) -> None:
             f"calib_midpoint={row['calib_midpoint_augment_radius'] or '-'}/"
             f"{row['calib_midpoint_augment_steps'] or '-'}/"
             f"{row['calib_midpoint_augment_weight'] or '-'} "
+            f"calibration_eval={row['calibration_eval_mode'] or '-'} "
+            f"base_guard={row['base_guard_score_mode'] or '-'} "
             f"cosent_exclude={row['sup_cosent_exclude_tags']} "
             f"cosine_exclude={row['sup_cosine_exclude_tags'] or '-'}"
         )

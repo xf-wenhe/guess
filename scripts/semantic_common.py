@@ -60,6 +60,19 @@ def apply_calibration(pred: float, x: list[float], y: list[float]) -> float:
     return pred
 
 
+def apply_global_calibration(pred: float, calibration: dict[str, object]) -> float:
+    """Apply the deployable global curve without using a known relation label."""
+    x = calibration.get("x_pred")
+    y = calibration.get("y_calibrated")
+    if not isinstance(x, list) or not isinstance(y, list):
+        raise ValueError("calibration must contain x_pred and y_calibrated lists")
+    return apply_calibration(
+        float(pred),
+        [float(item) for item in x],
+        [float(item) for item in y],
+    )
+
+
 def apply_relation_calibration(
     pred: float,
     calibration: dict[str, object],
@@ -80,15 +93,7 @@ def apply_relation_calibration(
             if isinstance(profile, dict):
                 active = profile
 
-    x = active.get("x_pred")
-    y = active.get("y_calibrated")
-    if not isinstance(x, list) or not isinstance(y, list):
-        raise ValueError("calibration profile must contain x_pred and y_calibrated lists")
-    value = apply_calibration(
-        float(pred),
-        [float(item) for item in x],
-        [float(item) for item in y],
-    )
+    value = apply_global_calibration(pred, active)
 
     target_low = active.get("target_low")
     target_high = active.get("target_high")

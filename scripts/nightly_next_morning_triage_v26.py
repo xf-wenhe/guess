@@ -198,6 +198,8 @@ SENTENCE_TRANSFORMER_FIT_REPORT_FIELDS = (
     "fit_warmup_steps",
 )
 SENTENCE_TRANSFORMER_FIT_BACKEND = "SentenceTransformer.fit"
+EXPECTED_CALIBRATION_EVAL_MODE = "global_curve_v1"
+EXPECTED_BASE_GUARD_SCORE_MODE = "angle_view_v1"
 
 
 def calibration_value_matches(key: str, expected: str, actual: str) -> bool:
@@ -228,6 +230,12 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
     reported_bucket_only_tags = parse_bucket_only_tags(
         report_config.get("sup_bucket_only_tags")
     )
+    reported_calibration_eval_mode = str(
+        report_config.get("calibration_eval_mode") or ""
+    ).strip()
+    reported_base_guard_score_mode = str(
+        report_config.get("base_guard_score_mode") or ""
+    ).strip()
     expected_midpoint_band = {
         "sup_midpoint_band_low": str(health.get("sup_midpoint_band_low") or "").strip(),
         "sup_midpoint_band_high": str(health.get("sup_midpoint_band_high") or "").strip(),
@@ -272,6 +280,10 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             "expected_bucket_band_hard_negative_repeat": expected_bucket_repeat,
             "expected_bucket_only_tags": list(expected_bucket_only_tags),
             "reported_bucket_only_tags": list(reported_bucket_only_tags),
+            "expected_calibration_eval_mode": EXPECTED_CALIBRATION_EVAL_MODE,
+            "reported_calibration_eval_mode": reported_calibration_eval_mode,
+            "expected_base_guard_score_mode": EXPECTED_BASE_GUARD_SCORE_MODE,
+            "reported_base_guard_score_mode": reported_base_guard_score_mode,
             "expected_midpoint_band_low": expected_midpoint_band["sup_midpoint_band_low"],
             "expected_midpoint_band_high": expected_midpoint_band["sup_midpoint_band_high"],
             "expected_calib_support_positive_target_low": expected_support_low,
@@ -314,6 +326,30 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
             ok=True,
             skipped=True,
             reason="latest real report predates current launchd install",
+        )
+
+    if analysis.get("three_rounds_ok") and (
+        reported_calibration_eval_mode != EXPECTED_CALIBRATION_EVAL_MODE
+        or reported_base_guard_score_mode != EXPECTED_BASE_GUARD_SCORE_MODE
+    ):
+        missing_pipeline_modes = []
+        if reported_calibration_eval_mode != EXPECTED_CALIBRATION_EVAL_MODE:
+            missing_pipeline_modes.append(
+                "calibration_eval_mode report="
+                f"{reported_calibration_eval_mode or '(missing)'} expected="
+                f"{EXPECTED_CALIBRATION_EVAL_MODE}"
+            )
+        if reported_base_guard_score_mode != EXPECTED_BASE_GUARD_SCORE_MODE:
+            missing_pipeline_modes.append(
+                "base_guard_score_mode report="
+                f"{reported_base_guard_score_mode or '(missing)'} expected="
+                f"{EXPECTED_BASE_GUARD_SCORE_MODE}"
+            )
+        return make_result(
+            ok=True,
+            skipped=True,
+            reason="latest real report lacks current global calibration or base-guard strategy evidence",
+            missing_evidence=missing_pipeline_modes,
         )
 
     if (

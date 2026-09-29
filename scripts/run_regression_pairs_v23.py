@@ -6,7 +6,7 @@ from pathlib import Path
 
 from sentence_transformers import SentenceTransformer
 
-from semantic_common import apply_relation_calibration, semantic_multi_angle
+from semantic_common import apply_global_calibration, semantic_multi_angle
 
 PAIRS_PATH = Path('data/regression_pairs_v23.json')
 MODEL_PATH = os.getenv('SEM_MODEL_PATH', 'models/bge-m3-finetuned-v27-semreal-anchor')
@@ -174,8 +174,7 @@ def main():
         target_max = int(item['target_max'])
 
         raw_sem = semantic_multi_angle(model, guess, answer)
-        relation = 'antonym_mid' if pair_type == 'antonym' else None
-        cal_sem = apply_relation_calibration(raw_sem, calib, relation)
+        cal_sem = apply_global_calibration(raw_sem, calib)
         lexical = lexical_score(guess, answer)
         key1 = f'{answer}\t{guess}'
         key2 = f'{guess}\t{answer}'
