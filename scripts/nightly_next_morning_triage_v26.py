@@ -98,6 +98,22 @@ def launchd_log_text(health: dict[str, object]) -> str:
     return "\n".join(texts)
 
 
+def matching_run_log_text(health: dict[str, object], report_path: Path) -> str:
+    stamp = analyze_nightly_report_v26.report_stamp(report_path)
+    if not stamp or stamp != str(health.get("latest_run_log_stamp") or ""):
+        return ""
+
+    raw_path = str(health.get("latest_run_log") or "")
+    path = Path(raw_path) if raw_path else None
+    if (
+        path is None
+        or path.name != f"nightly_train_v26_{stamp}.log"
+        or not path.exists()
+    ):
+        return ""
+    return path.read_text(encoding="utf-8", errors="replace")
+
+
 def launchd_device_evidence(health: dict[str, object]) -> dict[str, object]:
     return analyze_nightly_report_v26.parse_log_devices(launchd_log_text(health))
 
@@ -908,7 +924,11 @@ def build_triage(args: argparse.Namespace) -> dict[str, object]:
         if device.get("actual_device_inferred") != "unknown":
             analysis.update(device)
     if not analysis.get("gate_status"):
-        gate_status = analyze_nightly_report_v26.parse_gate_status(launchd_log_text(health))
+        # LaunchAgent logs and backups span multiple runs; only attribute gates
+        # from the per-run log that matches the selected real report.
+        gate_status = analyze_nightly_report_v26.parse_gate_status(
+            matching_run_log_text(health, report_path)
+        )
         if gate_status.get("gate_status"):
             analysis.update(gate_status)
     strategy_checks = semantic_strategy_checks(health, analysis)

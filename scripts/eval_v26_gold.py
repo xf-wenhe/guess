@@ -348,6 +348,8 @@ def main():
     calib_pred_aug = global_midpoint_pred_aug + support_pred_aug[len(calib_pred):]
     calib_target_aug = global_midpoint_target_aug + support_target_aug[len(calib_target):]
     calib_weights_aug = global_midpoint_weights_aug + support_weights_aug[len(calib_weights):]
+    midpoint_calibration_augmented_rows = len(global_midpoint_pred_aug) - len(calib_pred)
+    support_positive_calibration_augmented_rows = len(support_pred_aug) - len(calib_pred)
     calib = build_calibration(calib_pred_aug, calib_target_aug, calib_weights_aug)
     midpoint_raw_scores = [
         float(value)
@@ -396,7 +398,7 @@ def main():
         'calibration_method': calib.get('method', 'unknown'),
         'midpoint_calibration_tags': sorted(MIDPOINT_CALIB_TAGS),
         'midpoint_calibration_rows': sum(1 for flag in midpoint_mask if flag),
-        'midpoint_calibration_augmented_rows': len(global_midpoint_pred_aug) - len(calib_pred),
+        'midpoint_calibration_augmented_rows': midpoint_calibration_augmented_rows,
         'midpoint_calibration_augment_radius': MIDPOINT_CALIB_AUGMENT_RADIUS,
         'midpoint_calibration_augment_steps': MIDPOINT_CALIB_AUGMENT_STEPS,
         'midpoint_calibration_augment_weight': MIDPOINT_CALIB_AUGMENT_WEIGHT,
@@ -406,7 +408,7 @@ def main():
         'midpoint_calibration_target_high': MIDPOINT_CALIB_TARGET_HIGH,
         'support_positive_calibration_tags': sorted(SUPPORT_POSITIVE_CALIB_TAGS),
         'support_positive_calibration_rows': sum(1 for flag in support_positive_mask if flag),
-        'support_positive_calibration_augmented_rows': len(support_pred_aug) - len(calib_pred),
+        'support_positive_calibration_augmented_rows': support_positive_calibration_augmented_rows,
         'support_positive_calibration_target_low': SUPPORT_POSITIVE_CALIB_TARGET_LOW,
         'support_positive_calibration_target_high': SUPPORT_POSITIVE_CALIB_TARGET_HIGH,
         'support_positive_calibration_augment_radius': SUPPORT_POSITIVE_CALIB_AUGMENT_RADIUS,
@@ -420,7 +422,7 @@ def main():
     print(f"calibration_method={calib.get('method', 'unknown')}")
     print(
         f'midpoint_calibration_rows={sum(1 for flag in midpoint_mask if flag)} '
-        f'augmented_rows={len(midpoint_pred_aug) - len(midpoint_pred)}'
+        f'augmented_rows={midpoint_calibration_augmented_rows}'
     )
     if midpoint_interval_low is not None and midpoint_interval_high is not None:
         print(
@@ -430,7 +432,7 @@ def main():
         )
     print(
         f'support_positive_calibration_rows={sum(1 for flag in support_positive_mask if flag)} '
-        f'augmented_rows={len(support_pred_aug) - len(calib_pred)}'
+        f'augmented_rows={support_positive_calibration_augmented_rows}'
     )
     print(f'written={CALIB_JSON}')
 

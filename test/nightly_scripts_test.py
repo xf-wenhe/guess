@@ -1018,7 +1018,8 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertFalse(payload["analysis"]["three_rounds_ok"])
             self.assertEqual(payload["analysis"]["actual_device_inferred"], "mps")
             self.assertTrue(payload["analysis"]["used_gpu_or_mps"])
-            self.assertEqual(payload["analysis"]["failed_gates"], ["mae_ok"])
+            self.assertFalse(payload["analysis"]["gate_status_available"])
+            self.assertEqual(payload["analysis"]["failed_gates"], [])
             self.assertEqual(payload["analysis"]["bucket_confusions"][0]["target_bucket"], "80-100")
             self.assertEqual(payload["analysis"]["bucket_confusions"][0]["top_tags"], "alias_synonym_high:3")
             self.assertEqual(payload["analysis"]["train_sampling"][0]["antonym_mid_rows"], "51")
@@ -1059,7 +1060,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("status_counts:", md)
             self.assertIn("severity_counts:", md)
             self.assertIn("validation_ok:", md)
-            self.assertIn("`mae_ok`", md)
+            self.assertIn("matching gate log was not found", md)
             self.assertIn("antonym group missing", md)
 
     def test_next_morning_triage_reports_started_waiting_for_report(self):
@@ -3956,6 +3957,58 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertEqual(group("", 90), "synonym_alias")
         self.assertEqual(group("hard_negative_low", 90), "hard_negative")
         self.assertEqual(group("antonym_mid", 90), "antonym")
+
+    def test_eval_calibration_diagnostics_use_global_augmentation_counts(self):
+        source = (REPO_ROOT / "scripts" / "eval_v26_gold.py").read_text(encoding="utf-8")
+
+        self.assertIn(
+            "midpoint_calibration_augmented_rows = len(global_midpoint_pred_aug) - len(calib_pred)",
+            source,
+        )
+        self.assertIn("augmented_rows={midpoint_calibration_augmented_rows}", source)
+        self.assertIn(
+            "support_positive_calibration_augmented_rows = len(support_pred_aug) - len(calib_pred)",
+            source,
+        )
+        self.assertIn("augmented_rows={support_positive_calibration_augmented_rows}", source)
+        self.assertNotIn("len(midpoint_pred_aug)", source)
+
+    def test_triage_gate_fallback_requires_report_matched_run_log(self):
+        spec = importlib.util.spec_from_file_location(
+            "nightly_next_morning_triage_v26_matching_gate_log",
+            NEXT_MORNING_TRIAGE_SCRIPT,
+        )
+        self.assertIsNotNone(spec)
+        triage = importlib.util.module_from_spec(spec)
+        self.assertIsNotNone(spec.loader)
+        sys.path.insert(0, str(REPO_ROOT / "scripts"))
+        try:
+            spec.loader.exec_module(triage)
+        finally:
+            sys.path.remove(str(REPO_ROOT / "scripts"))
+
+        stamp = "20260929_230003"
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            report = root / "reports" / f"nightly_promotion_{stamp}.md"
+            run_log = root / "tmp" / f"nightly_train_v26_{stamp}.log"
+            report.parent.mkdir(parents=True)
+            run_log.parent.mkdir(parents=True)
+            report.write_text("# report\n", encoding="utf-8")
+            run_log.write_text("mae_ok=True\naccepted=False\n", encoding="utf-8")
+            health = {
+                "latest_run_log": str(run_log),
+                "latest_run_log_stamp": stamp,
+            }
+
+            matched = triage.matching_run_log_text(health, report)
+            self.assertEqual(matched, "mae_ok=True\naccepted=False\n")
+            parsed = triage.analyze_nightly_report_v26.parse_gate_status(matched)
+            self.assertEqual(parsed["failed_gates"], [])
+            self.assertTrue(parsed["gate_status"]["mae_ok"])
+
+            health["latest_run_log_stamp"] = "20260928_230003"
+            self.assertEqual(triage.matching_run_log_text(health, report), "")
 
     def test_nightly_script_normalizes_stale_launchd_bucket_quotas(self):
         source = (REPO_ROOT / "scripts" / "nightly_train_v26.sh").read_text(encoding="utf-8")
