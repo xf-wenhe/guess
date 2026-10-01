@@ -3716,6 +3716,18 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIn("sup_cosine_base_guard", nightly_source)
         self.assertIn("sup_cosent_base_guard", nightly_source)
         self.assertIn("sup_midpoint_base_guard", nightly_source)
+        self.assertIn(
+            'SUP_BUCKET_BAND_BASE_GUARD_MARGIN="${NIGHTLY_SUP_BUCKET_BAND_BASE_GUARD_MARGIN:-0.05}"',
+            nightly_source,
+        )
+        self.assertIn(
+            "SEM_BUCKET_BAND_BASE_GUARD_MARGIN=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN",
+            nightly_source,
+        )
+        self.assertIn(
+            "sup_bucket_band_base_guard_margin=$SUP_BUCKET_BAND_BASE_GUARD_MARGIN",
+            nightly_source,
+        )
         self.assertIn("CANONICAL_SUP_MIN_ANGLE_REPEAT_TAG_BUCKETS", nightly_source)
         self.assertIn("bucket_band_center_weight", source)
         self.assertIn("bucket_band_hard_negative_repeat", source)
@@ -3913,8 +3925,10 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertIsNotNone(spec.loader)
         previous_low = os.environ.get("SEM_MIDPOINT_BAND_LOW")
         previous_high = os.environ.get("SEM_MIDPOINT_BAND_HIGH")
+        previous_guard_margin = os.environ.get("SEM_BUCKET_BAND_BASE_GUARD_MARGIN")
         os.environ["SEM_MIDPOINT_BAND_LOW"] = "0.47"
         os.environ["SEM_MIDPOINT_BAND_HIGH"] = "0.53"
+        os.environ.pop("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", None)
         try:
             with warnings.catch_warnings():
                 warnings.filterwarnings("ignore", category=Warning, message="urllib3 v2 only supports OpenSSL")
@@ -3928,9 +3942,14 @@ class NightlyScriptsTest(unittest.TestCase):
                 os.environ.pop("SEM_MIDPOINT_BAND_HIGH", None)
             else:
                 os.environ["SEM_MIDPOINT_BAND_HIGH"] = previous_high
+            if previous_guard_margin is None:
+                os.environ.pop("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", None)
+            else:
+                os.environ["SEM_BUCKET_BAND_BASE_GUARD_MARGIN"] = previous_guard_margin
 
         self.assertEqual(trainer.MIDPOINT_BAND_LOW, 0.45)
         self.assertEqual(trainer.MIDPOINT_BAND_HIGH, 0.55)
+        self.assertEqual(trainer.BUCKET_BAND_BASE_GUARD_MARGIN, 0.05)
 
     def test_eval_group_prioritizes_explicit_relation_tags_over_score_fallback(self):
         spec = importlib.util.spec_from_file_location(
@@ -4628,7 +4647,16 @@ class NightlyScriptsTest(unittest.TestCase):
             band_weight=0.0,
             center_weight=0.0,
             base_guard_weight=1.0,
-            base_guard_margin=0.02,
+            base_guard_margin=trainer.BUCKET_BAND_BASE_GUARD_MARGIN,
+            base_guard_anchor_weight=0.0,
+        )
+        default_margin_loss = trainer.MidpointBandLoss(
+            FakeModel(),
+            band_low=0.45,
+            band_high=0.55,
+            band_weight=0.0,
+            center_weight=0.0,
+            base_guard_anchor_weight=0.0,
         )
         unguarded = trainer.MidpointBandLoss(
             FakeModel(),
@@ -4637,12 +4665,14 @@ class NightlyScriptsTest(unittest.TestCase):
             band_weight=0.0,
             center_weight=0.0,
             base_guard_weight=0.0,
-            base_guard_margin=0.02,
+            base_guard_margin=trainer.BUCKET_BAND_BASE_GUARD_MARGIN,
+            base_guard_anchor_weight=0.0,
         )
+        self.assertEqual(default_margin_loss.base_guard_margin, 0.05)
         base_correct = torch.tensor([[0.50, 0.55]], dtype=torch.float32)
         self.assertGreater(
-            float(loss(features(0.59), base_correct)),
-            float(unguarded(features(0.59), base_correct)),
+            float(loss(features(0.56), base_correct)),
+            float(unguarded(features(0.56), base_correct)),
         )
         self.assertAlmostEqual(
             float(loss(features(0.55), base_correct)),
@@ -4657,8 +4687,8 @@ class NightlyScriptsTest(unittest.TestCase):
             places=6,
         )
         self.assertGreater(
-            float(loss(features(0.78), base_wrong_high)),
-            float(unguarded(features(0.78), base_wrong_high)),
+            float(loss(features(0.81), base_wrong_high)),
+            float(unguarded(features(0.81), base_wrong_high)),
         )
 
     def test_guarded_losses_ignore_nan_padding_labels(self):

@@ -83,7 +83,7 @@ BUCKET_BAND_BASE_GUARD = os.getenv("SEM_BUCKET_BAND_BASE_GUARD", "1").strip().lo
 BUCKET_BAND_BASE_GUARD_WEIGHT = float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_WEIGHT", "1.0"))
 BUCKET_BAND_BASE_GUARD_MARGIN = min(
     0.09,
-    max(0.0, float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", "0.02"))),
+    max(0.0, float(os.getenv("SEM_BUCKET_BAND_BASE_GUARD_MARGIN", "0.05"))),
 )
 BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT = max(
     0.0,
@@ -464,7 +464,7 @@ class MidpointBandLoss(torch.nn.Module):
         band_weight: float,
         center_weight: float,
         base_guard_weight: float = 1.0,
-        base_guard_margin: float = 0.02,
+        base_guard_margin: float = BUCKET_BAND_BASE_GUARD_MARGIN,
         base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__()
@@ -583,7 +583,7 @@ class BucketBandLoss(torch.nn.Module):
         band_weight: float,
         center_weight: float = 1.0,
         base_guard_weight: float = 1.0,
-        base_guard_margin: float = 0.02,
+        base_guard_margin: float = BUCKET_BAND_BASE_GUARD_MARGIN,
         base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__()
@@ -656,7 +656,7 @@ class BaseGuardedCosineLoss(CosineSimilarityLoss):
         self,
         model: SentenceTransformer,
         base_guard_weight: float = 1.0,
-        base_guard_margin: float = 0.02,
+        base_guard_margin: float = BUCKET_BAND_BASE_GUARD_MARGIN,
         base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__(model)
@@ -704,7 +704,7 @@ class BaseGuardedCoSENTLoss(CoSENTLoss):
         model: SentenceTransformer,
         scale: float = 20.0,
         base_guard_weight: float = 1.0,
-        base_guard_margin: float = 0.02,
+        base_guard_margin: float = BUCKET_BAND_BASE_GUARD_MARGIN,
         base_guard_anchor_weight: float = BUCKET_BAND_BASE_GUARD_ANCHOR_WEIGHT,
     ) -> None:
         super().__init__(model=model, scale=scale)
