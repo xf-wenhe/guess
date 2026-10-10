@@ -428,6 +428,7 @@ run_single_round() {
   local round="$1"
   local round_stamp="${STAMP}_r${round}"
   local round_seed="$((BASE_SEED + round - 1))"
+  local supervised_status
 
   # Per-round model paths (suffixed with _r<N>)
   local round_output_model="${OUTPUT_MODEL}_r${round}"
@@ -546,7 +547,14 @@ run_single_round() {
       SEM_CONTRASTIVE_POS_THRESHOLD=$SUP_CONTRASTIVE_POS_THRESHOLD \
       SEM_CONTRASTIVE_NEG_THRESHOLD=$SUP_CONTRASTIVE_NEG_THRESHOLD \
       $PYTHON_BIN $SUPERVISED_TRAIN_SCRIPT"
-    if ! run_cmd "$supervised_cmd" "$SUPERVISED_TIMEOUT_SEC"; then
+    if run_cmd "$supervised_cmd" "$SUPERVISED_TIMEOUT_SEC"; then
+      :
+    else
+      supervised_status=$?
+      if [[ "$supervised_status" == "124" && ( "$TRAIN_DEVICE" == "auto" || -z "$TRAIN_DEVICE" ) ]]; then
+        echo "[nightly] supervised training timed out on auto device; skipping CPU fallback"
+        return "$supervised_status"
+      fi
       if [[ "$TRAIN_DEVICE" == "auto" || -z "$TRAIN_DEVICE" ]]; then
         echo "[nightly] supervised training failed on auto device, retry with SEM_DEVICE=cpu"
         rm -rf "$round_output_model"

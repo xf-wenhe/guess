@@ -1995,6 +1995,36 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertIn("ACCELERATE_USE_CPU=true", output)
             self.assertIn("saved=", output)
 
+    def test_nightly_auto_device_skips_cpu_retry_after_supervised_timeout(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp) / "repo"
+            self._prepare_fake_repo(root)
+            self._write_round_aware_python(root / ".venv" / "bin" / "python")
+
+            nightly_script_copy = root / "scripts" / "nightly_train_v26.sh"
+            nightly_script_copy.write_text(NIGHTLY_SCRIPT.read_text(encoding="utf-8"), encoding="utf-8")
+            nightly_script_copy.chmod(nightly_script_copy.stat().st_mode | stat.S_IXUSR)
+
+            env = os.environ.copy()
+            env["NIGHTLY_ROOT"] = str(root / ".nightly")
+            env["NIGHTLY_ENFORCE_FREE_SPACE_CHECK"] = "0"
+            env["NIGHTLY_TOTAL_RUNS"] = "1"
+            env["NIGHTLY_SCRIPT_ROOT"] = str(root)
+            env["NIGHTLY_ENABLE_ANCHOR_FINETUNE"] = "0"
+            env["FAKE_TIMEOUT_SUPERVISED"] = "1"
+
+            result = subprocess.run(
+                ["bash", str(nightly_script_copy)],
+                cwd=root,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            output = result.stdout + result.stderr
+            self.assertIn("supervised training timed out on auto device; skipping CPU fallback", output)
+            self.assertNotIn("retry with SEM_DEVICE=cpu", output)
+
     def test_extract_score_trace_review_candidates_writes_pending_review_csv(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
@@ -5523,6 +5553,9 @@ if script.endswith('build_v26_gold_and_unsup.py') or script.endswith('build_nigh
     sys.exit(0)
 
 if script.endswith('pretrain_v26_unsupervised.py') or script.endswith('finetune_v19_split.py') or script.endswith('train_v28c_mse_contrastive.py'):
+    if script.endswith('train_v28c_mse_contrastive.py') and env.get('FAKE_TIMEOUT_SUPERVISED') == '1' and env.get('SEM_DEVICE') != 'cpu':
+        print('simulated supervised timeout', file=sys.stderr)
+        sys.exit(124)
     if script.endswith('train_v28c_mse_contrastive.py') and env.get('FAKE_FAIL_SUPERVISED_UNLESS_CPU') == '1' and env.get('SEM_DEVICE') != 'cpu':
         print('simulated MPS failure', file=sys.stderr)
         sys.exit(42)
