@@ -1019,6 +1019,7 @@ for key in ("train_rows", "gold_pool", "train_gold", "train_patch", "calib", "ev
     lines.append(f"| {key} | {stats.get(key, '-')} |")
 for key in (
     "antonym_calib_anchor_rows",
+    "antonym_calib_anchor_source",
     "required_proxy_antonym_train_rows",
     "required_proxy_antonym_calib_rows",
     "priority_antonym_calib_anchor_rows",

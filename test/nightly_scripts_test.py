@@ -174,6 +174,7 @@ class NightlyScriptsTest(unittest.TestCase):
                     "eval_antonym_rows": "1",
                     "eval_holdout_antonym_rows": "1",
                     "eval_non_holdout_antonym_rows": "0",
+                    "train_calib_symmetric_overlap": "0",
                     "unexpected_train_calib_symmetric_overlap": "0",
                     "objective_count": "5",
                     "round_robin_steps_per_epoch": "235",
@@ -344,6 +345,13 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertFalse(bad_partition["partition_report_verified"])
         self.assertIn("eval_non_holdout_antonym_rows", bad_partition["issues"][-1])
         sampling_row["eval_non_holdout_antonym_rows"] = "0"
+
+        sampling_row["train_calib_symmetric_overlap"] = "12"
+        bad_calibration_overlap = triage.semantic_strategy_checks(band_health, band_analysis)
+        self.assertFalse(bad_calibration_overlap["ok"])
+        self.assertFalse(bad_calibration_overlap["partition_report_verified"])
+        self.assertIn("train_calib_symmetric_overlap=12", bad_calibration_overlap["issues"][-1])
+        sampling_row["train_calib_symmetric_overlap"] = "0"
 
         sampling_row["round_robin_steps_per_epoch"] = "230"
         bad_schedule = triage.semantic_strategy_checks(band_health, band_analysis)
@@ -2847,34 +2855,32 @@ class NightlyScriptsTest(unittest.TestCase):
             )
         self.assertIn("unexpected_train_calib_symmetric_overlap", str(error.exception))
 
-        stats = builder.validate_dataset_partition(
-            train_rows=[
-                {
-                    "answer": "高兴",
-                    "user_input": "伤心",
-                    "relation_tag": "antonym_mid",
-                    "reviewer": "required_antonym_proxy_train",
-                    "sample_weight": "4.0",
-                }
-            ],
-            calib_rows=[
-                {
-                    "answer": "高兴",
-                    "user_input": "伤心",
-                    "relation_tag": "antonym_mid",
-                    "reviewer": "required_antonym_proxy_calib",
-                    "sample_weight": "13.0",
-                }
-            ],
-            eval_rows=[],
-            holdout_rows=[
-                {"answer": "高兴", "user_input": "难过", "relation_tag": "antonym_mid"}
-            ],
-        )
-        self.assertEqual(stats["train_calib_symmetric_overlap"], 1)
-        self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
-        self.assertEqual(stats["train_calib_exact_overlap"], 1)
-        self.assertEqual(stats["allowed_train_calib_exact_overlap"], 1)
+        with self.assertRaises(SystemExit) as error:
+            builder.validate_dataset_partition(
+                train_rows=[
+                    {
+                        "answer": "高兴",
+                        "user_input": "伤心",
+                        "relation_tag": "antonym_mid",
+                        "reviewer": "required_antonym_proxy_train",
+                        "sample_weight": "4.0",
+                    }
+                ],
+                calib_rows=[
+                    {
+                        "answer": "高兴",
+                        "user_input": "伤心",
+                        "relation_tag": "antonym_mid",
+                        "reviewer": "required_antonym_proxy_calib",
+                        "sample_weight": "13.0",
+                    }
+                ],
+                eval_rows=[],
+                holdout_rows=[
+                    {"answer": "高兴", "user_input": "难过", "relation_tag": "antonym_mid"}
+                ],
+            )
+        self.assertIn("unexpected_train_calib_symmetric_overlap", str(error.exception))
 
     def test_build_nightly_semantic_sets_prefers_required_proxy_rows_on_pair_collision(self):
         spec = importlib.util.spec_from_file_location(
@@ -2943,7 +2949,97 @@ class NightlyScriptsTest(unittest.TestCase):
         self.assertEqual(calib_row["reviewer"], "required_antonym_proxy_calib")
         self.assertEqual(calib_row["sample_weight"], "13.0000")
 
-    def test_build_nightly_semantic_sets_mirrors_required_holdout_family_proxy_rows_to_train_and_calibration(self):
+    def test_build_nightly_semantic_sets_keeps_antonym_calibration_anchors_out_of_training(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            puzzles_path = tmp_path / "puzzles.json"
+            manual_path = tmp_path / "manual.json"
+            base_train_path = tmp_path / "base_train.csv"
+            holdout_path = tmp_path / "holdout.csv"
+            train_patch_path = tmp_path / "train_patch.csv"
+            scored_path = tmp_path / "scored.csv"
+            train_out = tmp_path / "train.csv"
+            pool_out = tmp_path / "pool.csv"
+            calib_out = tmp_path / "calib.csv"
+            eval_out = tmp_path / "eval.csv"
+            unsup_out = tmp_path / "unsup.jsonl"
+            stats_out = tmp_path / "build_stats.json"
+
+            puzzles_path.write_text(
+                '[{"answer":"高兴","category":"情感","hints":["心情很好"]}]\n',
+                encoding="utf-8",
+            )
+            manual_path.write_text("[]\n", encoding="utf-8")
+            base_train_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight\n"
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "温暖,寒冷,antonym_mid,50,1.0\n",
+                encoding="utf-8",
+            )
+            holdout_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,reviewer\n"
+                "高兴,难过,antonym_mid,50,error_review_v1\n",
+                encoding="utf-8",
+            )
+            train_patch_path.write_text(
+                "answer,user_input,relation_tag,score_0_100,sample_weight,reviewer\n"
+                "快乐,痛苦,antonym_mid,50,4.0,nightly_patch_v1\n"
+                "快乐,悲伤,antonym_mid,50,4.0,nightly_patch_v2\n",
+                encoding="utf-8",
+            )
+            scored_path.write_text(
+                "answer,user_input,relation_tag,score_0_100\n"
+                "学校,校园,related_mid,55\n"
+                "苹果,水果,related_mid,55\n",
+                encoding="utf-8",
+            )
+
+            env = os.environ.copy()
+            env.update(
+                {
+                    "SEM_PUZZLES_JSON": str(puzzles_path),
+                    "SEM_MANUAL_OVERRIDES": str(manual_path),
+                    "SEM_BASE_TRAIN_CSV": str(base_train_path),
+                    "SEM_TRAIN_PATCH_CSVS": str(train_patch_path),
+                    "SEM_SCORED_CSV": str(scored_path),
+                    "SEM_EXTRA_GOLD_CSVS": "",
+                    "SEM_HOLDOUT_CSVS": str(holdout_path),
+                    "SEM_OUTPUT_TRAIN_CSV": str(train_out),
+                    "SEM_GOLD_POOL_CSV": str(pool_out),
+                    "SEM_GOLD_CALIB_CSV": str(calib_out),
+                    "SEM_GOLD_EVAL_CSV": str(eval_out),
+                    "SEM_UNSUP_PAIRS_JSONL": str(unsup_out),
+                    "SEM_BUILD_STATS_JSON": str(stats_out),
+                    "SEM_GOLD_TARGET_TOTAL": "20",
+                    "SEM_ANTONYM_CALIB_ANCHOR_TARGET": "1",
+                    "SEM_ANTONYM_CALIB_ANCHOR_WEIGHT": "6.0",
+                }
+            )
+
+            result = subprocess.run(
+                [sys.executable, str(BUILD_NIGHTLY_SETS_SCRIPT)],
+                cwd=REPO_ROOT,
+                env=env,
+                capture_output=True,
+                text=True,
+                check=False,
+            )
+            self.assertEqual(result.returncode, 0, msg=result.stderr or result.stdout)
+
+            with train_out.open("r", encoding="utf-8") as file:
+                train_rows = list(csv.DictReader(file))
+            with calib_out.open("r", encoding="utf-8") as file:
+                calib_rows = list(csv.DictReader(file))
+            self.assertIn(("温暖", "寒冷"), {(row["answer"], row["user_input"]) for row in calib_rows})
+            self.assertNotIn(("温暖", "寒冷"), {(row["answer"], row["user_input"]) for row in train_rows})
+            self.assertIn(("快乐", "悲伤"), {(row["answer"], row["user_input"]) for row in train_rows})
+            self.assertNotIn(("高兴", "沮丧"), {(row["answer"], row["user_input"]) for row in train_rows})
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["train_calib_symmetric_overlap"], 0)
+            self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
+
+    def test_build_nightly_semantic_sets_keeps_holdout_family_proxies_disjoint(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3017,7 +3113,7 @@ class NightlyScriptsTest(unittest.TestCase):
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
             proxy_row = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "伤心")
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "沮丧")
             )
             self.assertEqual(proxy_row["reviewer"], "required_antonym_proxy_calib")
             self.assertEqual(proxy_row["sample_weight"], "13.0000")
@@ -3026,6 +3122,8 @@ class NightlyScriptsTest(unittest.TestCase):
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             for proxy_pair in (("高兴", "伤心"), ("开心", "悲伤"), ("快乐", "难过")):
                 self.assertIn(proxy_pair, train_pairs)
+            for proxy_pair in (("高兴", "沮丧"), ("开心", "忧愁"), ("快乐", "忧伤")):
+                self.assertNotIn(proxy_pair, train_pairs)
             self.assertNotIn(("高兴", "难过"), train_pairs)
 
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
@@ -3035,10 +3133,10 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 0)
             self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
             self.assertEqual(stats["calib_antonym_rows"], 3)
-            self.assertEqual(stats["train_calib_symmetric_overlap"], 3)
+            self.assertEqual(stats["train_calib_symmetric_overlap"], 0)
             self.assertEqual(stats["unexpected_train_calib_symmetric_overlap"], 0)
 
-    def test_build_nightly_semantic_sets_can_reserve_antonym_patch_rows_for_calibration(self):
+    def test_build_nightly_semantic_sets_selects_disjoint_base_antonym_calibration_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3060,7 +3158,8 @@ class NightlyScriptsTest(unittest.TestCase):
             manual_path.write_text("[]\n", encoding="utf-8")
             base_train_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
-                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "温暖,寒冷,antonym_mid,50,1.0\n",
                 encoding="utf-8",
             )
             train_patch_path.write_text(
@@ -3116,16 +3215,19 @@ class NightlyScriptsTest(unittest.TestCase):
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
-            reserved = {("开心", "伤心"), ("快乐", "痛苦")}
-            self.assertEqual(len(reserved & calib_pairs), 1)
-            self.assertEqual(len(reserved & train_pairs), 2)
+            self.assertIn(("温暖", "寒冷"), calib_pairs)
+            self.assertNotIn(("温暖", "寒冷"), train_pairs)
+            self.assertIn(("开心", "伤心"), train_pairs)
+            self.assertIn(("快乐", "痛苦"), train_pairs)
             self.assertIn(("古代", "现代"), train_pairs)
             self.assertNotIn(("古代", "现代"), calib_pairs)
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
-            reserved_row = next(row for row in calib_rows if (row["answer"], row["user_input"]) in reserved)
+            reserved_row = next(
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("温暖", "寒冷")
+            )
             self.assertEqual(reserved_row["sample_weight"], "6.0000")
-            self.assertIn((reserved_row["answer"], reserved_row["user_input"]), train_pairs)
+            self.assertNotIn((reserved_row["answer"], reserved_row["user_input"]), train_pairs)
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["antonym_calib_anchor_rows"], 1)
             self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
@@ -3133,7 +3235,7 @@ class NightlyScriptsTest(unittest.TestCase):
             self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
             self.assertEqual(stats["calib_antonym_rows"], 1)
 
-    def test_build_nightly_semantic_sets_prioritizes_v2_antonym_patch_rows_for_calibration(self):
+    def test_build_nightly_semantic_sets_calibrates_on_disjoint_rows_and_keeps_patch_rows(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3155,7 +3257,8 @@ class NightlyScriptsTest(unittest.TestCase):
             manual_path.write_text("[]\n", encoding="utf-8")
             base_train_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
-                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "开心,失望,antonym_mid,50,1.0\n",
                 encoding="utf-8",
             )
             train_patch_path.write_text(
@@ -3209,20 +3312,22 @@ class NightlyScriptsTest(unittest.TestCase):
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
             reserved_row = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("开心", "失望")
             )
-            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "难过"))
-            self.assertEqual(reserved_row["reviewer"], "nightly_patch_v2")
+            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("开心", "失望"))
+            self.assertEqual(reserved_row["reviewer"], "base_train")
             self.assertEqual(reserved_row["sample_weight"], "6.0000")
             with train_out.open("r", encoding="utf-8") as file:
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             self.assertIn(("高兴", "难过"), train_pairs)
+            self.assertNotIn(("开心", "失望"), train_pairs)
             stats = json.loads(stats_out.read_text(encoding="utf-8"))
             self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
-            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 1)
+            self.assertEqual(stats["priority_antonym_calib_anchor_rows"], 0)
             self.assertEqual(stats["priority_antonym_calib_weight_rows"], 0)
 
-    def test_build_nightly_semantic_sets_prioritizes_regression_antonym_pairs_within_v2_calibration(self):
+    def test_build_nightly_semantic_sets_keeps_regression_antonyms_in_training(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3244,7 +3349,8 @@ class NightlyScriptsTest(unittest.TestCase):
             manual_path.write_text("[]\n", encoding="utf-8")
             base_train_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
-                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "温暖,寒冷,antonym_mid,50,1.0\n",
                 encoding="utf-8",
             )
             train_patch_path.write_text(
@@ -3297,14 +3403,16 @@ class NightlyScriptsTest(unittest.TestCase):
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
             reserved_row = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("温暖", "寒冷")
             )
-            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "难过"))
+            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("温暖", "寒冷"))
             with train_out.open("r", encoding="utf-8") as file:
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             self.assertIn(("高兴", "难过"), train_pairs)
+            self.assertIn(("白天", "黑夜"), train_pairs)
+            self.assertNotIn(("温暖", "寒冷"), train_pairs)
 
-    def test_build_nightly_semantic_sets_prioritizes_emotion_family_proxy_for_holdout_antonym(self):
+    def test_build_nightly_semantic_sets_does_not_mirror_patch_antonyms_into_calibration(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3379,15 +3487,17 @@ class NightlyScriptsTest(unittest.TestCase):
 
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
-            reserved_row = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "悲伤")
-            )
-            self.assertEqual((reserved_row["answer"], reserved_row["user_input"]), ("高兴", "悲伤"))
             with train_out.open("r", encoding="utf-8") as file:
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             self.assertIn(("高兴", "悲伤"), train_pairs)
+            self.assertFalse(
+                any((row["answer"], row["user_input"]) == ("高兴", "悲伤") for row in calib_rows)
+            )
+            stats = json.loads(stats_out.read_text(encoding="utf-8"))
+            self.assertEqual(stats["antonym_calib_anchor_rows"], 0)
+            self.assertEqual(stats["required_proxy_antonym_calib_rows"], 0)
 
-    def test_build_nightly_semantic_sets_patch_rows_override_duplicate_supervised_gold_pairs(self):
+    def test_build_nightly_semantic_sets_patch_rows_override_duplicate_gold_without_calibration_mirror(self):
         with tempfile.TemporaryDirectory() as tmp:
             tmp_path = Path(tmp)
             puzzles_path = tmp_path / "puzzles.json"
@@ -3468,9 +3578,7 @@ class NightlyScriptsTest(unittest.TestCase):
             anchor_rows = [
                 row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "难过")
             ]
-            self.assertEqual(len(anchor_rows), 1)
-            self.assertEqual(anchor_rows[0]["reviewer"], "nightly_patch_v2")
-            self.assertEqual(anchor_rows[0]["sample_weight"], "6.0000")
+            self.assertEqual(anchor_rows, [])
             with train_out.open("r", encoding="utf-8") as file:
                 train_pairs = {(row["answer"], row["user_input"]) for row in csv.DictReader(file)}
             self.assertIn(("高兴", "难过"), train_pairs)
@@ -3599,7 +3707,9 @@ class NightlyScriptsTest(unittest.TestCase):
             manual_path.write_text("[]\n", encoding="utf-8")
             base_train_path.write_text(
                 "answer,user_input,relation_tag,score_0_100,sample_weight\n"
-                "猫咪,刘备,hard_negative_low,10,1.0\n",
+                "猫咪,刘备,hard_negative_low,10,1.0\n"
+                "开心,悲伤,antonym_mid,50,1.0\n"
+                "温暖,寒冷,antonym_mid,50,1.0\n",
                 encoding="utf-8",
             )
             train_patch_path.write_text(
@@ -3652,10 +3762,10 @@ class NightlyScriptsTest(unittest.TestCase):
             with calib_out.open("r", encoding="utf-8") as file:
                 calib_rows = list(csv.DictReader(file))
             boosted = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("高兴", "悲伤")
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("开心", "悲伤")
             )
             baseline = next(
-                row for row in calib_rows if (row["answer"], row["user_input"]) == ("快乐", "痛苦")
+                row for row in calib_rows if (row["answer"], row["user_input"]) == ("温暖", "寒冷")
             )
             self.assertEqual(boosted["sample_weight"], "9.0000")
             self.assertEqual(baseline["sample_weight"], "6.0000")

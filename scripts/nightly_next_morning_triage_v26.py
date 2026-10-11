@@ -196,6 +196,7 @@ PARTITION_REPORT_FIELDS = (
     "eval_antonym_rows",
     "eval_holdout_antonym_rows",
     "eval_non_holdout_antonym_rows",
+    "train_calib_symmetric_overlap",
     "unexpected_train_calib_symmetric_overlap",
 )
 
@@ -703,6 +704,11 @@ def semantic_strategy_checks(health: dict[str, object], analysis: dict[str, obje
                         f"round {round_id}: eval_antonym_rows="
                         f"{values['eval_antonym_rows']} != eval_holdout_antonym_rows="
                         f"{values['eval_holdout_antonym_rows']}"
+                    )
+                if values["train_calib_symmetric_overlap"] != 0:
+                    partition_issues.append(
+                        f"round {round_id}: train_calib_symmetric_overlap="
+                        f"{values['train_calib_symmetric_overlap']}, expected 0"
                     )
                 if values["unexpected_train_calib_symmetric_overlap"] != 0:
                     partition_issues.append(
